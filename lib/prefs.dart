@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'folders.dart';
+
 /// Everything the user customises, saved on the phone.
 class Prefs extends ChangeNotifier {
   Prefs._(this._sp);
@@ -21,6 +23,37 @@ class Prefs extends ChangeNotifier {
 
   /// Folders the user picked by hand (package → folder id).
   Map<String, String> get folderOverrides => Map<String, String>.from(jsonDecode(_sp.getString('folderOverrides') ?? '{}') as Map);
+
+  /// Folder names the user typed (folder id → name).
+  Map<String, String> get folderNames => Map<String, String>.from(jsonDecode(_sp.getString('folderNames') ?? '{}') as Map);
+
+  /// Folder order the user set (ids, top to bottom). Empty = default order.
+  List<String> get folderOrder => _sp.getStringList('folderOrder') ?? const [];
+
+  String folderName(Folder f) => folderNames[f.id] ?? f.name;
+
+  Future<void> renameFolder(String id, String? name) async {
+    final m = folderNames;
+    (name == null || name.trim().isEmpty) ? m.remove(id) : m[id] = name.trim();
+    await _sp.setString('folderNames', jsonEncode(m));
+    notifyListeners();
+  }
+
+  Future<void> setFolderOrder(List<String> ids) => _setList('folderOrder', ids);
+
+  /// Back to automatic: default name, and apps the user moved in go back to their own folders.
+  Future<void> resetFolder(String id) async {
+    final names = folderNames..remove(id);
+    final overrides = folderOverrides..removeWhere((_, f) => f == id);
+    await _sp.setString('folderNames', jsonEncode(names));
+    await _sp.setString('folderOverrides', jsonEncode(overrides));
+    notifyListeners();
+  }
+
+  Future<void> clearLaunches() async {
+    await _sp.remove('launchCounts');
+    notifyListeners();
+  }
 
   Future<void> recordLaunch(String pkg) async {
     final m = launchCounts;

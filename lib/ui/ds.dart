@@ -36,7 +36,7 @@ class DS {
   static const gutter = 8.0; // canvas → card
   static const stack = 4.0; // card → card
   static const pad = 20.0; // inside a card
-  static const s4 = 4.0, s8 = 8.0, s12 = 12.0, s16 = 16.0, s20 = 20.0, s24 = 24.0, s32 = 32.0;
+  static const s4 = 4.0, s8 = 8.0, s12 = 12.0, s16 = 16.0, s20 = 20.0, s24 = 24.0, s32 = 32.0, s48 = 48.0;
 
   // ---- Shape ----
   static const rCard = 28.0;

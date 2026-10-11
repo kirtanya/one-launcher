@@ -66,6 +66,9 @@ const folders = <Folder>[
 
 const other = Folder('other', 'Everything else', Icons.apps_rounded, []);
 
+/// Virtual folder of the apps opened most from One Launcher. Always first, open by default.
+const mostUsed = Folder('recent', 'Most used', Icons.bolt_rounded, []);
+
 Folder folderById(String id) => folders.where((f) => f.id == id).firstOrNull ?? other;
 
 /// Picks a folder: the user's own choice, then keywords, then Android's category,
@@ -88,14 +91,20 @@ Folder folderFor(AppEntry app, Map<String, String> overrides) {
   return other;
 }
 
-/// Groups apps by folder, keeping folder order and dropping empty folders.
-List<(Folder, List<AppEntry>)> groupApps(List<AppEntry> apps, Map<String, String> overrides) {
+/// Groups apps by folder, in the user's order (else the default order), dropping empty folders.
+List<(Folder, List<AppEntry>)> groupApps(List<AppEntry> apps, Map<String, String> overrides, {List<String> order = const []}) {
   final map = <String, List<AppEntry>>{};
   for (final a in apps) {
     map.putIfAbsent(folderFor(a, overrides).id, () => []).add(a);
   }
+  final all = [...folders, other];
+  int rank(Folder f) {
+    final i = order.indexOf(f.id);
+    return i < 0 ? order.length + all.indexOf(f) : i;
+  }
+
   return [
-    for (final f in [...folders, other])
+    for (final f in all..sort((a, b) => rank(a).compareTo(rank(b))))
       if (map[f.id]?.isNotEmpty ?? false) (f, map[f.id]!),
   ];
 }

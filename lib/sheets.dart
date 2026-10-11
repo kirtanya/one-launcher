@@ -5,6 +5,7 @@ import 'folders.dart';
 import 'prefs.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
+import 'ui/motion.dart';
 import 'widgets.dart';
 
 /// Long-press an app in the app view.
@@ -20,7 +21,7 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
 
   return showOneSheet(
     context,
-    header: SheetHeader(title: app.label, subtitle: 'In ${folder.name}', leading: AppIcon(app, size: 48)),
+    header: SheetHeader(title: app.label, subtitle: 'In ${prefs.folderName(folder)}', leading: AppIcon(app, size: 48)),
     actions: [
       SheetAction(
         fav ? Icons.push_pin : Icons.push_pin_outlined,
@@ -59,8 +60,194 @@ Future<void> showFolderPicker(BuildContext context, {required Prefs prefs, requi
     header: SheetHeader(title: 'Move ${app.label}', subtitle: 'Choose a folder', leading: AppIcon(app, size: 48)),
     actions: [
       SheetAction(Icons.auto_awesome_outlined, 'Automatic', () => pick(null), trailing: check(manual == null)),
-      for (final f in [...folders, other]) SheetAction(f.icon, f.name, () => pick(f.id), trailing: check(manual != null && current == f.id)),
+      for (final f in [...folders, other]) SheetAction(f.icon, prefs.folderName(f), () => pick(f.id), trailing: check(manual != null && current == f.id)),
     ],
+  );
+}
+
+/// The "•••" on an open folder.
+Future<void> showCustomiseFolder(
+  BuildContext context, {
+  required Prefs prefs,
+  required Folder folder,
+  required List<AppEntry> allApps,
+  List<String> visibleOrder = const [],
+}) {
+  final isMostUsed = folder.id == mostUsed.id;
+  final i = visibleOrder.indexOf(folder.id);
+  void then(VoidCallback f) {
+    Navigator.pop(context);
+    f();
+  }
+
+  /// Swap this folder with its neighbour and save the whole order.
+  void move(int by) {
+    final order = [...visibleOrder];
+    final j = i + by;
+    order[i] = order[j];
+    order[j] = folder.id;
+    prefs.setFolderOrder(order);
+  }
+
+  return showOneSheet(
+    context,
+    header: SheetHeader(
+      title: 'Customise',
+      subtitle: prefs.folderName(folder),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: const BoxDecoration(color: DS.ink, shape: BoxShape.circle),
+        child: Icon(folder.icon, color: DS.card),
+      ),
+    ),
+    actions: [
+      SheetAction(Icons.edit_outlined, 'Rename', () => then(() => showRenameFolder(context, prefs: prefs, folder: folder))),
+      if (!isMostUsed) ...[
+        SheetAction(Icons.checklist_rounded, 'Choose apps', () => then(() => showChooseApps(context, prefs: prefs, folder: folder, allApps: allApps))),
+        SheetAction(Icons.arrow_upward_rounded, 'Move up', () => then(() => move(-1)), enabled: i > 0),
+        SheetAction(Icons.arrow_downward_rounded, 'Move down', () => then(() => move(1)), enabled: i >= 0 && i < visibleOrder.length - 1),
+        SheetAction(Icons.restart_alt_rounded, 'Reset folder', () => then(() => prefs.resetFolder(folder.id)), danger: true),
+      ] else
+        SheetAction(Icons.history_rounded, 'Clear history', () => then(prefs.clearLaunches), danger: true),
+    ],
+  );
+}
+
+/// Rename a folder. Empty name = back to the default.
+Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, required Folder folder}) {
+  final text = TextEditingController(text: prefs.folderName(folder));
+  void save(BuildContext ctx) {
+    prefs.renameFolder(folder.id, text.text == folder.name ? null : text.text);
+    Navigator.pop(ctx);
+  }
+
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => Padding(
+      padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, MediaQuery.viewInsetsOf(ctx).bottom + DS.s8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SheetHeader(title: 'Rename folder', subtitle: 'Leave empty to use “${folder.name}”'),
+          const SizedBox(height: DS.s16),
+          TextField(
+            controller: text,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            cursorColor: DS.ink,
+            style: DS.title.copyWith(fontSize: 22),
+            onSubmitted: (_) => save(ctx),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: DS.cardMuted,
+              contentPadding: const EdgeInsets.symmetric(horizontal: DS.s20, vertical: DS.s16),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.rMedia), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: DS.s16),
+          Pressable(
+            scale: .97,
+            child: SizedBox(
+              height: 56,
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
+                onPressed: () => save(ctx),
+                child: Text('Save', style: DS.rowTitle.copyWith(color: DS.card)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Tick the apps that belong in this folder. Changes apply straight away.
+Future<void> showChooseApps(BuildContext context, {required Prefs prefs, required Folder folder, required List<AppEntry> allApps}) {
+  final apps = [...allApps]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+
+  void toggle(AppEntry a, bool inside) {
+    if (!inside) {
+      prefs.setFolder(a.package, folder.id);
+      return;
+    }
+    // Taking it out: back to its automatic folder, or "Everything else" if that's this one.
+    final auto = folderFor(a, const {});
+    prefs.setFolder(a.package, auto.id == folder.id ? (folder.id == other.id ? null : other.id) : null);
+  }
+
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .75),
+      child: ListenableBuilder(
+        listenable: prefs,
+        builder: (ctx, _) {
+          final overrides = prefs.folderOverrides;
+          final count = apps.where((a) => folderFor(a, overrides).id == folder.id).length;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+                child: SheetHeader(title: 'Choose apps', subtitle: '${prefs.folderName(folder)} · $count apps'),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: apps.length,
+                  itemBuilder: (ctx, i) {
+                    final a = apps[i];
+                    final current = folderFor(a, overrides);
+                    final inside = current.id == folder.id;
+                    return InkWell(
+                      onTap: () => toggle(a, inside),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
+                        child: Row(
+                          children: [
+                            AppIcon(a, size: 36),
+                            const SizedBox(width: DS.s16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    a.label,
+                                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(prefs.folderName(current), style: DS.rowSub.copyWith(fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                            AnimatedSwitcher(
+                              duration: Motion.snapDuration,
+                              switchInCurve: Motion.pop,
+                              transitionBuilder: (child, an) => ScaleTransition(scale: an, child: child),
+                              child: Icon(
+                                inside ? Icons.check_circle_rounded : Icons.circle_outlined,
+                                key: ValueKey(inside),
+                                color: inside ? DS.ink : DS.inkFaint,
+                                size: 26,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
   );
 }
 

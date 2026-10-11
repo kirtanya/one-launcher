@@ -5,16 +5,17 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'folders.dart';
 import 'prefs.dart';
+import 'search.dart';
+import 'search_dock.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
 
-/// The bottom sheet of the one-screen launcher: a pastel hero card, then one card per
-/// folder of similar apps. Search swaps the folders for a single results card.
-/// Scrolling is driven by the sheet's [scroll] controller, so the first drag expands the
-/// sheet and only then scrolls the cards.
+/// The bottom sheet of the one-screen launcher: pastel hero card, then "Most used",
+/// then one card per folder of similar apps. Only one folder is open at a time.
+/// While searching it shows results instead (search itself lives in the bottom dock).
 class AppDrawer extends StatefulWidget {
   const AppDrawer({
     super.key,
@@ -22,41 +23,32 @@ class AppDrawer extends StatefulWidget {
     required this.prefs,
     required this.scroll,
     required this.expanded,
+    required this.searching,
+    required this.query,
     required this.onLaunch,
-    required this.onWantFull,
+    required this.onCompact,
   });
 
   final List<AppEntry> apps;
   final Prefs prefs;
   final ScrollController scroll;
   final ValueListenable<double> expanded; // 0 = half screen, 1 = full screen
+  final bool searching;
+  final String query;
   final ValueChanged<AppEntry> onLaunch;
-  final VoidCallback onWantFull; // ask the sheet to expand (search)
+  final ValueChanged<bool> onCompact; // list scrolled up (true) or back down (false)
 
   @override
   State<AppDrawer> createState() => AppDrawerState();
 }
 
 class AppDrawerState extends State<AppDrawer> {
-  final _query = TextEditingController();
-  final _focus = FocusNode();
-  final _open = <String>{}; // expanded folder ids
-  bool _searching = false;
+  static const _mostUsedCount = 8;
+  String? _openId; // the one open folder (Most used is the hero card, always open)
 
-  bool get searching => _searching;
-
-  /// Back to the resting state (after launching an app, Home, or collapsing).
+  /// Back to the resting state (Home pressed / after launching an app).
   void reset() {
-    _focus.unfocus();
-    _query.clear();
-    if (_searching) setState(() => _searching = false);
-  }
-
-  @override
-  void dispose() {
-    _query.dispose();
-    _focus.dispose();
-    super.dispose();
+    if (_openId != null) setState(() => _openId = null);
   }
 
   // ---- Data ----------------------------------------------------------------
@@ -66,96 +58,91 @@ class AppDrawerState extends State<AppDrawer> {
     return widget.apps.where((a) => !hidden.contains(a.package)).toList();
   }
 
-  String get _q => _query.text.trim().toLowerCase();
-
-  List<AppEntry> get _results {
-    final q = _q;
-    // Hidden apps are still findable by search.
-    int rank(AppEntry a) {
-      final l = a.label.toLowerCase();
-      if (l.startsWith(q)) return 0;
-      if (l.split(RegExp(r'\s+')).any((w) => w.startsWith(q))) return 1;
-      if (l.contains(q)) return 2;
-      return 3;
-    }
-
-    return widget.apps.where((a) => rank(a) < 3).toList()..sort((a, b) => rank(a).compareTo(rank(b)));
+  List<AppEntry> _pinned(List<AppEntry> apps) {
+    final byPkg = {for (final a in apps) a.package: a};
+    return [for (final p in widget.prefs.favourites) ?byPkg[p]];
   }
 
-  /// Pinned apps first, then the most-opened ones.
-  List<AppEntry> _topApps(List<AppEntry> apps, int n) {
+  List<AppEntry> _mostUsed(List<AppEntry> apps) {
     final byPkg = {for (final a in apps) a.package: a};
-    final picked = <AppEntry>[for (final p in widget.prefs.favourites) ?byPkg[p]];
     final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
-    for (final e in used) {
-      if (!picked.contains(byPkg[e.key])) picked.add(byPkg[e.key]!);
-    }
-    return picked.take(n).toList();
+    return [for (final e in used.take(_mostUsedCount)) byPkg[e.key]!];
   }
 
   // ---- Actions -------------------------------------------------------------
 
-  void startSearch() {
-    HapticFeedback.selectionClick();
-    widget.onWantFull();
-    setState(() => _searching = true);
-    _focus.requestFocus();
-  }
-
-  void _stopSearch() => reset();
-
-  void _onChanged(String _) {
-    setState(() {});
-    final r = _results;
-    if (widget.prefs.autoOpenSingleMatch && _q.isNotEmpty && r.length == 1) widget.onLaunch(r.first);
-  }
-
-  void _onSubmit(String _) {
-    final r = _results;
-    if (_q.isNotEmpty && r.isNotEmpty) widget.onLaunch(r.first);
-  }
-
   void _longPress(AppEntry app) {
     HapticFeedback.mediumImpact();
-    _focus.unfocus();
+    FocusScope.of(context).unfocus();
     showAppSheet(context, prefs: widget.prefs, app: app);
   }
 
+  /// Accordion: opening one folder closes the other.
   void _toggle(String id) {
     HapticFeedback.selectionClick();
-    setState(() => _open.contains(id) ? _open.remove(id) : _open.add(id));
+    setState(() => _openId = _openId == id ? null : id);
+  }
+
+  bool _onScroll(ScrollUpdateNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    final d = n.scrollDelta ?? 0;
+    if (n.metrics.pixels <= 0) {
+      widget.onCompact(false);
+    } else if (d > 2) {
+      widget.onCompact(true); // finger moving up → content scrolls up → dock shrinks
+    } else if (d < -2) {
+      widget.onCompact(false);
+    }
+    return false;
   }
 
   // ---- Build ---------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom + MediaQuery.paddingOf(context).bottom + DS.s16;
-    final statusBar = MediaQuery.paddingOf(context).top;
-    final showResults = _searching && _q.isNotEmpty;
+    final mq = MediaQuery.of(context);
+    // Room for the floating search dock (and the keyboard while searching).
+    final bottom = mq.viewInsets.bottom + mq.padding.bottom + SearchDock.height + DS.s32;
+    final statusBar = mq.padding.top;
+    final prefs = widget.prefs;
     final apps = _visible;
-    final groups = groupApps(apps, widget.prefs.folderOverrides);
+    final groups = groupApps(apps, prefs.folderOverrides, order: prefs.folderOrder);
+    final used = _mostUsed(apps);
+
+    // The green hero card IS the Most used folder: always first, always open.
+    final hero = _HeroCard(
+      name: prefs.folderName(mostUsed),
+      used: used,
+      pinned: _pinned(apps),
+      onCustomise: () => showCustomiseFolder(context, prefs: prefs, folder: mostUsed, allApps: widget.apps),
+      onLaunch: widget.onLaunch,
+      onLongPress: _longPress,
+    );
 
     final cards = <Widget>[
-      if (_searching) _searchBar(),
-      if (showResults)
-        _ResultsCard(query: _query.text.trim(), results: _results, overrides: widget.prefs.folderOverrides, onTap: widget.onLaunch, onLongPress: _longPress)
-      else if (!_searching) ...[
-        _HeroCard(
-          appCount: apps.length,
-          folderCount: groups.length,
-          newCount: apps.where((a) => a.installed > DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch).length,
-          top: _topApps(apps, 4),
-          onSearch: startSearch,
-          onLaunch: widget.onLaunch,
-        ),
+      if (widget.searching)
+        widget.query.trim().isEmpty
+            ? hero // suggestions while the field is empty
+            : _ResultsCard(
+                query: widget.query.trim(),
+                results: searchApps(widget.apps, widget.query),
+                prefs: prefs,
+                onTap: widget.onLaunch,
+                onLongPress: _longPress,
+              )
+      else ...[
+        hero,
         for (final (i, (folder, list)) in groups.indexed)
           _FolderCard(
+            key: ValueKey('folder-${folder.id}'),
             folder: folder,
+            name: prefs.folderName(folder),
             apps: list,
-            open: _open.contains(folder.id),
+            open: _openId == folder.id,
             tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
             onToggle: () => _toggle(folder.id),
+            onCustomise: () =>
+                showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
             onLaunch: widget.onLaunch,
             onLongPress: _longPress,
           ),
@@ -166,67 +153,52 @@ class AppDrawerState extends State<AppDrawer> {
       color: DS.canvas,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
-      child: ListView.separated(
-        controller: widget.scroll,
-        physics: const ClampingScrollPhysics(),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, bottom),
-        itemCount: cards.length + 1,
-        separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : DS.stack),
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            // Grab handle. As the sheet reaches full screen it also makes room for the status bar.
-            return ValueListenableBuilder<double>(
-              valueListenable: widget.expanded,
-              builder: (context, e, _) => Padding(
-                padding: EdgeInsets.only(top: DS.s12 + statusBar * e, bottom: DS.s12),
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 5,
-                    decoration: BoxDecoration(color: DS.onCanvasLine, borderRadius: BorderRadius.circular(3)),
-                  ),
-                ),
-              ),
-            );
-          }
-          // Cards pop in one after another the first time they appear.
-          return PopIn(delay: ((i - 1) * 0.05).clamp(0, .4), offset: const Offset(0, 24), fromScale: .97, child: cards[i - 1]);
-        },
-      ),
-    );
-  }
-
-  Widget _searchBar() {
-    return Padding(
-      key: const ValueKey('search'),
-      padding: const EdgeInsets.only(bottom: DS.s4),
-      child: Row(
+      child: Stack(
         children: [
-          Expanded(
-            child: TextField(
-              controller: _query,
-              focusNode: _focus,
-              onChanged: _onChanged,
-              onSubmitted: _onSubmit,
-              textInputAction: TextInputAction.go,
-              autocorrect: false,
-              enableSuggestions: false,
-              cursorColor: DS.ink,
-              style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
-              decoration: InputDecoration(
-                hintText: 'Search ${widget.apps.length} apps',
-                hintStyle: DS.rowSub,
-                prefixIcon: const Icon(Icons.search_rounded, color: DS.ink),
-                filled: true,
-                fillColor: DS.card,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(99), borderSide: BorderSide.none),
+          NotificationListener<ScrollUpdateNotification>(
+            onNotification: _onScroll,
+            child: ListView.separated(
+              controller: widget.scroll,
+              physics: const ClampingScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, bottom),
+              itemCount: cards.length + 1,
+              separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : DS.stack),
+              itemBuilder: (context, i) {
+                if (i == 0) {
+                  // Grab handle. As the sheet reaches full screen it also makes room for the status bar.
+                  return ValueListenableBuilder<double>(
+                    valueListenable: widget.expanded,
+                    builder: (context, e, _) => Padding(
+                      padding: EdgeInsets.only(top: DS.s12 + statusBar * e, bottom: DS.s12),
+                      child: Center(
+                        child: Container(
+                          width: 40,
+                          height: 5,
+                          decoration: BoxDecoration(color: DS.onCanvasLine, borderRadius: BorderRadius.circular(3)),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                // Cards pop in one after another the first time they appear.
+                return PopIn(delay: ((i - 1) * 0.05).clamp(0, .4), offset: const Offset(0, 24), fromScale: .97, child: cards[i - 1]);
+              },
+            ),
+          ),
+          // Solid strip behind the status bar once the sheet is full, so cards don't scroll under the clock/battery icons.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: statusBar,
+            child: IgnorePointer(
+              child: ValueListenableBuilder<double>(
+                valueListenable: widget.expanded,
+                builder: (context, e, _) => ColoredBox(color: DS.canvas.withValues(alpha: e)),
               ),
             ),
           ),
-          const SizedBox(width: DS.s4),
-          CircleButton(icon: Icons.close_rounded, tone: CircleTone.onCanvas, tooltip: 'Close search', onTap: _stopSearch),
         ],
       ),
     );
@@ -236,91 +208,87 @@ class AppDrawerState extends State<AppDrawer> {
 // ---- Cards ------------------------------------------------------------------
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.appCount,
-    required this.folderCount,
-    required this.newCount,
-    required this.top,
-    required this.onSearch,
-    required this.onLaunch,
-  });
+  const _HeroCard({required this.name, required this.used, required this.pinned, required this.onCustomise, required this.onLaunch, required this.onLongPress});
 
-  final int appCount, folderCount, newCount;
-  final List<AppEntry> top;
-  final VoidCallback onSearch;
-  final ValueChanged<AppEntry> onLaunch;
+  final String name;
+  final List<AppEntry> used, pinned;
+  final VoidCallback onCustomise;
+  final ValueChanged<AppEntry> onLaunch, onLongPress;
 
   @override
   Widget build(BuildContext context) {
+    final tag = DS.meta.copyWith(color: DS.heroMuted, fontSize: 15);
     return OneCard(
       tone: CardTone.hero,
-      padding: const EdgeInsets.fromLTRB(DS.pad, DS.s12, DS.s12, DS.pad),
+      padding: const EdgeInsets.fromLTRB(DS.s12, DS.s8, DS.s8, DS.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const MetaRow(icon: Icons.push_pin_outlined, text: 'Pinned & most used', color: DS.heroMuted),
+              const SizedBox(width: DS.s8),
+              MetaRow(icon: mostUsed.icon, text: name, color: DS.heroMuted),
               const Spacer(),
-              CircleButton(icon: Icons.search_rounded, tooltip: 'Search apps', onTap: onSearch),
+              CircleButton(icon: Icons.more_horiz_rounded, tone: CircleTone.soft, tooltip: 'Customise $name', onTap: onCustomise),
             ],
           ),
-          const SizedBox(height: DS.s12),
-          Text('Your apps', style: DS.eyebrow.copyWith(color: DS.heroInk)),
-          const SizedBox(height: DS.s8),
-          Padding(
-            padding: const EdgeInsets.only(right: DS.s8),
-            child: Text.rich(
-              TextSpan(
-                style: DS.display,
-                children: [
-                  TextSpan(text: 'You have $appCount apps '),
-                  if (newCount > 0) ...[
-                    const WidgetSpan(alignment: PlaceholderAlignment.middle, child: SizedBox.shrink()),
-                    WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: InlinePill('$newCount new', icon: Icons.trending_up_rounded),
-                    ),
-                    const TextSpan(text: ' '),
-                  ],
-                  TextSpan(text: 'in $folderCount folders'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: DS.s20),
-          const CardDivider(color: DS.heroDivider),
-          const SizedBox(height: DS.s4),
-          // Most-used apps as tags. Tap to open.
-          if (top.isEmpty)
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: DS.tap),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Pin apps or open a few, they show up here', style: DS.meta.copyWith(color: DS.heroMuted, fontSize: 15)),
-              ),
+          if (used.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s12, DS.s16),
+              child: Text('Apps you open most will gather here', style: DS.display),
             )
           else
-            Wrap(
+            LayoutBuilder(
+              builder: (context, c) {
+                final w = c.maxWidth / 4;
+                return Wrap(
+                  children: [
+                    for (final (i, a) in used.indexed)
+                      SizedBox(
+                        width: w,
+                        child: PopIn(
+                          delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                          child: _GridApp(app: a, labelColor: DS.heroInk, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          const SizedBox(height: DS.s8),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: DS.s8),
+            child: CardDivider(color: DS.heroDivider),
+          ),
+          // Pinned apps as tags. Tap to open.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+            child: Wrap(
               spacing: DS.s16,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                for (final a in top)
-                  Pressable(
-                    scale: 0.92,
-                    child: InkWell(
-                      onTap: () => onLaunch(a),
-                      borderRadius: BorderRadius.circular(8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: DS.tap),
-                        child: Align(
-                          widthFactor: 1,
-                          child: Text('#${a.label.toLowerCase().replaceAll(' ', '')}', style: DS.meta.copyWith(color: DS.heroMuted, fontSize: 15)),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: DS.tap),
+                  child: const Icon(Icons.push_pin_outlined, size: 18, color: DS.heroMuted),
+                ),
+                if (pinned.isEmpty)
+                  Text('Long-press any app to pin it here', style: tag)
+                else
+                  for (final a in pinned)
+                    Pressable(
+                      scale: 0.92,
+                      child: InkWell(
+                        onTap: () => onLaunch(a),
+                        borderRadius: BorderRadius.circular(8),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: DS.tap),
+                          child: Align(widthFactor: 1, child: Text('#${a.label.toLowerCase().replaceAll(' ', '')}', style: tag)),
                         ),
                       ),
                     ),
-                  ),
               ],
             ),
+          ),
         ],
       ),
     );
@@ -329,22 +297,25 @@ class _HeroCard extends StatelessWidget {
 
 class _FolderCard extends StatelessWidget {
   const _FolderCard({
+    super.key,
     required this.folder,
+    required this.name,
     required this.apps,
     required this.open,
     required this.tone,
     required this.onToggle,
+    required this.onCustomise,
     required this.onLaunch,
     required this.onLongPress,
   });
 
   final Folder folder;
+  final String name;
   final List<AppEntry> apps;
   final bool open;
   final CardTone tone;
-  final VoidCallback onToggle;
-  final ValueChanged<AppEntry> onLaunch;
-  final ValueChanged<AppEntry> onLongPress;
+  final VoidCallback onToggle, onCustomise;
+  final ValueChanged<AppEntry> onLaunch, onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -370,7 +341,7 @@ class _FolderCard extends StatelessWidget {
                         Row(
                           children: [
                             Flexible(
-                              child: Text(folder.name, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              child: Text(name, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
                             ),
                             const SizedBox(width: 6),
                             Icon(folder.icon, size: 16, color: DS.inkFaint),
@@ -380,6 +351,24 @@ class _FolderCard extends StatelessWidget {
                         Text(names, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
                       ],
                     ),
+                  ),
+                  // "Customise" appears only on the open folder.
+                  AnimatedSwitcher(
+                    duration: Motion.snapDuration,
+                    switchInCurve: Motion.pop,
+                    transitionBuilder: (child, a) => ScaleTransition(
+                      scale: a,
+                      child: FadeTransition(opacity: a, child: child),
+                    ),
+                    child: open
+                        ? CircleButton(
+                            key: const ValueKey('more'),
+                            icon: Icons.more_horiz_rounded,
+                            tone: CircleTone.outline,
+                            tooltip: 'Customise folder',
+                            onTap: onCustomise,
+                          )
+                        : const SizedBox(key: ValueKey('none')),
                   ),
                   CircleButton(
                     icon: Icons.keyboard_arrow_down_rounded,
@@ -403,26 +392,32 @@ class _FolderCard extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
                     child: Column(
                       children: [
-                        CardDivider(color: tone == CardTone.muted ? DS.hairline : DS.hairline),
+                        const CardDivider(),
                         const SizedBox(height: DS.s12),
-                        LayoutBuilder(
-                          builder: (context, c) {
-                            final w = c.maxWidth / 4;
-                            return Wrap(
-                              children: [
-                                for (final (i, a) in apps.indexed)
-                                  SizedBox(
-                                    width: w,
-                                    // Icons pop in row by row.
-                                    child: PopIn(
-                                      delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-                                      child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                        if (apps.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.all(DS.s16),
+                            child: Text('No apps here yet.', style: DS.rowSub),
+                          )
+                        else
+                          LayoutBuilder(
+                            builder: (context, c) {
+                              final w = c.maxWidth / 4;
+                              return Wrap(
+                                children: [
+                                  for (final (i, a) in apps.indexed)
+                                    SizedBox(
+                                      width: w,
+                                      // Icons pop in row by row.
+                                      child: PopIn(
+                                        delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                                        child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
+                                ],
+                              );
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -434,8 +429,9 @@ class _FolderCard extends StatelessWidget {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress});
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor = DS.ink});
   final AppEntry app;
+  final Color labelColor;
   final VoidCallback onTap, onLongPress;
 
   @override
@@ -452,7 +448,13 @@ class _GridApp extends StatelessWidget {
             children: [
               AppIcon(app, size: DS.appIcon),
               const SizedBox(height: 6),
-              Text(app.label, style: DS.iconLabel, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+              Text(
+                app.label,
+                style: DS.iconLabel.copyWith(color: labelColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),
@@ -462,10 +464,10 @@ class _GridApp extends StatelessWidget {
 }
 
 class _ResultsCard extends StatelessWidget {
-  const _ResultsCard({required this.query, required this.results, required this.overrides, required this.onTap, required this.onLongPress});
+  const _ResultsCard({required this.query, required this.results, required this.prefs, required this.onTap, required this.onLongPress});
   final String query;
   final List<AppEntry> results;
-  final Map<String, String> overrides;
+  final Prefs prefs;
   final ValueChanged<AppEntry> onTap, onLongPress;
 
   @override
@@ -495,7 +497,7 @@ class _ResultsCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(a.label, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          Text(folderFor(a, overrides).name, style: DS.rowSub),
+                          Text(prefs.folderName(folderFor(a, prefs.folderOverrides)), style: DS.rowSub),
                         ],
                       ),
                     ),

@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'app_drawer.dart';
 import 'apps.dart';
 import 'prefs.dart';
+import 'search.dart';
+import 'search_dock.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -32,7 +34,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _expanded = ValueNotifier<double>(0); // 0 = resting, 1 = full screen
   final _drawerKey = GlobalKey<AppDrawerState>();
 
+  // Search lives in the bottom dock.
+  final _query = TextEditingController();
+  final _focus = FocusNode();
+  bool _searching = false; // dock is a live text field
+  bool _showResults = false; // sheet shows results (only once it's full, so the swap can't fight the snap)
+  bool _compact = false; // dock shrunk to a circle while the list is scrolled up
+
   Prefs get prefs => widget.prefs;
+
+  /// Bumped on every setState so the sheet's contents rebuild without rebuilding the sheet.
+  final _rev = ValueNotifier<int>(0);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _rev.value++;
+  }
+
+  /// Built ONCE. Flutter's DraggableScrollableSheet resets its extent whenever the widget is
+  /// rebuilt, which cancels a running snap/animation and drops the scroll position. Reusing
+  /// the same instance makes the framework skip it; its contents listen to [_rev] instead.
+  late final Widget _sheetWidget = DraggableScrollableSheet(
+    controller: _sheet,
+    initialChildSize: _rest,
+    minChildSize: _rest,
+    maxChildSize: 1,
+    snap: true,
+    builder: (context, scroll) => ValueListenableBuilder<int>(
+      valueListenable: _rev,
+      builder: (context, _, _) => AppDrawer(
+        key: _drawerKey,
+        apps: _apps,
+        prefs: prefs,
+        scroll: scroll,
+        expanded: _expanded,
+        searching: _showResults,
+        query: _query.text,
+        onLaunch: _launch,
+        onCompact: _setCompact,
+      ),
+    ),
+  );
 
   @override
   void initState() {
@@ -50,7 +93,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_rebuild);
     _sheet.dispose();
+    _query.dispose();
+    _focus.dispose();
     _expanded.dispose();
+    _rev.dispose();
     super.dispose();
   }
 
@@ -77,9 +123,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     instant ? _sheet.jumpTo(_rest) : _sheet.animateTo(_rest, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
+  // ---- Search --------------------------------------------------------------
+
+  Future<void> _startSearch() async {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _searching = true;
+      _compact = false;
+    });
+    _focus.requestFocus();
+    if (_sheet.isAttached) await _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle);
+    if (mounted && _searching) setState(() => _showResults = true);
+  }
+
+  void _stopSearch() {
+    _focus.unfocus();
+    _query.clear();
+    if (_searching || _compact || _showResults) {
+      setState(() {
+        _searching = false;
+        _showResults = false;
+        _compact = false;
+      });
+    }
+  }
+
+  void _onQuery(String q) {
+    setState(() {});
+    final r = searchApps(_apps, q);
+    if (prefs.autoOpenSingleMatch && q.trim().isNotEmpty && r.length == 1) _launch(r.first);
+  }
+
+  void _onSubmit(String q) {
+    final r = searchApps(_apps, q);
+    if (r.isNotEmpty) _launch(r.first);
+  }
+
+  void _setCompact(bool v) {
+    if (v != _compact && !_searching) setState(() => _compact = v);
+  }
+
   /// Home button while already home: close everything.
   void _goHome() {
     Navigator.of(context).popUntil((r) => r.isFirst);
+    _stopSearch();
     _drawerKey.currentState?.reset();
     _collapse();
   }
@@ -89,6 +176,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Apps.instance.launch(app.package);
     // Reset quietly once the other app has covered us.
     Future.delayed(const Duration(milliseconds: 350), () {
+      _stopSearch();
       _drawerKey.currentState?.reset();
       _collapse(instant: true);
     });
@@ -119,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (_drawerKey.currentState?.searching ?? false) return _drawerKey.currentState!.reset();
+        if (_searching) return _stopSearch();
         if (_expanded.value > 0) _collapse();
       },
       child: Scaffold(
@@ -160,14 +248,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
 
                 // ---- Bottom half: the app view sheet. ----
-                DraggableScrollableSheet(
-                  controller: _sheet,
-                  initialChildSize: _rest,
-                  minChildSize: _rest,
-                  maxChildSize: 1,
-                  snap: true,
-                  builder: (context, scroll) =>
-                      AppDrawer(key: _drawerKey, apps: _apps, prefs: prefs, scroll: scroll, expanded: _expanded, onLaunch: _launch, onWantFull: _expand),
+                _sheetWidget,
+
+                // ---- Fade under the dock, so it reads as floating above the cards. ----
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
+                  child: const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x001F1F1F), Color(0xE61F1F1F)]),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ---- Search dock (iOS style), floating at the bottom. ----
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SearchDock(
+                    compact: _compact,
+                    active: _searching,
+                    controller: _query,
+                    focus: _focus,
+                    hint: 'Search ${_apps.length} apps',
+                    onActivate: _startSearch,
+                    onClose: _stopSearch,
+                    onChanged: _onQuery,
+                    onSubmitted: _onSubmit,
+                  ),
                 ),
               ],
             );
