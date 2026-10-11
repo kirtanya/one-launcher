@@ -119,6 +119,16 @@ void main() {
     expect(tester.getTopLeft(find.text('Money')).dy, greaterThan(before + 20), reason: 'list scrolled down to centre it');
     expect(compact(), isTrue, reason: 'scrolling done by the app must not expand the search bar');
 
+    // Closing and opening from the top: opening shrinks the bar straight away.
+    await tester.drag(find.text('Money'), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    expect(compact(), isFalse, reason: 'back at the top: full bar');
+    await tester.tap(find.text('Work'));
+    await tester.pump();
+    expect(compact(), isTrue, reason: 'opening a folder shrinks the search bar');
+    await tester.pumpAndSettle();
+    expect(compact(), isTrue, reason: 'stays shrunk until the user scrolls');
+
     // A real finger scroll back down still expands it.
     await tester.drag(find.text('Money'), const Offset(0, 200));
     await tester.pumpAndSettle();

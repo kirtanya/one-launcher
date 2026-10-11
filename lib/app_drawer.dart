@@ -152,6 +152,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final opening = _openId != id;
     setState(() => _openId = opening ? id : null);
     if (!opening || !widget.scroll.hasClients) return;
+    // An open folder gets the room: the search bar shrinks to its circle until the user
+    // scrolls the list themselves.
+    widget.onCompact(true);
     widget.onWantFull();
     _glideId = id;
     _glideFrom = widget.scroll.position.pixels;
