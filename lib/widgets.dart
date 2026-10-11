@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'apps.dart';
-import 'tokens.dart';
+import 'ui/ds.dart';
 
 /// App icon from Android, or a letter tile while loading / in the web demo.
 class AppIcon extends StatelessWidget {
-  const AppIcon(this.app, {super.key, this.size = T.iconApp});
+  const AppIcon(this.app, {super.key, this.size = DS.appIcon});
   final AppEntry app;
   final double size;
 
@@ -25,7 +25,10 @@ class AppIcon extends StatelessWidget {
           return Container(
             decoration: BoxDecoration(color: _tiles[app.label.hashCode.abs() % _tiles.length], borderRadius: BorderRadius.circular(size / 2)),
             alignment: Alignment.center,
-            child: Text(app.label.isEmpty ? '?' : app.label[0].toUpperCase(), style: TextStyle(color: T.ink, fontSize: size * .42, fontWeight: FontWeight.w600)),
+            child: Text(
+              app.label.isEmpty ? '?' : app.label[0].toUpperCase(),
+              style: TextStyle(fontFamily: DS.font, color: DS.card, fontSize: size * .42, fontWeight: FontWeight.w600),
+            ),
           );
         },
       ),
@@ -44,24 +47,32 @@ class SheetAction {
   final Widget? trailing;
 }
 
+/// White rounded sheet in the One design style (see docs/DESIGN_STYLE.md).
 Future<void> showOneSheet(BuildContext context, {Widget? header, required List<SheetAction> actions}) {
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (header != null) Padding(padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s12), child: header),
+        for (final a in actions) _SheetRow(a),
+      ],
+    ),
+  );
+}
+
+Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder builder}) {
   return showModalBottomSheet(
     context: context,
-    backgroundColor: T.sheet,
+    backgroundColor: DS.card,
     showDragHandle: true,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(T.rSheet))),
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rCard))),
     builder: (ctx) => SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(bottom: T.s12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (header != null) Padding(padding: const EdgeInsets.fromLTRB(T.s24, 0, T.s24, T.s12), child: header),
-            for (final a in actions) _SheetRow(a),
-          ],
-        ),
+        padding: const EdgeInsets.only(bottom: DS.s12),
+        child: builder(ctx),
       ),
     ),
   );
@@ -73,19 +84,26 @@ class _SheetRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = !a.enabled ? T.inkFaint : (a.danger ? T.danger : T.ink);
+    final color = !a.enabled ? DS.inkFaint : (a.danger ? DS.alert : DS.ink);
     return InkWell(
       onTap: a.enabled ? a.onTap : null,
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 56),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: T.s24),
-          child: Row(children: [
-            Icon(a.icon, color: color, size: 22),
-            const SizedBox(width: T.s16),
-            Expanded(child: Text(a.label, style: T.appName.copyWith(color: color))),
-            if (a.trailing != null) a.trailing!,
-          ]),
+          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+          child: Row(
+            children: [
+              Icon(a.icon, color: color, size: 22),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Text(
+                  a.label,
+                  style: DS.rowTitle.copyWith(color: color, fontWeight: FontWeight.w500),
+                ),
+              ),
+              if (a.trailing != null) a.trailing!,
+            ],
+          ),
         ),
       ),
     );
@@ -100,14 +118,19 @@ class SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      if (leading != null) ...[leading!, const SizedBox(width: T.s16)],
-      Expanded(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: T.appName.copyWith(fontSize: 18, fontWeight: FontWeight.w600)),
-          if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: T.body, maxLines: 1, overflow: TextOverflow.ellipsis)],
-        ]),
-      ),
-    ]);
+    return Row(
+      children: [
+        if (leading != null) ...[leading!, const SizedBox(width: DS.s16)],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: DS.title.copyWith(fontSize: 20)),
+              if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis)],
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -5,16 +5,19 @@ import 'apps.dart';
 import 'home.dart';
 import 'prefs.dart';
 import 'tokens.dart';
+import 'ui/ds.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    systemNavigationBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarIconBrightness: Brightness.light,
-  ));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      systemNavigationBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
   Apps.instance.init();
   final prefs = await Prefs.load();
   runApp(OneLauncher(prefs: prefs));
@@ -32,6 +35,7 @@ class OneLauncher extends StatelessWidget {
       color: Colors.transparent,
       theme: ThemeData(
         brightness: Brightness.dark,
+        fontFamily: DS.font,
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: const ColorScheme.dark(primary: T.accent, surface: T.sheet),
         textSelectionTheme: const TextSelectionThemeData(cursorColor: T.accent),
@@ -41,7 +45,11 @@ class OneLauncher extends StatelessWidget {
       builder: (context, child) => Apps.isDemo
           ? DecoratedBox(
               decoration: const BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF3A4A6B), Color(0xFF1E2433), Color(0xFF6B4A3A)]),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF3A4A6B), Color(0xFF1E2433), Color(0xFF6B4A3A)],
+                ),
               ),
               child: child,
             )

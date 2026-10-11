@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -15,6 +17,26 @@ class Prefs extends ChangeNotifier {
   bool get showHomeIcons => _sp.getBool('showHomeIcons') ?? false;
   bool get autoOpenSingleMatch => _sp.getBool('autoOpenSingleMatch') ?? true;
 
+  /// How often each app was opened from One Launcher.
+  Map<String, int> get launchCounts => Map<String, int>.from(jsonDecode(_sp.getString('launchCounts') ?? '{}') as Map);
+
+  /// Folders the user picked by hand (package → folder id).
+  Map<String, String> get folderOverrides => Map<String, String>.from(jsonDecode(_sp.getString('folderOverrides') ?? '{}') as Map);
+
+  Future<void> recordLaunch(String pkg) async {
+    final m = launchCounts;
+    m[pkg] = (m[pkg] ?? 0) + 1;
+    await _sp.setString('launchCounts', jsonEncode(m));
+    notifyListeners();
+  }
+
+  Future<void> setFolder(String pkg, String? folderId) async {
+    final m = folderOverrides;
+    folderId == null ? m.remove(pkg) : m[pkg] = folderId;
+    await _sp.setString('folderOverrides', jsonEncode(m));
+    notifyListeners();
+  }
+
   bool isFavourite(String pkg) => favourites.contains(pkg);
   bool get favouritesFull => favourites.length >= maxFavourites;
 
@@ -29,7 +51,9 @@ class Prefs extends ChangeNotifier {
     final i = list.indexOf(pkg);
     final j = (i + by).clamp(0, list.length - 1);
     if (i < 0 || i == j) return Future.value();
-    list..removeAt(i)..insert(j, pkg);
+    list
+      ..removeAt(i)
+      ..insert(j, pkg);
     return _setList('favourites', list);
   }
 

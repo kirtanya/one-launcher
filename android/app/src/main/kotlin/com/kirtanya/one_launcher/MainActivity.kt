@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -114,10 +115,15 @@ class MainActivity : FlutterActivity() {
             .filter { it.activityInfo.packageName != packageName }
             .map {
                 val info = it.activityInfo.applicationInfo
+                val pkg = it.activityInfo.packageName
+                val installed = try { pm.getPackageInfo(pkg, 0).firstInstallTime } catch (e: Exception) { 0L }
                 mapOf(
-                    "package" to it.activityInfo.packageName,
+                    "package" to pkg,
                     "label" to it.loadLabel(pm).toString(),
                     "system" to ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
+                    // Android's own app category (game, social, audio…); -1 when the app sets none.
+                    "category" to (if (Build.VERSION.SDK_INT >= 26) info.category else -1),
+                    "installed" to installed,
                 )
             }
             .distinctBy { it["package"] }
