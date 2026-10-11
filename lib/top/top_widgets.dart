@@ -7,6 +7,10 @@ class TopWidget {
   final IconData icon;
 }
 
+/// Name/description for any page id, including added app widgets (`widget:<id>`).
+TopWidget topWidgetFor(String id, Map<String, String> widgetLabels) =>
+    topWidgets[id] ?? TopWidget(id, widgetLabels[id] ?? 'App widget', 'App widget', Icons.widgets_outlined);
+
 const topWidgets = <String, TopWidget>{
   'clock': TopWidget('clock', 'Clock', 'Big time. Tap to open Clock', Icons.schedule_rounded),
   'screen_time': TopWidget('screen_time', 'Screen time', 'Today’s total and your top apps', Icons.hourglass_bottom_rounded),

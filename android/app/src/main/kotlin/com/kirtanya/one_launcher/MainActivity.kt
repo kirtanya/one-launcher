@@ -47,6 +47,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private lateinit var channel: MethodChannel
+    private val widgets by lazy { WidgetHost(this) }
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
@@ -81,7 +82,10 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "one_launcher/apps")
+        // Android app widgets shown in the top carousel.
+        flutterEngine.platformViewsController.registry.registerViewFactory(WidgetHost.VIEW_TYPE, widgets.factory)
         channel.setMethodCallHandler { call, result ->
+            if (widgets.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getApps" -> worker.execute {
                     val apps = loadApps()
@@ -163,6 +167,24 @@ class MainActivity : FlutterActivity() {
             addAction(Intent.ACTION_MANAGED_PROFILE_ADDED)
             addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED)
         })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        widgets.start() // widgets update only while we listen
+    }
+
+    override fun onStop() {
+        widgets.stop()
+        super.onStop()
+    }
+
+    @Deprecated("Needed for the widget bind/configure screens")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!widgets.onActivityResult(requestCode, resultCode)) {
+            @Suppress("DEPRECATION")
+            super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 
     override fun onDestroy() {

@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../ui/motion.dart';
@@ -418,6 +420,41 @@ class _UpNextPageState extends State<UpNextPage> with Ticking {
         style: DS.wallpaperDate.copyWith(fontSize: 20, fontWeight: FontWeight.w600),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+// ---- App widget ------------------------------------------------------------------
+
+/// A real Android app widget (hosted natively, shown through a platform view).
+/// Taps go to the widget; horizontal swipes still move the carousel.
+class AppWidgetPage extends StatelessWidget {
+  const AppWidgetPage({super.key, required this.widgetId, required this.label});
+  final int widgetId;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      // Previews/tests: a placeholder the size of the widget area.
+      return Container(
+        decoration: BoxDecoration(
+          color: DS.glass,
+          borderRadius: BorderRadius.circular(DS.rMedia),
+          border: Border.all(color: DS.glassLine),
+        ),
+        alignment: Alignment.center,
+        child: Text(label, style: DS.wallpaperDate),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(DS.rMedia),
+      child: AndroidView(
+        key: ValueKey('appwidget-$widgetId'),
+        viewType: 'one_launcher/appwidget',
+        creationParams: {'id': widgetId},
+        creationParamsCodec: const StandardMessageCodec(),
       ),
     );
   }

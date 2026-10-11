@@ -291,7 +291,7 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
               },
               proxyDecorator: (child, _, _) => Material(color: DS.card, elevation: 6, borderRadius: BorderRadius.circular(DS.rMedia), child: child),
               itemBuilder: (ctx, i) {
-                final w = topWidgets[order[i]]!;
+                final w = topWidgetFor(order[i], prefs.widgetLabels);
                 final enabled = on.contains(w.id);
                 final last = enabled && on.length == 1; // keep at least one page
                 return Padding(
@@ -333,11 +333,22 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
                         inactiveTrackColor: DS.cardMuted,
                         onChanged: last ? null : (v) => prefs.setTopEnabled(w.id, v),
                       ),
+                      // App widgets can be removed altogether.
+                      if (w.id.startsWith('widget:'))
+                        IconButton(
+                          tooltip: 'Remove ${w.name}',
+                          icon: Icon(Icons.delete_outline_rounded, color: DS.inkMuted),
+                          onPressed: () {
+                            Apps.instance.removeWidget(int.parse(w.id.substring(7)));
+                            prefs.removeWidgetPage(w.id);
+                          },
+                        ),
                     ],
                   ),
                 );
               },
             ),
+            _Row(Icons.add_circle_outline_rounded, 'Add app widget', () => showWidgetPicker(context, prefs: prefs)),
             const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s4), child: CardDivider()),
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s12),
@@ -350,6 +361,137 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
       },
     ),
   );
+}
+
+/// Every app widget on the phone, grouped by app. Tap one to add it as a top page.
+Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) {
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .8),
+      child: FutureBuilder<List<WidgetProvider>>(
+        future: Apps.instance.widgetProviders(),
+        builder: (ctx, snap) {
+          final all = snap.data;
+          // Group by app (work-profile apps separately).
+          final groups = <String, List<WidgetProvider>>{};
+          for (final p in all ?? const <WidgetProvider>[]) {
+            groups.putIfAbsent(p.package, () => []).add(p);
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+                child: SheetHeader(title: 'Add app widget', subtitle: 'It becomes a page you swipe to at the top'),
+              ),
+              if (all == null)
+                const Padding(
+                  padding: EdgeInsets.all(DS.s32),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (groups.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(DS.s24),
+                  child: Text('No app widgets found.', style: DS.rowSub),
+                )
+              else
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: groups.length,
+                    itemBuilder: (ctx, i) {
+                      final list = groups.values.elementAt(i);
+                      final first = list.first;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: DS.s16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s8),
+                              child: Row(
+                                children: [
+                                  AppIcon(AppEntry(package: first.package, label: first.app, work: first.work), size: 28),
+                                  const SizedBox(width: DS.s12),
+                                  Expanded(child: Text(first.app, style: DS.rowTitle)),
+                                  if (first.work) Text('Work', style: DS.rowSub),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              height: 168,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                                itemCount: list.length,
+                                separatorBuilder: (_, _) => const SizedBox(width: DS.s12),
+                                itemBuilder: (ctx, j) => _WidgetTile(
+                                  provider: list[j],
+                                  onTap: () async {
+                                    final p = list[j];
+                                    final id = await Apps.instance.addWidget(p);
+                                    if (id == null) return; // cancelled
+                                    HapticFeedback.mediumImpact();
+                                    await prefs.addWidgetPage(id, p.label == p.app ? p.label : '${p.app} · ${p.label}');
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+/// Preview + name + grid size of one widget.
+class _WidgetTile extends StatelessWidget {
+  const _WidgetTile({required this.provider, required this.onTap});
+  final WidgetProvider provider;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      scale: .95,
+      child: GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: 150,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 112,
+                decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.rMedia)),
+                padding: const EdgeInsets.all(DS.s8),
+                alignment: Alignment.center,
+                child: FutureBuilder<Uint8List?>(
+                  future: Apps.instance.widgetPreview(provider),
+                  builder: (ctx, snap) => snap.data == null
+                      ? Icon(Icons.widgets_outlined, color: DS.inkFaint, size: 32)
+                      : Image.memory(snap.data!, fit: BoxFit.contain, gaplessPlayback: true),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(provider.label, style: DS.iconLabel.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+              Text('${provider.cols} × ${provider.rows}', style: DS.rowSub.copyWith(fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Colours & style — modelled on Pixel's "Wallpaper & style".

@@ -33,6 +33,7 @@ class _TopCarouselState extends State<TopCarousel> {
     'screen_time' => ScreenTimePage(refresh: widget.refresh),
     'battery' => BatteryPage(refresh: widget.refresh),
     'up_next' => UpNextPage(refresh: widget.refresh),
+    _ when id.startsWith('widget:') => AppWidgetPage(widgetId: int.parse(id.substring(7)), label: widget.prefs.widgetLabels[id] ?? 'Widget'),
     _ => ClockPage(onTap: widget.onTapClock, onTapDate: widget.onTapDate),
   };
 

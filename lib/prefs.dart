@@ -69,7 +69,8 @@ class Prefs extends ChangeNotifier {
   static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
-    return [...saved.where(topDefaultOrder.contains), ...topDefaultOrder.where((id) => !saved.contains(id))];
+    bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));
+    return [...saved.where(known), ...topDefaultOrder.where((id) => !saved.contains(id))];
   }
 
   Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time']).toSet();
@@ -79,6 +80,28 @@ class Prefs extends ChangeNotifier {
   ];
 
   Future<void> setTopOrder(List<String> ids) => _setList('topOrder', ids);
+
+  /// App widget pages (`widget:<id>`) and their names.
+  Map<String, String> get widgetLabels => Map<String, String>.from(_json('widgetLabels'));
+
+  /// Adds an app widget as a page, right after the current pages, and switches it on.
+  Future<void> addWidgetPage(int id, String label) async {
+    final key = 'widget:$id';
+    await _sp.setString('widgetLabels', jsonEncode(widgetLabels..[key] = label));
+    _parsed.remove('widgetLabels');
+    await _sp.setStringList('topOrder', [...topOrder.where((x) => x != key), key]);
+    await _sp.setStringList('topEnabled', {...topEnabled, key}.toList());
+    notifyListeners();
+  }
+
+  Future<void> removeWidgetPage(String key) async {
+    await _sp.setString('widgetLabels', jsonEncode(widgetLabels..remove(key)));
+    await _sp.setStringList('topOrder', topOrder.where((x) => x != key).toList());
+    final on = topEnabled..remove(key);
+    await _sp.setStringList('topEnabled', on.isEmpty ? ['clock'] : on.toList());
+    notifyListeners();
+  }
+
   Future<void> setTopEnabled(String id, bool on) {
     final set = topEnabled;
     on ? set.add(id) : set.remove(id);

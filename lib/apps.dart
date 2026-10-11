@@ -2,6 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
+/// An Android app widget that can be added to the top carousel.
+class WidgetProvider {
+  const WidgetProvider(this.map);
+  final Map map;
+  String get provider => map['provider'] as String;
+  int get serial => (map['serial'] as num).toInt();
+  String get label => map['label'] as String;
+  String get app => map['app'] as String;
+  String get package => map['package'] as String;
+  bool get work => map['work'] == true;
+  int get cols => (map['cols'] as num?)?.toInt() ?? 2;
+  int get rows => (map['rows'] as num?)?.toInt() ?? 1;
+}
+
 class AppEntry {
   const AppEntry({
     required this.package,
@@ -125,6 +139,28 @@ class Apps {
     }
     return await _ch.invokeMapMethod('getNextEvent') ?? const {};
   }
+
+  // ---- App widgets (top carousel) ----
+
+  Future<List<WidgetProvider>> widgetProviders() async {
+    if (isDemo) return const [];
+    final raw = await _ch.invokeListMethod<Map>('listWidgetProviders') ?? [];
+    return raw.map(WidgetProvider.new).toList();
+  }
+
+  final _previews = <String, Future<Uint8List?>>{};
+  Future<Uint8List?> widgetPreview(WidgetProvider p) => _previews.putIfAbsent(
+    '${p.provider}@${p.serial}',
+    () => isDemo ? Future.value(null) : _ch.invokeMethod<Uint8List>('getWidgetPreview', {'provider': p.provider, 'serial': p.serial}),
+  );
+
+  /// Bind (asking the user once) and run the widget's setup; returns its id, or null if cancelled.
+  Future<int?> addWidget(WidgetProvider p) async {
+    if (isDemo) return null;
+    return _ch.invokeMethod<int>('addWidget', {'provider': p.provider, 'serial': p.serial});
+  }
+
+  Future<void> removeWidget(int id) => _call('removeWidget', {'id': id});
 
   Future<void> openUsageAccess() => _call('openUsageAccess');
   Future<void> openScreenTime() => _call('openScreenTime');
