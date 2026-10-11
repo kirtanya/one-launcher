@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
 class AppEntry {
@@ -30,6 +31,11 @@ class Apps {
   static bool get isDemo => kIsWeb;
 
   final _icons = <String, Future<Uint8List?>>{};
+
+  /// Icons already loaded, as reusable images: draw instantly (no blank first frame) and are
+  /// decoded once, then served from Flutter's image cache.
+  final _ready = <String, MemoryImage>{};
+  MemoryImage? iconNow(String package) => _ready[package];
   VoidCallback? onHomePressed;
   VoidCallback? onAppsChanged;
   VoidCallback? onPermissionsChanged;
@@ -42,6 +48,7 @@ class Apps {
           onHomePressed?.call();
         case 'appsChanged':
           _icons.clear();
+          _ready.clear();
           onAppsChanged?.call();
         case 'permissionsChanged':
           onPermissionsChanged?.call();
@@ -72,7 +79,11 @@ class Apps {
 
   Future<Uint8List?> icon(String package) {
     if (isDemo) return Future.value(null);
-    return _icons.putIfAbsent(package, () => _ch.invokeMethod<Uint8List>('getIcon', {'package': package}));
+    return _icons.putIfAbsent(package, () async {
+      final bytes = await _ch.invokeMethod<Uint8List>('getIcon', {'package': package});
+      if (bytes != null) _ready[package] = MemoryImage(bytes);
+      return bytes;
+    });
   }
 
   Future<void> launch(String package) => _call('launch', {'package': package});

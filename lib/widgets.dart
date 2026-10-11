@@ -25,13 +25,21 @@ class AppIcon extends StatelessWidget {
   }
 
   Widget _icon() {
+    final ready = Apps.instance.iconNow(app.package);
+    if (ready != null) {
+      return SizedBox.square(
+        dimension: size,
+        child: Image(image: ready, gaplessPlayback: true, filterQuality: FilterQuality.medium),
+      );
+    }
     return SizedBox.square(
       dimension: size,
       child: FutureBuilder<Uint8List?>(
         future: Apps.instance.icon(app.package),
         builder: (context, snap) {
           final bytes = snap.data;
-          if (bytes != null) return Image.memory(bytes, gaplessPlayback: true, filterQuality: FilterQuality.medium);
+          final img = Apps.instance.iconNow(app.package);
+          if (bytes != null && img != null) return Image(image: img, gaplessPlayback: true, filterQuality: FilterQuality.medium);
           return Container(
             decoration: BoxDecoration(color: _tiles[app.label.hashCode.abs() % _tiles.length], borderRadius: BorderRadius.circular(size / 2)),
             alignment: Alignment.center,

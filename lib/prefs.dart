@@ -14,18 +14,33 @@ class Prefs extends ChangeNotifier {
 
   static const maxFavourites = 8; // pinned apps lead the green card (it shows 8 apps)
 
+  // ---- Speed: JSON settings are parsed once and kept until something changes ----
+  final _parsed = <String, Map>{};
+  Map _json(String key) => _parsed.putIfAbsent(key, () => jsonDecode(_sp.getString(key) ?? '{}') as Map);
+
+  /// Bumps on every change; lets callers cache work derived from settings.
+  int get version => _version;
+  int _version = 0;
+
+  @override
+  void notifyListeners() {
+    _parsed.clear();
+    _version++;
+    super.notifyListeners();
+  }
+
   List<String> get favourites => _sp.getStringList('favourites') ?? const [];
   List<String> get hidden => _sp.getStringList('hidden') ?? const [];
   bool get autoOpenSingleMatch => _sp.getBool('autoOpenSingleMatch') ?? true;
 
   /// How often each app was opened from One Launcher.
-  Map<String, int> get launchCounts => Map<String, int>.from(jsonDecode(_sp.getString('launchCounts') ?? '{}') as Map);
+  Map<String, int> get launchCounts => Map<String, int>.from(_json('launchCounts'));
 
   /// Folders the user picked by hand (package → folder id).
-  Map<String, String> get folderOverrides => Map<String, String>.from(jsonDecode(_sp.getString('folderOverrides') ?? '{}') as Map);
+  Map<String, String> get folderOverrides => Map<String, String>.from(_json('folderOverrides'));
 
   /// Folder names the user typed (folder id → name).
-  Map<String, String> get folderNames => Map<String, String>.from(jsonDecode(_sp.getString('folderNames') ?? '{}') as Map);
+  Map<String, String> get folderNames => Map<String, String>.from(_json('folderNames'));
 
   /// Folder order the user set (ids, top to bottom). Empty = default order.
   List<String> get folderOrder => _sp.getStringList('folderOrder') ?? const [];

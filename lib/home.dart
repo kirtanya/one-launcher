@@ -42,7 +42,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _focus = FocusNode();
   bool _searching = false; // dock is a live text field
   bool _showResults = false; // sheet shows results (only once it's full, so the swap can't fight the snap)
-  bool _compact = false; // dock shrunk to a circle while the list is scrolled up
+  /// Dock shrunk to a circle while the list is scrolled up. A notifier (not setState) so
+  /// scrolling only rebuilds the dock, never the screen or the list.
+  final _compact = ValueNotifier<bool>(false);
 
   Prefs get prefs => widget.prefs;
 
@@ -125,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _focus.dispose();
     _expanded.dispose();
     _rev.dispose();
+    _compact.dispose();
     _refresh.dispose();
     super.dispose();
   }
@@ -160,10 +163,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _startSearch() async {
     HapticFeedback.selectionClick();
-    setState(() {
-      _searching = true;
-      _compact = false;
-    });
+    _compact.value = false;
+    setState(() => _searching = true);
     _focus.requestFocus();
     if (_sheet.isAttached) await _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle);
     if (mounted && _searching) setState(() => _showResults = true);
@@ -172,11 +173,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _stopSearch() {
     _focus.unfocus();
     _query.clear();
-    if (_searching || _compact || _showResults) {
+    _compact.value = false;
+    if (_searching || _showResults) {
       setState(() {
         _searching = false;
         _showResults = false;
-        _compact = false;
       });
     }
   }
@@ -203,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _setCompact(bool v) {
-    if (v != _compact && !_searching) setState(() => _compact = v);
+    if (!_searching) _compact.value = v;
   }
 
   /// Home button while already home: close everything.
@@ -279,20 +280,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         ),
                       ),
                     ),
-                    child: _TopArea(
-                      carousel: TopCarousel(
-                        prefs: prefs,
-                        refresh: _refresh,
-                        onTapClock: () => _openNamed(['clock']),
-                        onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                    child: RepaintBoundary(
+                      // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
+                      child: _TopArea(
+                        carousel: TopCarousel(
+                          prefs: prefs,
+                          refresh: _refresh,
+                          onTapClock: () => _openNamed(['clock']),
+                          onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                        ),
+                        onCustomise: () {
+                          HapticFeedback.mediumImpact();
+                          showCustomiseTop(context, prefs: prefs);
+                        },
+                        padding: prefs.topPadding,
+                        onSwipeUp: _expand,
+                        onSwipeDown: Apps.instance.openNotifications,
                       ),
-                      onCustomise: () {
-                        HapticFeedback.mediumImpact();
-                        showCustomiseTop(context, prefs: prefs);
-                      },
-                      padding: prefs.topPadding,
-                      onSwipeUp: _expand,
-                      onSwipeDown: Apps.instance.openNotifications,
                     ),
                   ),
                 ),
@@ -336,17 +340,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: SearchDock(
-                    compact: _compact,
-                    active: _searching,
-                    controller: _query,
-                    focus: _focus,
-                    hint: 'Search ${_apps.length} apps',
-                    onActivate: _startSearch,
-                    onClose: _stopSearch,
-                    onChanged: _onQuery,
-                    onSubmitted: _onSubmit,
-                    onSettings: _settings,
+                  child: RepaintBoundary(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _compact,
+                      builder: (context, compact, _) => SearchDock(
+                        compact: compact,
+                        active: _searching,
+                        controller: _query,
+                        focus: _focus,
+                        hint: 'Search ${_apps.length} apps',
+                        onActivate: _startSearch,
+                        onClose: _stopSearch,
+                        onChanged: _onQuery,
+                        onSubmitted: _onSubmit,
+                        onSettings: _settings,
+                      ),
+                    ),
                   ),
                 ),
               ],

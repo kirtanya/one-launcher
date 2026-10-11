@@ -77,7 +77,13 @@ Folder folderById(String id) => folders.where((f) => f.id == id).firstOrNull ?? 
 Folder folderFor(AppEntry app, Map<String, String> overrides) {
   final picked = overrides[app.package];
   if (picked != null) return folderById(picked);
+  // The automatic folder never changes for an app, so match keywords only once.
+  return _autoFolders.putIfAbsent('${app.package}|${app.label}|${app.category}|${app.system}', () => _autoFolder(app));
+}
 
+final _autoFolders = <String, Folder>{};
+
+Folder _autoFolder(AppEntry app) {
   final hay = '${app.package} ${app.label}'.toLowerCase();
   // Specific folders first, utilities last ("files" shouldn't beat "Drive").
   final tools = folderById('tools');

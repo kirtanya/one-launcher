@@ -8,23 +8,50 @@ import '../ui/ds.dart';
 import '../widgets.dart';
 import 'header_fonts.dart';
 
-/// Ticks once a minute (checks every second so it flips on time).
+/// A periodic timer that only runs while the launcher is on screen (saves battery and keeps
+/// other apps smooth). Coming back to the launcher fires it once straight away.
+class ForegroundTimer {
+  ForegroundTimer(this.every, this.tick) {
+    _start();
+    _life = AppLifecycleListener(onResume: () => _start(now: true), onHide: _stop);
+  }
+
+  final Duration every;
+  final VoidCallback tick;
+  Timer? _timer;
+  late final AppLifecycleListener _life;
+
+  void _start({bool now = false}) {
+    _timer?.cancel();
+    _timer = Timer.periodic(every, (_) => tick());
+    if (now) tick();
+  }
+
+  void _stop() => _timer?.cancel();
+
+  void dispose() {
+    _stop();
+    _life.dispose();
+  }
+}
+
+/// Ticks once a minute (checks every second so it flips on time) — only while visible.
 mixin Ticking<W extends StatefulWidget> on State<W> {
   DateTime now = DateTime.now();
-  Timer? _timer;
+  ForegroundTimer? _ticker;
 
   @override
   void initState() {
     super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    _ticker = ForegroundTimer(const Duration(seconds: 1), () {
       final n = DateTime.now();
-      if (n.minute != now.minute) setState(() => now = n);
+      if (n.minute != now.minute && mounted) setState(() => now = n);
     });
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _ticker?.dispose();
     super.dispose();
   }
 }
@@ -152,20 +179,20 @@ class ScreenTimePage extends StatefulWidget {
 
 class _ScreenTimePageState extends State<ScreenTimePage> {
   Map _data = const {};
-  Timer? _timer;
+  ForegroundTimer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
     widget.refresh.addListener(_load);
-    _timer = Timer.periodic(const Duration(minutes: 1), (_) => _load());
+    _timer = ForegroundTimer(const Duration(minutes: 1), _load);
   }
 
   @override
   void dispose() {
     widget.refresh.removeListener(_load);
-    _timer?.cancel();
+    _timer?.dispose();
     super.dispose();
   }
 
@@ -238,20 +265,20 @@ class BatteryPage extends StatefulWidget {
 
 class _BatteryPageState extends State<BatteryPage> {
   Map _data = const {};
-  Timer? _timer;
+  ForegroundTimer? _timer;
 
   @override
   void initState() {
     super.initState();
     _load();
     widget.refresh.addListener(_load);
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    _timer = ForegroundTimer(const Duration(seconds: 30), _load);
   }
 
   @override
   void dispose() {
     widget.refresh.removeListener(_load);
-    _timer?.cancel();
+    _timer?.dispose();
     super.dispose();
   }
 

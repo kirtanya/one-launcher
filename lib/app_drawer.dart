@@ -61,6 +61,23 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
 
   // ---- Data ----------------------------------------------------------------
 
+  // Folders, visible apps and the green card's apps only change when the app list or a
+  // setting changes — not on every rebuild (search typing, scroll, theme…).
+  List<AppEntry>? _derivedFor;
+  int _derivedVersion = -1;
+  late (List<AppEntry>, List<(Folder, List<AppEntry>)>, List<AppEntry>) _derivedCache;
+
+  (List<AppEntry>, List<(Folder, List<AppEntry>)>, List<AppEntry>) _derived() {
+    final prefs = widget.prefs;
+    if (!identical(_derivedFor, widget.apps) || _derivedVersion != prefs.version) {
+      final apps = _visible;
+      _derivedCache = (apps, groupApps(apps, prefs.folderOverrides, order: prefs.folderOrder), _pinnedAndMostUsed(apps));
+      _derivedFor = widget.apps;
+      _derivedVersion = prefs.version;
+    }
+    return _derivedCache;
+  }
+
   List<AppEntry> get _visible {
     final hidden = widget.prefs.hidden.toSet();
     return widget.apps.where((a) => !hidden.contains(a.package)).toList();
@@ -190,9 +207,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final bottom = mq.viewInsets.bottom + mq.padding.bottom + SearchDock.height + DS.s32;
     final statusBar = mq.padding.top;
     final prefs = widget.prefs;
-    final apps = _visible;
-    final groups = groupApps(apps, prefs.folderOverrides, order: prefs.folderOrder);
-    final top = _pinnedAndMostUsed(apps);
+    final (apps, groups, top) = _derived();
     final pinned = prefs.favourites.toSet();
 
     // The green hero card IS the Most used folder: always first, always open.
@@ -210,21 +225,24 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       sliver: SliverToBoxAdapter(child: child),
     );
 
+    // RepaintBoundary: each card repaints on its own (icons popping, chevron turning…).
     Widget folderHeader(int i, Folder folder, List<AppEntry> list) => KeyedSubtree(
       key: _header(folder.id),
-      child: PopIn(
-        delay: ((i + 1) * 0.05).clamp(0, .4),
-        offset: const Offset(0, 24),
-        fromScale: .97,
-        child: _FolderHeader(
-          folder: folder,
-          name: prefs.folderName(folder),
-          apps: list,
-          open: _openId == folder.id,
-          tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-          onToggle: () => _toggle(folder.id),
-          onCustomise: () =>
-              showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
+      child: RepaintBoundary(
+        child: PopIn(
+          delay: ((i + 1) * 0.05).clamp(0, .4),
+          offset: const Offset(0, 24),
+          fromScale: .97,
+          child: _FolderHeader(
+            folder: folder,
+            name: prefs.folderName(folder),
+            apps: list,
+            open: _openId == folder.id,
+            tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+            onToggle: () => _toggle(folder.id),
+            onCustomise: () =>
+                showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
+          ),
         ),
       ),
     );
@@ -264,13 +282,15 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 else
                   SliverToBoxAdapter(child: folderHeader(i, folder, list)),
                 SliverToBoxAdapter(
-                  child: _FolderBody(
-                    key: _body(folder.id),
-                    apps: list,
-                    open: _openId == folder.id,
-                    tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-                    onLaunch: widget.onLaunch,
-                    onLongPress: _longPress,
+                  child: RepaintBoundary(
+                    child: _FolderBody(
+                      key: _body(folder.id),
+                      apps: list,
+                      open: _openId == folder.id,
+                      tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+                      onLaunch: widget.onLaunch,
+                      onLongPress: _longPress,
+                    ),
                   ),
                 ),
               ],
@@ -288,25 +308,26 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
         onNotification: _onScrollStart,
         child: NotificationListener<ScrollUpdateNotification>(
           onNotification: _onScroll,
-          child: ValueListenableBuilder<double>(
-            valueListenable: widget.expanded,
-            builder: (context, e, _) => CustomScrollView(
-              controller: widget.scroll,
-              physics: const ClampingScrollPhysics(),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              slivers: [
-                // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
-                // reaches full screen, and pinned folder headers stop just below it.
-                PinnedHeaderSliver(
-                  child: SizedBox(
+          child: CustomScrollView(
+            controller: widget.scroll,
+            physics: const ClampingScrollPhysics(),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
+              // reaches full screen, and pinned folder headers stop just below it. Only this
+              // spacer follows the sheet's drag, so the cards don't rebuild every frame.
+              PinnedHeaderSliver(
+                child: ValueListenableBuilder<double>(
+                  valueListenable: widget.expanded,
+                  builder: (context, e, _) => SizedBox(
                     height: DS.gutter + statusBar * e,
                     child: ColoredBox(color: DS.canvas),
                   ),
                 ),
-                ...content,
-                SliverToBoxAdapter(child: SizedBox(height: bottom)),
-              ],
-            ),
+              ),
+              ...content,
+              SliverToBoxAdapter(child: SizedBox(height: bottom)),
+            ],
           ),
         ),
       ),

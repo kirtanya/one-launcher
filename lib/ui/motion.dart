@@ -29,9 +29,15 @@ class SpringCurve extends Curve {
   final double ratio;
   final double stiffness;
 
+  // One simulation per (ratio, stiffness), built once — not on every frame of every animation.
+  static final _sims = <(double, double), SpringSimulation>{};
+
   @override
   double transformInternal(double t) {
-    final sim = SpringSimulation(SpringDescription.withDampingRatio(mass: 1, stiffness: stiffness, ratio: ratio), 0, 1, 0);
+    final sim = _sims.putIfAbsent((
+      ratio,
+      stiffness,
+    ), () => SpringSimulation(SpringDescription.withDampingRatio(mass: 1, stiffness: stiffness, ratio: ratio), 0, 1, 0));
     // The curve's 0..1 time maps to the first second of the spring, which has settled by then.
     return sim.x(t);
   }
