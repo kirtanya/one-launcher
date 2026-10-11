@@ -173,7 +173,7 @@ class Prefs extends ChangeNotifier {
   String exportBackup() {
     final out = <String, Object>{};
     for (final k in _sp.getKeys()) {
-      if (k == 'widgetLabels') continue;
+      if (k == 'widgetLabels' || k == 'installId') continue; // phone-specific
       final v = _sp.get(k);
       out[k] = switch (v) {
         final String s => {'t': 's', 'v': s},
@@ -203,13 +203,15 @@ class Prefs extends ChangeNotifier {
     }
     if ((data['format'] as num? ?? 0) > _backupFormat) throw const FormatException('Backup is from a newer version');
 
-    // Keep this phone's widget pages.
+    // Keep what belongs to this phone: its widget pages and its install id.
+    final id = installId;
     final labels = widgetLabels;
     final widgetOrder = topOrder.where((x) => x.startsWith('widget:')).toList();
     final widgetOn = topEnabled.where((x) => x.startsWith('widget:')).toList();
 
     await _sp.clear();
     _parsed.clear(); // drop cached settings from before the restore
+    if (id != null) await _sp.setString('installId', id);
     var n = 0;
     for (final MapEntry(:key, :value) in (data['settings'] as Map).entries) {
       final t = (value as Map)['t'], v = value['v'];
@@ -240,6 +242,29 @@ class Prefs extends ChangeNotifier {
     }
     notifyListeners(); // everything (theme, pages, folders…) updates live
     return n;
+  }
+
+  // ---- First launch ---------------------------------------------------------------
+
+  /// Nothing set yet (a brand-new install with no restored settings).
+  bool get isFresh => _sp.getKeys().difference({'blankAdded'}).isEmpty;
+
+  /// Random id saved with the settings. If settings carry one on a first launch, Android
+  /// restored them from the phone's Google backup.
+  String? get installId => _sp.getString('installId');
+  Future<void> setInstallId() => _sp.setString('installId', '${DateTime.now().microsecondsSinceEpoch}');
+
+  /// Drop widget pages whose widget doesn't exist on this phone (e.g. restored from another).
+  Future<void> pruneWidgetPages(Set<int> bound) async {
+    final stale = widgetLabels.keys.where((k) => !bound.contains(int.tryParse(k.substring(7)))).toList();
+    if (stale.isEmpty) return;
+    final labels = widgetLabels..removeWhere((k, _) => stale.contains(k));
+    await _sp.setString('widgetLabels', jsonEncode(labels));
+    _parsed.clear();
+    await _sp.setStringList('topOrder', topOrder.where((x) => !stale.contains(x)).toList());
+    final on = topEnabled..removeAll(stale);
+    await _sp.setStringList('topEnabled', on.isEmpty ? ['clock'] : on.toList());
+    notifyListeners();
   }
 
   Future<void> unpinAll() => _setList('favourites', []);

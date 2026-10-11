@@ -69,6 +69,8 @@ class WidgetHost(private val activity: Activity) {
                 }
             }
             "addWidget" -> add(call.argument<String>("provider")!!, (call.argument<Number>("serial") ?: 0).toLong(), result)
+            // Widgets that really exist on this phone (restored settings may name others).
+            "boundWidgetIds" -> result.success(if (Build.VERSION.SDK_INT >= 26) host.appWidgetIds.toList() else null)
             "removeWidget" -> {
                 host.deleteAppWidgetId(call.argument<Number>("id")!!.toInt())
                 result.success(true)

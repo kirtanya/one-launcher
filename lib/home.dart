@@ -120,6 +120,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Apps.instance.onPermissionsChanged = () => _refresh.value++;
     _sheet.addListener(() => _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0));
     _loadApps();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _firstLaunch());
+  }
+
+  /// Once per install: offer to restore a backup, or say Android already restored one.
+  /// Also drops widget pages that don't exist on this phone (restored from elsewhere).
+  Future<void> _firstLaunch() async {
+    final ids = await Apps.instance.boundWidgetIds();
+    if (ids != null) await prefs.pruneWidgetPages(ids.toSet());
+    if (!await Apps.instance.isFirstRun() || !mounted) return;
+    final fresh = prefs.isFresh;
+    final restoredByAndroid = !fresh && prefs.installId != null;
+    final upgradedFromOld = !fresh && prefs.installId == null; // older version, no prompt
+    await prefs.setInstallId();
+    if (upgradedFromOld || !mounted) return;
+    await showWelcomeRestore(context, prefs: prefs, restoredByAndroid: restoredByAndroid);
   }
 
   @override

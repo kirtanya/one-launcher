@@ -498,6 +498,92 @@ class _WidgetTile extends StatelessWidget {
   }
 }
 
+/// First launch of a new install. Either Android already restored the settings from the
+/// phone's Google backup ([restoredByAndroid]), or we offer to bring back a backup file:
+/// first looking in Downloads, then — if it isn't there — anywhere else.
+Future<void> showWelcomeRestore(BuildContext context, {required Prefs prefs, required bool restoredByAndroid}) {
+  var step = restoredByAndroid ? 'restored' : 'ask'; // ask → elsewhere → done
+  String? message;
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, set) {
+        Future<void> pick({required bool inDownloads}) async {
+          final text = await Apps.instance.openBackup(inDownloads: inDownloads);
+          if (text == null) {
+            // Nothing picked: maybe it lives somewhere else.
+            set(() => step = 'elsewhere');
+            return;
+          }
+          try {
+            final n = await prefs.importBackup(text);
+            HapticFeedback.mediumImpact();
+            set(() {
+              step = 'done';
+              message = 'Restored $n settings. Welcome back!';
+            });
+          } on FormatException catch (e) {
+            set(() {
+              step = 'elsewhere';
+              message = '${e.message}. Try another file.';
+            });
+          }
+        }
+
+        final (title, body) = switch (step) {
+          'restored' => ('Welcome back', 'Your setup was restored automatically from your phone’s Google backup.'),
+          'elsewhere' => (
+            'Saved somewhere else?',
+            message ?? 'Didn’t see it in Downloads? Your backup might be in another folder, like Documents, Google Drive or WhatsApp Documents.',
+          ),
+          'done' => ('All set', message ?? 'Restored.'),
+          _ => ('Welcome to One Launcher', 'Have a backup from before? Backups are files named OneLauncher-backup-… .json, usually in Downloads.'),
+        };
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+              child: SheetHeader(
+                title: title,
+                leading: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(color: DS.hero, shape: BoxShape.circle),
+                  child: Icon(step == 'done' || step == 'restored' ? Icons.check_rounded : Icons.settings_backup_restore_rounded, color: DS.heroInk),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+              child: AnimatedSwitcher(
+                duration: Motion.snapDuration,
+                child: Text(body, key: ValueKey(body), style: DS.rowSub),
+              ),
+            ),
+            ...switch (step) {
+              'restored' => [
+                _Row(Icons.check_circle_outline_rounded, 'Looks good', () => Navigator.pop(ctx)),
+                _Row(Icons.folder_open_rounded, 'Use a backup file instead', () => pick(inDownloads: true)),
+              ],
+              'elsewhere' => [
+                _Row(Icons.folder_open_rounded, 'Look in another folder', () => pick(inDownloads: false)),
+                _Row(Icons.arrow_forward_rounded, 'Start fresh', () => Navigator.pop(ctx)),
+              ],
+              'done' => [_Row(Icons.check_circle_outline_rounded, 'Done', () => Navigator.pop(ctx))],
+              _ => [
+                _Row(Icons.search_rounded, 'Find my backup', () => pick(inDownloads: true)),
+                _Row(Icons.arrow_forward_rounded, 'Start fresh', () => Navigator.pop(ctx)),
+              ],
+            },
+          ],
+        );
+      },
+    ),
+  );
+}
+
 /// Save all settings to a file, or bring them back from one.
 Future<void> showBackupSheet(BuildContext context, {required Prefs prefs}) {
   String? message;

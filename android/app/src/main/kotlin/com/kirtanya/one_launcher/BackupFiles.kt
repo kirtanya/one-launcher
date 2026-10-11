@@ -2,6 +2,10 @@ package com.kirtanya.one_launcher
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import java.io.File
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -13,6 +17,7 @@ class BackupFiles(private val activity: Activity) {
     companion object {
         const val REQ_SAVE = 51
         const val REQ_OPEN = 52
+        const val DOWNLOADS = "content://com.android.externalstorage.documents/document/primary%3ADownload"
     }
 
     private var pending: MethodChannel.Result? = null
@@ -35,17 +40,32 @@ class BackupFiles(private val activity: Activity) {
             "openBackup" -> {
                 pending?.success(null)
                 pending = result
-                activity.startActivityForResult(
-                    Intent(Intent.ACTION_OPEN_DOCUMENT)
-                        .addCategory(Intent.CATEGORY_OPENABLE)
-                        .setType("*/*") // some file apps label .json as text or octet-stream
-                        .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream")),
-                    REQ_OPEN,
-                )
+                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("*/*") // some file apps label .json as text or octet-stream
+                    .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/json", "text/plain", "application/octet-stream"))
+                // Open straight in Downloads, where backups are saved by default.
+                if (call.argument<Boolean>("downloads") == true && Build.VERSION.SDK_INT >= 26) {
+                    intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, Uri.parse(DOWNLOADS))
+                }
+                activity.startActivityForResult(intent, REQ_OPEN)
             }
+            "installState" -> result.success(installState())
             else -> return false
         }
         return true
+    }
+
+    /**
+     * Is this the first launch of this install? A marker in the no-backup folder (never included
+     * in Android's backups, wiped on uninstall) tells a fresh install — even one whose settings
+     * Android restored from the cloud — apart from a normal launch.
+     */
+    private fun installState(): Map<String, Any> {
+        val marker = File(activity.noBackupFilesDir, "installed")
+        val first = !marker.exists()
+        if (first) marker.writeText(System.currentTimeMillis().toString())
+        return mapOf("firstRun" to first)
     }
 
     /** Save → true/false; open → file text or null. */

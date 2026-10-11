@@ -168,10 +168,24 @@ class Apps {
     return await _ch.invokeMethod<bool>('saveBackup', {'name': name, 'text': text}) ?? false;
   }
 
-  /// Android's "open file" picker; the file's text, or null if cancelled.
-  Future<String?> openBackup() async {
+  /// Android's "open file" picker (optionally opened in Downloads); the file's text, or null.
+  Future<String?> openBackup({bool inDownloads = false}) async {
     if (isDemo) return null;
-    return _ch.invokeMethod<String>('openBackup');
+    return _ch.invokeMethod<String>('openBackup', {'downloads': inDownloads});
+  }
+
+  /// True on the very first launch of this install (also after a reinstall).
+  Future<bool> isFirstRun() async {
+    if (isDemo) return false;
+    final m = await _ch.invokeMapMethod<String, dynamic>('installState');
+    return m?['firstRun'] == true;
+  }
+
+  /// App widget ids that actually exist on this phone (null if unknown).
+  Future<List<int>?> boundWidgetIds() async {
+    if (isDemo) return null;
+    final l = await _ch.invokeListMethod<int>('boundWidgetIds');
+    return l;
   }
 
   Future<void> openUsageAccess() => _call('openUsageAccess');
