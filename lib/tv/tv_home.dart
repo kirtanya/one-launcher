@@ -87,6 +87,7 @@ class _TvHomeState extends State<TvHome> {
   int _row = 0; // focused row (-1 = top bar)
 
   TvItem? _hero; // what the title block describes (instant)
+  TvItem? _chip; // focused quick action: named in the hint line, the title block stays
   TvItem? _backdrop; // what the big picture shows (settles after a beat, so fast moves don't flicker)
   Timer? _backdropTimer;
 
@@ -129,7 +130,7 @@ class _TvHomeState extends State<TvHome> {
     await _loadContent();
     if (!_loaded) {
       _loaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearch());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusDefault());
     }
   }
 
@@ -264,12 +265,21 @@ class _TvHomeState extends State<TvHome> {
   void _home() {
     Navigator.of(context).popUntil((r) => r.isFirst);
     _endMove();
-    _focusSearch();
+    _focusDefault();
   }
 
-  /// Landing, Home and Back all start on Search (the quickest way to anything).
-  void _focusSearch() {
-    _focus(-1, 0);
+  /// Landing, Home and Back all go to the default spot: the first quick action, or — with no
+  /// quick actions — the first app. (Search is one ↑ away from either.)
+  void _focusDefault() {
+    final quick = _rows.indexWhere((r) => r.chips && r.items.any((it) => it.key != 'q:edit'));
+    final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
+    if (quick >= 0) {
+      _focus(quick, 0);
+    } else if (apps >= 0) {
+      _focus(apps, 0);
+    } else {
+      _focus(-1, 0);
+    }
     // Every row back to its start; the title block shows the first show / app (not a chip).
     for (final r in _rows) {
       _col.remove(r.id);
@@ -417,8 +427,12 @@ class _TvHomeState extends State<TvHome> {
 
   /// Title block switches at once; the big picture waits until focus rests a moment.
   void _show(TvItem item, {bool now = false}) {
-    setState(() => _hero = item);
-    if (item.kind == TvKind.action) return; // chips keep the picture behind them
+    // A chip keeps the show / app on screen (title and picture); only the hint names the chip.
+    if (item.kind == TvKind.action) return setState(() => _chip = item);
+    setState(() {
+      _hero = item;
+      _chip = null;
+    });
     _backdropTimer?.cancel();
     if (now) {
       _backdrop = item;
@@ -578,11 +592,11 @@ class _TvHomeState extends State<TvHome> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false, // it's the home screen: Back jumps to the first card instead
+      canPop: false, // it's the home screen: Back returns to the default spot instead
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_moving != null) return _endMove(); // Back while moving an app = done
-        _focusSearch();
+        _focusDefault();
       },
       child: Scaffold(
         backgroundColor: TvDS.canvas,
@@ -608,7 +622,12 @@ class _TvHomeState extends State<TvHome> {
                   top: TvDS.heroTop,
                   width: TvDS.heroW,
                   height: rowsTop - TvDS.heroTop - DS.s12,
-                  child: _HeroInfo(item: _hero, rowTitle: _row >= 0 && _row < _rows.length ? _rows[_row].title : null, moving: _moving != null),
+                  child: _HeroInfo(
+                    item: _hero,
+                    chip: _chip,
+                    rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
+                    moving: _moving != null,
+                  ),
                 ),
 
                 // ---- Rows ----
@@ -814,8 +833,9 @@ class _Backdrop extends StatelessWidget {
 // ---- Title block ---------------------------------------------------------------
 
 class _HeroInfo extends StatelessWidget {
-  const _HeroInfo({required this.item, required this.rowTitle, this.moving = false});
+  const _HeroInfo({required this.item, required this.rowTitle, this.chip, this.moving = false});
   final TvItem? item;
+  final TvItem? chip;
   final String? rowTitle;
   final bool moving;
 
@@ -833,7 +853,7 @@ class _HeroInfo extends StatelessWidget {
           child: child,
         ),
       ),
-      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey('${it.key}$moving'), child: _content(it)),
+      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey('${it.key}$moving${chip?.key}'), child: _content(it)),
     );
   }
 
@@ -844,11 +864,14 @@ class _HeroInfo extends StatelessWidget {
       TvKind.app => (rowTitle ?? 'App').toUpperCase(),
       TvKind.action => it.app != null ? 'QUICK ACTION · APP' : 'QUICK ACTION',
     };
-    final action = switch (it.kind) {
-      TvKind.resume => 'Resume',
-      TvKind.program => (it.progress ?? 0) > 0 ? 'Resume' : 'Watch',
-      TvKind.app || TvKind.action => it.key == 'q:edit' ? 'Edit' : 'Open',
-    };
+    final c = chip;
+    final action = c != null
+        ? (c.key == 'q:edit' ? 'Edit quick actions' : 'Open ${c.title}')
+        : switch (it.kind) {
+            TvKind.resume => 'Resume',
+            TvKind.program => (it.progress ?? 0) > 0 ? 'Resume' : 'Watch',
+            TvKind.app || TvKind.action => it.key == 'q:edit' ? 'Edit' : 'Open',
+          };
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

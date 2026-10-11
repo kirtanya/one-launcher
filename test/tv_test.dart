@@ -52,15 +52,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Continue watching'), findsOneWidget);
     expect(find.text('Your apps'), findsOneWidget);
-    // Lands on Search; the title block already shows what you were watching.
-    expect(_focused(), 'h:search');
+    // Lands on the first quick action; the title block shows what you were watching.
+    expect(_focused(), 'quick:t:inputs');
     // Quick action chips sit above the rows.
     expect(find.text('Inputs'), findsOneWidget);
     expect(find.text('Network'), findsOneWidget);
     expect(find.text('Settings'), findsWidgets); // chip + the Settings app tile
+    await _press(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(), 'h:search', reason: 'Search is one ↑ away');
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), 'quick:t:inputs');
-    expect(find.text('QUICK ACTION'), findsOneWidget);
+    expect(find.text('Open Inputs'), findsOneWidget, reason: 'hint names the chip; the title block keeps the show');
     // Hold OK on a chip → its options → Edit quick actions → tick Captions → a new chip.
     await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
     await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
@@ -145,9 +147,23 @@ void main() {
     expect(_focused(), moved, reason: 'focus stays on the moved app');
     expect(prefs.favourites.indexOf(moved.split(':').last), 1, reason: 'now second (was first): $before → ${prefs.favourites}');
 
-    // Back on the home screen → straight to Search.
+    // Back on the home screen → the default spot: the first quick action.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(_focused(), 'quick:t:inputs');
+
+    // No quick actions → the default spot is the first app.
+    final saved = prefs.tvQuickActions;
+    await prefs.setTvQuickActions([]);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_focused(), startsWith('fav:'), reason: 'first app');
+    await prefs.setTvQuickActions(saved);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), 'h:search');
 
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.
