@@ -79,6 +79,13 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Typeface for the big figures in the top half (see top/header_fonts.dart).
+  String get headerFont => _sp.getString('headerFont') ?? 'condensed';
+  Future<void> setHeaderFont(String id) async {
+    await _sp.setString('headerFont', id);
+    notifyListeners();
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {

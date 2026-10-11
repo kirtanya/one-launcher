@@ -71,6 +71,24 @@ flutter:
       fonts:
         - asset: assets/fonts/Antonio-300.ttf
           weight: 300
+    # Header font options (Settings → Top widgets → Font)
+    - family: BebasNeue
+      fonts:
+        - asset: assets/fonts/BebasNeue-400.ttf
+    - family: InstrumentSerif
+      fonts:
+        - asset: assets/fonts/InstrumentSerif-400.ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-200.ttf
+          weight: 200
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-400.ttf
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit-200.ttf
+          weight: 200
 
   # To add assets to your application, add an assets section, like this:
   # assets:

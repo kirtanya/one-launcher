@@ -9,6 +9,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
   await (FontLoader('Antonio')..addFont(Future.value(ByteData.view(File('assets/fonts/Antonio-300.ttf').readAsBytesSync().buffer)))).load();
+  for (final (fam, file) in [
+    ('BebasNeue', 'BebasNeue-400'),
+    ('InstrumentSerif', 'InstrumentSerif-400'),
+    ('Nunito', 'Nunito-200'),
+    ('SpaceMono', 'SpaceMono-400'),
+    ('Outfit', 'Outfit-200'),
+  ]) {
+    await (FontLoader(fam)..addFont(Future.value(ByteData.view(File('assets/fonts/$file.ttf').readAsBytesSync().buffer)))).load();
+  }
   final loader = FontLoader('InstrumentSans');
   for (final w in [400, 500, 600]) {
     loader.addFont(Future.value(ByteData.view(File('assets/fonts/InstrumentSans-$w.ttf').readAsBytesSync().buffer)));
@@ -95,11 +104,17 @@ void main() {
     await tester.tap(find.byType(Switch).at(2));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c_customise_top.png'));
+    // Font: pick Serif → big figures switch typeface.
+    expect(find.text('Font'), findsOneWidget);
+    await tester.tap(find.text('Serif'));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_font_serif.png'));
     Navigator.of(tester.element(find.text('Top widgets'))).pop();
     await tester.pumpAndSettle();
     await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
     await tester.pumpAndSettle();
     expect(find.text('64%'), findsOneWidget, reason: 'battery page added after screen time');
+    expect(tester.widget<Text>(find.text('64%')).style?.fontFamily, 'InstrumentSerif', reason: 'chosen font applies');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1d_battery.png'));
 
     // Swipe the sheet up to full screen.

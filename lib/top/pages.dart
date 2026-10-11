@@ -6,6 +6,7 @@ import '../apps.dart';
 import '../ui/motion.dart';
 import '../ui/ds.dart';
 import '../widgets.dart';
+import 'header_fonts.dart';
 
 /// Ticks once a minute (checks every second so it flips on time).
 mixin Ticking<W extends StatefulWidget> on State<W> {
@@ -71,7 +72,7 @@ class _Page extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: FittedBox(
                     fit: BoxFit.contain,
-                    child: Text(big, style: DS.clock),
+                    child: Text(big, style: HeaderFontScope.of(context)),
                   ),
                 ),
               ),

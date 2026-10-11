@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../prefs.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
+import 'header_fonts.dart';
 import 'pages.dart';
 
 /// The swipeable top half: Clock, Screen time, Battery, Up next — whichever the user
@@ -42,24 +43,27 @@ class _TopCarouselState extends State<TopCarousel> {
     return Column(
       children: [
         Expanded(
-          child: PageView.builder(
-            controller: _pages,
-            itemCount: ids.length,
-            onPageChanged: (i) {
-              HapticFeedback.selectionClick();
-              setState(() => _index = i);
-            },
-            itemBuilder: (context, i) => AnimatedBuilder(
-              animation: _pages,
-              child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
-              builder: (context, child) {
-                final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
-                final d = (page - i).abs().clamp(0.0, 1.0);
-                return Opacity(
-                  opacity: 1 - d * .6,
-                  child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
-                );
+          child: HeaderFontScope(
+            style: headerFontById(widget.prefs.headerFont).style,
+            child: PageView.builder(
+              controller: _pages,
+              itemCount: ids.length,
+              onPageChanged: (i) {
+                HapticFeedback.selectionClick();
+                setState(() => _index = i);
               },
+              itemBuilder: (context, i) => AnimatedBuilder(
+                animation: _pages,
+                child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
+                builder: (context, child) {
+                  final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
+                  final d = (page - i).abs().clamp(0.0, 1.0);
+                  return Opacity(
+                    opacity: 1 - d * .6,
+                    child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
+                  );
+                },
+              ),
             ),
           ),
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'folders.dart';
 import 'prefs.dart';
+import 'top/header_fonts.dart';
 import 'top/top_widgets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -335,6 +336,12 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
                 );
               },
             ),
+            const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s4), child: CardDivider()),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s12),
+              child: Text('Font', style: DS.rowTitle),
+            ),
+            _FontPicker(prefs: prefs),
             const SizedBox(height: DS.s8),
           ],
         );
@@ -450,6 +457,69 @@ class _SplitSlider extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Live previews of each big-figure font; tap to choose.
+class _FontPicker extends StatelessWidget {
+  const _FontPicker({required this.prefs});
+  final Prefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final now = TimeOfDay.now();
+    final sample = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    return SizedBox(
+      height: 112,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+        itemCount: headerFonts.length,
+        separatorBuilder: (_, _) => const SizedBox(width: DS.s12),
+        itemBuilder: (context, i) {
+          final f = headerFonts[i];
+          final selected = prefs.headerFont == f.id;
+          return Pressable(
+            scale: .94,
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                prefs.setHeaderFont(f.id);
+              },
+              child: Semantics(
+                selected: selected,
+                button: true,
+                label: '${f.name} font',
+                child: Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: Motion.snapDuration,
+                      curve: Motion.settle,
+                      width: 96,
+                      height: 72,
+                      padding: const EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
+                      decoration: BoxDecoration(
+                        color: DS.canvas,
+                        borderRadius: BorderRadius.circular(DS.rMedia),
+                        border: Border.all(color: selected ? DS.hero : DS.canvas, width: 3),
+                      ),
+                      child: FittedBox(
+                        child: Text(
+                          sample,
+                          style: f.style.copyWith(shadows: const [], color: DS.onWallpaper),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(f.name, style: DS.iconLabel.copyWith(fontWeight: selected ? FontWeight.w600 : FontWeight.w500)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
