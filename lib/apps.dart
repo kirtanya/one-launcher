@@ -162,6 +162,18 @@ class Apps {
 
   Future<void> removeWidget(int id) => _call('removeWidget', {'id': id});
 
+  /// Android's "save file" picker; true if saved.
+  Future<bool> saveBackup(String name, String text) async {
+    if (isDemo) return false;
+    return await _ch.invokeMethod<bool>('saveBackup', {'name': name, 'text': text}) ?? false;
+  }
+
+  /// Android's "open file" picker; the file's text, or null if cancelled.
+  Future<String?> openBackup() async {
+    if (isDemo) return null;
+    return _ch.invokeMethod<String>('openBackup');
+  }
+
   Future<void> openUsageAccess() => _call('openUsageAccess');
   Future<void> openScreenTime() => _call('openScreenTime');
   Future<void> openBatterySettings() => _call('openBatterySettings');

@@ -156,6 +156,84 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Backup & restore -----------------------------------------------------------
+
+  static const _backupFormat = 1;
+
+  /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
+  /// the phone they were added on, so they can't be restored elsewhere.
+  String exportBackup() {
+    final out = <String, Object>{};
+    for (final k in _sp.getKeys()) {
+      if (k == 'widgetLabels') continue;
+      final v = _sp.get(k);
+      out[k] = switch (v) {
+        final String s => {'t': 's', 'v': s},
+        final bool b => {'t': 'b', 'v': b},
+        final int i => {'t': 'i', 'v': i},
+        final double d => {'t': 'd', 'v': d},
+        final List l => {
+          't': 'l',
+          'v': [
+            for (final x in l)
+              if (!(x as String).startsWith('widget:')) x,
+          ],
+        },
+        _ => {'t': 's', 'v': '$v'},
+      };
+    }
+    return const JsonEncoder.withIndent('  ')
+        .convert({'app': 'One Launcher', 'format': _backupFormat, 'created': DateTime.now().toIso8601String(), 'settings': out});
+  }
+
+  /// Replaces all settings with the backup's. Widgets on this phone are kept as they are.
+  /// Returns how many settings were restored; throws [FormatException] for a wrong file.
+  Future<int> importBackup(String text) async {
+    final data = jsonDecode(text);
+    if (data is! Map || data['app'] != 'One Launcher' || data['settings'] is! Map) {
+      throw const FormatException('Not a One Launcher backup');
+    }
+    if ((data['format'] as num? ?? 0) > _backupFormat) throw const FormatException('Backup is from a newer version');
+
+    // Keep this phone's widget pages.
+    final labels = widgetLabels;
+    final widgetOrder = topOrder.where((x) => x.startsWith('widget:')).toList();
+    final widgetOn = topEnabled.where((x) => x.startsWith('widget:')).toList();
+
+    await _sp.clear();
+    _parsed.clear(); // drop cached settings from before the restore
+    var n = 0;
+    for (final MapEntry(:key, :value) in (data['settings'] as Map).entries) {
+      final t = (value as Map)['t'], v = value['v'];
+      switch (t) {
+        case 's':
+          await _sp.setString(key as String, v as String);
+        case 'b':
+          await _sp.setBool(key as String, v as bool);
+        case 'i':
+          await _sp.setInt(key as String, (v as num).toInt());
+        case 'd':
+          await _sp.setDouble(key as String, (v as num).toDouble());
+        case 'l':
+          await _sp.setStringList(key as String, [for (final x in v as List) '$x']);
+        default:
+          continue;
+      }
+      n++;
+    }
+    if (labels.isNotEmpty) {
+      await _sp.setString('widgetLabels', jsonEncode(labels));
+      _parsed.clear();
+      final order = topOrder;
+      final blank = order.indexOf('blank');
+      blank < 0 ? order.addAll(widgetOrder) : order.insertAll(blank, widgetOrder);
+      await _sp.setStringList('topOrder', order);
+      await _sp.setStringList('topEnabled', {...topEnabled, ...widgetOn}.toList());
+    }
+    notifyListeners(); // everything (theme, pages, folders…) updates live
+    return n;
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -496,6 +498,90 @@ class _WidgetTile extends StatelessWidget {
   }
 }
 
+/// Save all settings to a file, or bring them back from one.
+Future<void> showBackupSheet(BuildContext context, {required Prefs prefs}) {
+  String? message;
+  var busy = false;
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, set) {
+        Future<void> save() async {
+          set(() => busy = true);
+          final d = DateTime.now();
+          final name = 'OneLauncher-backup-${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}.json';
+          final ok = await Apps.instance.saveBackup(name, prefs.exportBackup());
+          set(() {
+            busy = false;
+            message = ok ? 'Saved $name' : 'Not saved';
+          });
+        }
+
+        Future<void> restore() async {
+          final text = await Apps.instance.openBackup();
+          if (text == null || !ctx.mounted) return;
+          // What's in the file, before replacing anything.
+          String when = '';
+          try {
+            final created = DateTime.tryParse((jsonDecode(text) as Map)['created'] as String? ?? '');
+            if (created != null) when = ' from ${created.day}/${created.month}/${created.year}';
+          } catch (_) {}
+          final confirmed = await showDialog<bool>(
+            context: ctx,
+            builder: (d) => AlertDialog(
+              backgroundColor: DS.card,
+              title: Text('Restore backup$when?', style: DS.title.copyWith(fontSize: 20)),
+              content: Text('Your current pins, folders, pages, layout and colours will be replaced. App widgets on this phone stay.', style: DS.rowSub),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(d, false),
+                  child: Text('Cancel', style: DS.rowTitle.copyWith(color: DS.inkMuted)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(d, true),
+                  child: Text('Restore', style: DS.rowTitle),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return;
+          try {
+            final n = await prefs.importBackup(text);
+            HapticFeedback.mediumImpact();
+            set(() => message = 'Restored $n settings');
+          } on FormatException catch (e) {
+            set(() => message = e.message);
+          }
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+              child: SheetHeader(title: 'Backup & restore', subtitle: 'Pins, folders, pages, layout, fonts and colours'),
+            ),
+            _Row(Icons.save_alt_rounded, 'Save backup to a file', busy ? () {} : save),
+            _Row(Icons.restore_rounded, 'Restore from a backup', restore),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s16),
+              child: AnimatedSwitcher(
+                duration: Motion.snapDuration,
+                child: Text(
+                  message ?? 'You choose where the file goes, like Downloads or Google Drive. App widgets aren’t included; add them again after restoring.',
+                  key: ValueKey(message),
+                  style: message == null ? DS.rowSub.copyWith(fontSize: 13) : DS.rowTitle.copyWith(fontSize: 14),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
 /// Colours & style — modelled on Pixel's "Wallpaper & style".
 Future<void> showColoursSheet(BuildContext context, {required Prefs prefs, required OneTheme theme}) {
   var tab = prefs.themeSource;
@@ -733,6 +819,10 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _SplitSlider(prefs: prefs),
             _PaddingSlider(prefs: prefs),
+            _Row(Icons.settings_backup_restore_rounded, 'Backup & restore', () {
+              Navigator.pop(ctx);
+              showBackupSheet(context, prefs: prefs);
+            }),
             _Row(Icons.palette_outlined, 'Colours & style', () {
               Navigator.pop(ctx);
               showColoursSheet(context, prefs: prefs, theme: theme);

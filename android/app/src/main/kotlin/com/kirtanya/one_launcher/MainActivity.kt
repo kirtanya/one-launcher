@@ -48,6 +48,7 @@ class MainActivity : FlutterActivity() {
 
     private lateinit var channel: MethodChannel
     private val widgets by lazy { WidgetHost(this) }
+    private val backups by lazy { BackupFiles(this) }
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
@@ -86,6 +87,7 @@ class MainActivity : FlutterActivity() {
         flutterEngine.platformViewsController.registry.registerViewFactory(WidgetHost.VIEW_TYPE, widgets.factory)
         channel.setMethodCallHandler { call, result ->
             if (widgets.handle(call, result)) return@setMethodCallHandler
+            if (backups.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getApps" -> worker.execute {
                     val apps = loadApps()
@@ -181,7 +183,7 @@ class MainActivity : FlutterActivity() {
 
     @Deprecated("Needed for the widget bind/configure screens")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (!widgets.onActivityResult(requestCode, resultCode)) {
+        if (!widgets.onActivityResult(requestCode, resultCode) && !backups.onActivityResult(requestCode, resultCode, data)) {
             @Suppress("DEPRECATION")
             super.onActivityResult(requestCode, resultCode, data)
         }
