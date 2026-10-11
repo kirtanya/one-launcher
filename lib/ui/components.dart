@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ds.dart';
+import 'motion.dart';
 
 /// A stacked card. `tone` picks the surface from the design system.
 enum CardTone { hero, white, muted }
@@ -21,20 +22,24 @@ class OneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(DS.rCard),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: Padding(padding: padding, child: child),
+    return Pressable(
+      enabled: onTap != null,
+      scale: 0.98,
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(DS.rCard),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: Padding(padding: padding, child: child),
+        ),
       ),
     );
   }
 }
 
-enum CircleTone { ink, soft, outline, onCanvas }
+enum CircleTone { ink, soft, outline, onCanvas, glass }
 
 /// 44pt round action with a 48pt tap area.
 class CircleButton extends StatelessWidget {
@@ -52,6 +57,7 @@ class CircleButton extends StatelessWidget {
       CircleTone.soft => (DS.heroSoft, DS.heroInk, null),
       CircleTone.outline => (Colors.transparent, DS.ink, DS.hairline),
       CircleTone.onCanvas => (Colors.transparent, DS.onCanvas, DS.onCanvasLine),
+      CircleTone.glass => (DS.glass, DS.onWallpaper, DS.glassLine),
     };
     final button = SizedBox.square(
       dimension: DS.tap,
@@ -66,8 +72,8 @@ class CircleButton extends StatelessWidget {
               dimension: DS.circle,
               child: AnimatedRotation(
                 turns: turns,
-                duration: DS.medium,
-                curve: DS.ease,
+                duration: Motion.snapDuration,
+                curve: Motion.snap,
                 child: Icon(icon, size: 20, color: fg),
               ),
             ),
@@ -75,7 +81,8 @@ class CircleButton extends StatelessWidget {
         ),
       ),
     );
-    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+    final pressable = Pressable(scale: 0.88, child: button);
+    return tooltip == null ? pressable : Tooltip(message: tooltip!, child: pressable);
   }
 }
 

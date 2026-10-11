@@ -23,8 +23,8 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
     header: SheetHeader(title: app.label, subtitle: 'In ${folder.name}', leading: AppIcon(app, size: 48)),
     actions: [
       SheetAction(
-        fav ? Icons.remove_circle_outline_rounded : Icons.add_circle_outline_rounded,
-        fav ? 'Remove from home' : (full ? 'Home is full (${Prefs.maxFavourites})' : 'Add to home'),
+        fav ? Icons.push_pin : Icons.push_pin_outlined,
+        fav ? 'Unpin' : (full ? 'Pins are full (${Prefs.maxFavourites})' : 'Pin to top'),
         () => done(() => prefs.toggleFavourite(app.package)),
         enabled: !full,
       ),
@@ -64,27 +64,6 @@ Future<void> showFolderPicker(BuildContext context, {required Prefs prefs, requi
   );
 }
 
-/// Long-press a favourite on the home screen.
-Future<void> showFavouriteSheet(BuildContext context, {required Prefs prefs, required AppEntry app}) {
-  final i = prefs.favourites.indexOf(app.package);
-  final last = prefs.favourites.length - 1;
-  void done(Future<void> Function() f) {
-    Navigator.pop(context);
-    f();
-  }
-
-  return showOneSheet(
-    context,
-    header: SheetHeader(title: app.label, subtitle: 'On your home screen', leading: AppIcon(app, size: 48)),
-    actions: [
-      SheetAction(Icons.arrow_upward_rounded, 'Move up', () => done(() => prefs.moveFavourite(app.package, -1)), enabled: i > 0),
-      SheetAction(Icons.arrow_downward_rounded, 'Move down', () => done(() => prefs.moveFavourite(app.package, 1)), enabled: i < last),
-      SheetAction(Icons.info_outline_rounded, 'App info', () => done(() => Apps.instance.appInfo(app.package))),
-      SheetAction(Icons.remove_circle_outline_rounded, 'Remove from home', () => done(() => prefs.toggleFavourite(app.package)), danger: true),
-    ],
-  );
-}
-
 /// Long-press empty space on the home screen, or the settings button in the app view.
 Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) {
   return showOneSheetWith(
@@ -99,9 +78,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'One Launcher', subtitle: 'Long-press the home screen to come back here'),
+              child: SheetHeader(title: 'One Launcher', subtitle: 'Long-press the clock to come back here'),
             ),
-            _Toggle('Show icons on home', prefs.showHomeIcons, prefs.setShowHomeIcons),
             _Toggle('Open app when search finds only one', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: DS.s8),

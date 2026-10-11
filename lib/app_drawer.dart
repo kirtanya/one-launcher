@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,18 +8,30 @@ import 'prefs.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
+import 'ui/motion.dart';
 import 'widgets.dart';
 
-/// The app view: greeting, a pastel hero card, then one card per folder of similar apps.
-/// Search swaps the folders for a single results card.
+/// The bottom sheet of the one-screen launcher: a pastel hero card, then one card per
+/// folder of similar apps. Search swaps the folders for a single results card.
+/// Scrolling is driven by the sheet's [scroll] controller, so the first drag expands the
+/// sheet and only then scrolls the cards.
 class AppDrawer extends StatefulWidget {
-  const AppDrawer({super.key, required this.apps, required this.prefs, required this.onLaunch, required this.onDragClose, required this.onDragEnd});
+  const AppDrawer({
+    super.key,
+    required this.apps,
+    required this.prefs,
+    required this.scroll,
+    required this.expanded,
+    required this.onLaunch,
+    required this.onWantFull,
+  });
 
   final List<AppEntry> apps;
   final Prefs prefs;
+  final ScrollController scroll;
+  final ValueListenable<double> expanded; // 0 = half screen, 1 = full screen
   final ValueChanged<AppEntry> onLaunch;
-  final ValueChanged<double> onDragClose; // finger moved right by dx
-  final ValueChanged<double> onDragEnd; // release velocity
+  final VoidCallback onWantFull; // ask the sheet to expand (search)
 
   @override
   State<AppDrawer> createState() => AppDrawerState();
@@ -27,18 +40,15 @@ class AppDrawer extends StatefulWidget {
 class AppDrawerState extends State<AppDrawer> {
   final _query = TextEditingController();
   final _focus = FocusNode();
-  final _scroll = ScrollController();
   final _open = <String>{}; // expanded folder ids
   bool _searching = false;
 
-  /// Drawer finished opening.
-  void opened() {}
+  bool get searching => _searching;
 
-  /// Drawer finished closing: start fresh next time.
-  void closed() {
+  /// Back to the resting state (after launching an app, Home, or collapsing).
+  void reset() {
     _focus.unfocus();
     _query.clear();
-    if (_scroll.hasClients) _scroll.jumpTo(0);
     if (_searching) setState(() => _searching = false);
   }
 
@@ -46,7 +56,6 @@ class AppDrawerState extends State<AppDrawer> {
   void dispose() {
     _query.dispose();
     _focus.dispose();
-    _scroll.dispose();
     super.dispose();
   }
 
@@ -73,34 +82,27 @@ class AppDrawerState extends State<AppDrawer> {
     return widget.apps.where((a) => rank(a) < 3).toList()..sort((a, b) => rank(a).compareTo(rank(b)));
   }
 
-  /// Most-opened apps; falls back to pinned, then alphabetical.
+  /// Pinned apps first, then the most-opened ones.
   List<AppEntry> _topApps(List<AppEntry> apps, int n) {
-    final counts = widget.prefs.launchCounts;
     final byPkg = {for (final a in apps) a.package: a};
-    final used = counts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
-    final picked = <AppEntry>[for (final e in used) byPkg[e.key]!];
-    for (final p in widget.prefs.favourites) {
-      if (byPkg[p] != null && !picked.contains(byPkg[p])) picked.add(byPkg[p]!);
-    }
-    for (final a in apps) {
-      if (!picked.contains(a)) picked.add(a);
+    final picked = <AppEntry>[for (final p in widget.prefs.favourites) ?byPkg[p]];
+    final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
+    for (final e in used) {
+      if (!picked.contains(byPkg[e.key])) picked.add(byPkg[e.key]!);
     }
     return picked.take(n).toList();
   }
 
   // ---- Actions -------------------------------------------------------------
 
-  void _startSearch() {
+  void startSearch() {
     HapticFeedback.selectionClick();
+    widget.onWantFull();
     setState(() => _searching = true);
     _focus.requestFocus();
   }
 
-  void _stopSearch() {
-    _focus.unfocus();
-    _query.clear();
-    setState(() => _searching = false);
-  }
+  void _stopSearch() => reset();
 
   void _onChanged(String _) {
     setState(() {});
@@ -129,21 +131,22 @@ class AppDrawerState extends State<AppDrawer> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom + MediaQuery.paddingOf(context).bottom + DS.s16;
+    final statusBar = MediaQuery.paddingOf(context).top;
     final showResults = _searching && _q.isNotEmpty;
     final apps = _visible;
     final groups = groupApps(apps, widget.prefs.folderOverrides);
 
     final cards = <Widget>[
+      if (_searching) _searchBar(),
       if (showResults)
         _ResultsCard(query: _query.text.trim(), results: _results, overrides: widget.prefs.folderOverrides, onTap: widget.onLaunch, onLongPress: _longPress)
-      else ...[
+      else if (!_searching) ...[
         _HeroCard(
           appCount: apps.length,
           folderCount: groups.length,
           newCount: apps.where((a) => a.installed > DateTime.now().subtract(const Duration(days: 7)).millisecondsSinceEpoch).length,
-          top: _topApps(apps, 3),
-          onSearch: _startSearch,
-          onSettings: () => showSettingsSheet(context, prefs: widget.prefs, apps: widget.apps),
+          top: _topApps(apps, 4),
+          onSearch: startSearch,
           onLaunch: widget.onLaunch,
         ),
         for (final (i, (folder, list)) in groups.indexed)
@@ -159,85 +162,73 @@ class AppDrawerState extends State<AppDrawer> {
       ],
     ];
 
-    return GestureDetector(
-      onHorizontalDragUpdate: (d) => widget.onDragClose(d.delta.dx),
-      onHorizontalDragEnd: (d) => widget.onDragEnd(d.primaryVelocity ?? 0),
-      child: Material(
-        color: DS.canvas,
-        child: SafeArea(
-          bottom: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s24, DS.s16, DS.s16),
-                child: AnimatedSwitcher(duration: DS.fast, child: _searching ? _searchBar() : _greeting()),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  controller: _scroll,
-                  physics: const ClampingScrollPhysics(),
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, bottom),
-                  itemCount: cards.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: DS.stack),
-                  itemBuilder: (_, i) => cards[i],
+    return Material(
+      color: DS.canvas,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
+      clipBehavior: Clip.antiAlias,
+      child: ListView.separated(
+        controller: widget.scroll,
+        physics: const ClampingScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, bottom),
+        itemCount: cards.length + 1,
+        separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : DS.stack),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            // Grab handle. As the sheet reaches full screen it also makes room for the status bar.
+            return ValueListenableBuilder<double>(
+              valueListenable: widget.expanded,
+              builder: (context, e, _) => Padding(
+                padding: EdgeInsets.only(top: DS.s12 + statusBar * e, bottom: DS.s12),
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(color: DS.onCanvasLine, borderRadius: BorderRadius.circular(3)),
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
+            );
+          }
+          // Cards pop in one after another the first time they appear.
+          return PopIn(delay: ((i - 1) * 0.05).clamp(0, .4), offset: const Offset(0, 24), fromScale: .97, child: cards[i - 1]);
+        },
       ),
     );
   }
 
-  Widget _greeting() {
-    final h = DateTime.now().hour;
-    final part = h < 5
-        ? 'Hi night owl'
-        : h < 12
-        ? 'Good morning'
-        : h < 17
-        ? 'Good afternoon'
-        : 'Good evening';
-    return Row(
-      key: const ValueKey('greeting'),
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(child: Text('$part 👋\nWelcome back', style: DS.greeting)),
-        const _BrandMark(),
-      ],
-    );
-  }
-
   Widget _searchBar() {
-    return Row(
+    return Padding(
       key: const ValueKey('search'),
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _query,
-            focusNode: _focus,
-            onChanged: _onChanged,
-            onSubmitted: _onSubmit,
-            textInputAction: TextInputAction.go,
-            autocorrect: false,
-            enableSuggestions: false,
-            cursorColor: DS.ink,
-            style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
-            decoration: InputDecoration(
-              hintText: 'Search ${widget.apps.length} apps',
-              hintStyle: DS.rowSub,
-              prefixIcon: const Icon(Icons.search_rounded, color: DS.ink),
-              filled: true,
-              fillColor: DS.card,
-              contentPadding: const EdgeInsets.symmetric(vertical: 14),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(99), borderSide: BorderSide.none),
+      padding: const EdgeInsets.only(bottom: DS.s4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _query,
+              focusNode: _focus,
+              onChanged: _onChanged,
+              onSubmitted: _onSubmit,
+              textInputAction: TextInputAction.go,
+              autocorrect: false,
+              enableSuggestions: false,
+              cursorColor: DS.ink,
+              style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+              decoration: InputDecoration(
+                hintText: 'Search ${widget.apps.length} apps',
+                hintStyle: DS.rowSub,
+                prefixIcon: const Icon(Icons.search_rounded, color: DS.ink),
+                filled: true,
+                fillColor: DS.card,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(99), borderSide: BorderSide.none),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: DS.s4),
-        CircleButton(icon: Icons.close_rounded, tone: CircleTone.onCanvas, tooltip: 'Close search', onTap: _stopSearch),
-      ],
+          const SizedBox(width: DS.s4),
+          CircleButton(icon: Icons.close_rounded, tone: CircleTone.onCanvas, tooltip: 'Close search', onTap: _stopSearch),
+        ],
+      ),
     );
   }
 }
@@ -251,20 +242,16 @@ class _HeroCard extends StatelessWidget {
     required this.newCount,
     required this.top,
     required this.onSearch,
-    required this.onSettings,
     required this.onLaunch,
   });
 
   final int appCount, folderCount, newCount;
   final List<AppEntry> top;
-  final VoidCallback onSearch, onSettings;
+  final VoidCallback onSearch;
   final ValueChanged<AppEntry> onLaunch;
-
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
     return OneCard(
       tone: CardTone.hero,
       padding: const EdgeInsets.fromLTRB(DS.pad, DS.s12, DS.s12, DS.pad),
@@ -273,9 +260,8 @@ class _HeroCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              MetaRow(icon: Icons.calendar_today_outlined, text: '${now.day} ${_days[now.weekday - 1]}', color: DS.heroMuted),
+              const MetaRow(icon: Icons.push_pin_outlined, text: 'Pinned & most used', color: DS.heroMuted),
               const Spacer(),
-              CircleButton(icon: Icons.tune_rounded, tone: CircleTone.soft, tooltip: 'Settings', onTap: onSettings),
               CircleButton(icon: Icons.search_rounded, tooltip: 'Search apps', onTap: onSearch),
             ],
           ),
@@ -306,23 +292,35 @@ class _HeroCard extends StatelessWidget {
           const CardDivider(color: DS.heroDivider),
           const SizedBox(height: DS.s4),
           // Most-used apps as tags. Tap to open.
-          Wrap(
-            spacing: DS.s16,
-            children: [
-              for (final a in top)
-                InkWell(
-                  onTap: () => onLaunch(a),
-                  borderRadius: BorderRadius.circular(8),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: DS.tap),
-                    child: Align(
-                      widthFactor: 1,
-                      child: Text('#${a.label.toLowerCase().replaceAll(' ', '')}', style: DS.meta.copyWith(color: DS.heroMuted, fontSize: 15)),
+          if (top.isEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: DS.tap),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Pin apps or open a few, they show up here', style: DS.meta.copyWith(color: DS.heroMuted, fontSize: 15)),
+              ),
+            )
+          else
+            Wrap(
+              spacing: DS.s16,
+              children: [
+                for (final a in top)
+                  Pressable(
+                    scale: 0.92,
+                    child: InkWell(
+                      onTap: () => onLaunch(a),
+                      borderRadius: BorderRadius.circular(8),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: DS.tap),
+                        child: Align(
+                          widthFactor: 1,
+                          child: Text('#${a.label.toLowerCase().replaceAll(' ', '')}', style: DS.meta.copyWith(color: DS.heroMuted, fontSize: 15)),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );
@@ -396,8 +394,8 @@ class _FolderCard extends StatelessWidget {
           ),
           // Apps grid.
           AnimatedSize(
-            duration: DS.medium,
-            curve: DS.ease,
+            duration: Motion.snapDuration,
+            curve: Motion.snap,
             alignment: Alignment.topCenter,
             child: !open
                 ? const SizedBox(width: double.infinity)
@@ -412,10 +410,14 @@ class _FolderCard extends StatelessWidget {
                             final w = c.maxWidth / 4;
                             return Wrap(
                               children: [
-                                for (final a in apps)
+                                for (final (i, a) in apps.indexed)
                                   SizedBox(
                                     width: w,
-                                    child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                                    // Icons pop in row by row.
+                                    child: PopIn(
+                                      delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                                      child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                                    ),
                                   ),
                               ],
                             );
@@ -438,18 +440,21 @@ class _GridApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      onLongPress: onLongPress,
-      borderRadius: BorderRadius.circular(DS.rMedia),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: DS.s8, horizontal: DS.s4),
-        child: Column(
-          children: [
-            AppIcon(app, size: DS.appIcon),
-            const SizedBox(height: 6),
-            Text(app.label, style: DS.iconLabel, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-          ],
+    return Pressable(
+      scale: 0.9,
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(DS.rMedia),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: DS.s8, horizontal: DS.s4),
+          child: Column(
+            children: [
+              AppIcon(app, size: DS.appIcon),
+              const SizedBox(height: 6),
+              Text(app.label, style: DS.iconLabel, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+            ],
+          ),
         ),
       ),
     );
@@ -511,43 +516,6 @@ class _ResultsCard extends StatelessWidget {
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-/// White circle with "1" and a pink dot, matching the app icon.
-class _BrandMark extends StatelessWidget {
-  const _BrandMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 56,
-      child: Stack(
-        children: [
-          Container(
-            decoration: const BoxDecoration(color: DS.hero, shape: BoxShape.circle),
-            alignment: Alignment.center,
-            child: Text(
-              '1',
-              style: DS.title.copyWith(color: DS.heroInk, fontWeight: FontWeight.w600),
-            ),
-          ),
-          Positioned(
-            right: 4,
-            top: 4,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                color: DS.dot,
-                shape: BoxShape.circle,
-                border: Border.all(color: DS.canvas, width: 2),
-              ),
-            ),
-          ),
         ],
       ),
     );

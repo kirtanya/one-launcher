@@ -67,6 +67,10 @@ flutter:
           weight: 500
         - asset: assets/fonts/InstrumentSans-600.ttf
           weight: 600
+    - family: Antonio
+      fonts:
+        - asset: assets/fonts/Antonio-300.ttf
+          weight: 300
 
   # To add assets to your application, add an assets section, like this:
   # assets:

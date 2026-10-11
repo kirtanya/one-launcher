@@ -7,11 +7,14 @@ import 'app_drawer.dart';
 import 'apps.dart';
 import 'prefs.dart';
 import 'sheets.dart';
-import 'tokens.dart';
-import 'widgets.dart';
+import 'ui/components.dart';
+import 'ui/ds.dart';
+import 'ui/motion.dart';
 
-/// The home screen: clock, date, favourite apps.
-/// Swipe up → all apps. Swipe down → notifications. Long-press empty space → settings.
+/// The whole launcher is one screen:
+/// top half = big clock over the wallpaper + launcher options,
+/// bottom half = the app view as a sheet. Swipe the sheet up and the clock
+/// scales down and fades away; swipe down to bring it back.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.prefs});
   final Prefs prefs;
@@ -20,9 +23,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+  /// Sheet height when resting (fraction of the screen).
+  static const _rest = 0.52;
+
   List<AppEntry> _apps = const [];
-  late final AnimationController _drawer = AnimationController(vsync: this, duration: T.medium);
+  final _sheet = DraggableScrollableController();
+  final _expanded = ValueNotifier<double>(0); // 0 = resting, 1 = full screen
   final _drawerKey = GlobalKey<AppDrawerState>();
 
   Prefs get prefs => widget.prefs;
@@ -34,10 +41,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     prefs.addListener(_rebuild);
     Apps.instance.onAppsChanged = _loadApps;
     Apps.instance.onHomePressed = _goHome;
-    _drawer.addStatusListener((s) {
-      if (s == AnimationStatus.completed) _drawerKey.currentState?.opened();
-      if (s == AnimationStatus.dismissed) _drawerKey.currentState?.closed();
-    });
+    _sheet.addListener(() => _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0));
     _loadApps();
   }
 
@@ -45,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_rebuild);
-    _drawer.dispose();
+    _sheet.dispose();
+    _expanded.dispose();
     super.dispose();
   }
 
@@ -61,33 +66,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     if (mounted) setState(() => _apps = apps);
   }
 
+  // ---- Sheet ---------------------------------------------------------------
+
+  void _expand() {
+    if (_sheet.isAttached) _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle);
+  }
+
+  void _collapse({bool instant = false}) {
+    if (!_sheet.isAttached) return;
+    instant ? _sheet.jumpTo(_rest) : _sheet.animateTo(_rest, duration: Motion.snapDuration, curve: Motion.settle);
+  }
+
   /// Home button while already home: close everything.
   void _goHome() {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    _closeDrawer();
-  }
-
-  void _openDrawer() {
-    HapticFeedback.selectionClick();
-    _drawer.animateTo(1, curve: Curves.easeOutCubic);
-  }
-
-  void _closeDrawer({bool instant = false}) {
-    if (instant) {
-      _drawer.value = 0;
-    } else {
-      _drawer.animateBack(0, curve: Curves.easeOutCubic);
-    }
+    _drawerKey.currentState?.reset();
+    _collapse();
   }
 
   Future<void> _launch(AppEntry app) async {
     prefs.recordLaunch(app.package);
     await Apps.instance.launch(app.package);
     // Reset quietly once the other app has covered us.
-    Future.delayed(const Duration(milliseconds: 350), () => _closeDrawer(instant: true));
+    Future.delayed(const Duration(milliseconds: 350), () {
+      _drawerKey.currentState?.reset();
+      _collapse(instant: true);
+    });
   }
-
-  AppEntry? _find(String pkg) => _apps.where((a) => a.package == pkg).firstOrNull;
 
   AppEntry? _findByName(List<String> names) {
     for (final n in names) {
@@ -97,132 +102,154 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin, 
     return null;
   }
 
-  // ---- Home gestures -------------------------------------------------------
-
-  // Swipe left → app view slides in from the right (like the iOS App Library).
-  // Swipe right on the app view → back home. Swipe down → notifications.
-
-  /// Finger moved sideways by dx (negative = left = towards the app view).
-  void _dragPages(double dx) => _drawer.value -= dx / MediaQuery.sizeOf(context).width;
-
-  void _onDownEnd(DragEndDetails d) {
-    if ((d.primaryVelocity ?? 0) > 100) Apps.instance.openNotifications();
+  void _openNamed(List<String> names) {
+    final a = _findByName(names);
+    if (a != null) _launch(a);
   }
 
-  /// Snap open or shut after a drag, based on speed then position.
-  void settleDrawer(double velocity) {
-    if (velocity < -300) return _openDrawer();
-    if (velocity > 300) return _closeDrawer();
-    _drawer.value > 0.4 ? _openDrawer() : _closeDrawer();
+  void _settings() {
+    HapticFeedback.mediumImpact();
+    showSettingsSheet(context, prefs: prefs, apps: _apps);
   }
+
+  // ---- Build ---------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    final favourites = prefs.favourites.map(_find).whereType<AppEntry>().toList();
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (_drawer.value > 0) _closeDrawer();
+        if (_drawerKey.currentState?.searching ?? false) return _drawerKey.currentState!.reset();
+        if (_expanded.value > 0) _collapse();
       },
       child: Scaffold(
         resizeToAvoidBottomInset: false,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            // ---- Home layer ----
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragUpdate: (d) => _dragPages(d.delta.dx),
-                onHorizontalDragEnd: (d) => settleDrawer(d.primaryVelocity ?? 0),
-                onVerticalDragEnd: _onDownEnd,
-                onLongPress: () {
-                  HapticFeedback.mediumImpact();
-                  showSettingsSheet(context, prefs: prefs, apps: _apps);
-                },
-                child: AnimatedBuilder(
-                  animation: _drawer,
-                  // Home slides out to the left as the app view comes in.
-                  builder: (context, child) => Transform.translate(offset: Offset(-_drawer.value * MediaQuery.sizeOf(context).width, 0), child: child),
-                  child: ColoredBox(
-                    color: T.scrim,
-                    child: SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: T.s24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: T.s48),
-                            _Clock(
-                              onTapTime: () {
-                                final a = _findByName(['clock']);
-                                if (a != null) _launch(a);
-                              },
-                              onTapDate: () {
-                                final a = _findByName(['calendar', 'google calendar']);
-                                if (a != null) _launch(a);
-                              },
-                            ),
-                            const Spacer(),
-                            if (favourites.isEmpty)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: T.s16),
-                                child: Text('Swipe left, then long-press an app\nto pin it here.', style: T.body),
-                              )
-                            else
-                              for (final app in favourites)
-                                _FavouriteRow(
-                                  app: app,
-                                  showIcon: prefs.showHomeIcons,
-                                  onTap: () => _launch(app),
-                                  onLongPress: () {
-                                    HapticFeedback.mediumImpact();
-                                    showFavouriteSheet(context, prefs: prefs, app: app);
-                                  },
-                                ),
-                            const SizedBox(height: T.s24),
-                            _SwipeHint(onTap: _openDrawer),
-                            const SizedBox(height: T.s8),
-                          ],
+        body: LayoutBuilder(
+          builder: (context, c) {
+            final topHeight = c.maxHeight * (1 - _rest) + DS.rSheet;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: topHeight,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _expanded,
+                    builder: (context, e, child) => IgnorePointer(
+                      ignoring: e > 0.3,
+                      child: Opacity(
+                        opacity: (1 - e * 1.6).clamp(0.0, 1.0),
+                        child: Transform.translate(
+                          offset: Offset(0, -topHeight * 0.18 * e),
+                          child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
                         ),
                       ),
                     ),
+                    child: _TopArea(
+                      onSwipeUp: _expand,
+                      onSwipeDown: Apps.instance.openNotifications,
+                      onTapClock: () => _openNamed(['clock']),
+                      onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                      onWallpaper: Apps.instance.openWallpaperPicker,
+                      onSettings: _settings,
+                    ),
                   ),
                 ),
-              ),
-            ),
 
-            // ---- App drawer layer ----
-            AnimatedBuilder(
-              animation: _drawer,
-              builder: (context, child) {
-                final v = _drawer.value;
-                if (v == 0) return const SizedBox.shrink();
-                return Transform.translate(offset: Offset((1 - v) * MediaQuery.sizeOf(context).width, 0), child: child);
-              },
-              child: AppDrawer(key: _drawerKey, apps: _apps, prefs: prefs, onLaunch: _launch, onDragClose: _dragPages, onDragEnd: settleDrawer),
-            ),
-          ],
+                // ---- Bottom half: the app view sheet. ----
+                DraggableScrollableSheet(
+                  controller: _sheet,
+                  initialChildSize: _rest,
+                  minChildSize: _rest,
+                  maxChildSize: 1,
+                  snap: true,
+                  builder: (context, scroll) =>
+                      AppDrawer(key: _drawerKey, apps: _apps, prefs: prefs, scroll: scroll, expanded: _expanded, onLaunch: _launch, onWantFull: _expand),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-// ---- Pieces ---------------------------------------------------------------
+// ---- Top area ---------------------------------------------------------------
 
-class _Clock extends StatefulWidget {
-  const _Clock({required this.onTapTime, required this.onTapDate});
-  final VoidCallback onTapTime;
-  final VoidCallback onTapDate;
+class _TopArea extends StatelessWidget {
+  const _TopArea({
+    required this.onSwipeUp,
+    required this.onSwipeDown,
+    required this.onTapClock,
+    required this.onTapDate,
+    required this.onWallpaper,
+    required this.onSettings,
+  });
+
+  final VoidCallback onSwipeUp, onSwipeDown, onTapClock, onTapDate, onWallpaper, onSettings;
 
   @override
-  State<_Clock> createState() => _ClockState();
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v < -200) onSwipeUp();
+        if (v > 200) onSwipeDown();
+      },
+      onLongPress: onSettings,
+      child: DecoratedBox(
+        // Gentle dark wash at the top so the status bar and buttons read on bright wallpapers.
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x40000000), Color(0x00000000)], stops: [0, .45]),
+        ),
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s8, DS.rSheet + DS.s8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          onTap: onTapDate,
+                          child: Padding(padding: const EdgeInsets.all(DS.s8), child: _Date()),
+                        ),
+                      ),
+                    ),
+                    CircleButton(icon: Icons.wallpaper_rounded, tone: CircleTone.glass, tooltip: 'Wallpaper', onTap: onWallpaper),
+                    CircleButton(icon: Icons.tune_rounded, tone: CircleTone.glass, tooltip: 'Launcher settings', onTap: onSettings),
+                  ],
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: onTapClock,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: DS.s8),
+                      child: _Clock(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-class _ClockState extends State<_Clock> {
-  DateTime _now = DateTime.now();
+/// Ticks once a minute (checks every second so it flips on time).
+mixin _Ticking<W extends StatefulWidget> on State<W> {
+  DateTime now = DateTime.now();
   Timer? _timer;
 
   @override
@@ -230,7 +257,7 @@ class _ClockState extends State<_Clock> {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       final n = DateTime.now();
-      if (n.minute != _now.minute) setState(() => _now = n);
+      if (n.minute != now.minute) setState(() => now = n);
     });
   }
 
@@ -239,99 +266,40 @@ class _ClockState extends State<_Clock> {
     _timer?.cancel();
     super.dispose();
   }
+}
 
-  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  static const _months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+class _Clock extends StatefulWidget {
+  @override
+  State<_Clock> createState() => _ClockState();
+}
 
+class _ClockState extends State<_Clock> with _Ticking {
   @override
   Widget build(BuildContext context) {
     final is24 = MediaQuery.alwaysUse24HourFormatOf(context);
-    final h = is24 ? _now.hour : (_now.hour % 12 == 0 ? 12 : _now.hour % 12);
-    final time = '${is24 ? h.toString().padLeft(2, '0') : h}:${_now.minute.toString().padLeft(2, '0')}';
-    final date = '${_days[_now.weekday - 1]}, ${_now.day} ${_months[_now.month - 1]}';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: widget.onTapTime,
-          child: Text(time, style: T.clock),
-        ),
-        const SizedBox(height: T.s8),
-        GestureDetector(
-          onTap: widget.onTapDate,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: T.s4),
-            child: Text(date, style: T.date),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FavouriteRow extends StatelessWidget {
-  const _FavouriteRow({required this.app, required this.showIcon, required this.onTap, required this.onLongPress});
-  final AppEntry app;
-  final bool showIcon;
-  final VoidCallback onTap;
-  final VoidCallback onLongPress;
-
-  @override
-  Widget build(BuildContext context) {
-    // Hug the label so empty space beside it still opens settings / swipes.
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        onLongPress: onLongPress,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 56),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showIcon) ...[AppIcon(app, size: 32), const SizedBox(width: T.s16)],
-              Text(app.label, style: T.favourite),
-            ],
-          ),
-        ),
+    final h = is24 ? now.hour : (now.hour % 12 == 0 ? 12 : now.hour % 12);
+    final time = '${h.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    return Semantics(
+      label: 'Time $time. Opens Clock',
+      button: true,
+      excludeSemantics: true,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: Text(time, style: DS.clock),
       ),
     );
   }
 }
 
-/// iOS-style page dots: home (active) and the app view. Tap to go to the apps.
-class _SwipeHint extends StatelessWidget {
-  const _SwipeHint({required this.onTap});
-  final VoidCallback onTap;
+class _Date extends StatefulWidget {
+  @override
+  State<_Date> createState() => _DateState();
+}
+
+class _DateState extends State<_Date> with _Ticking {
+  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   @override
-  Widget build(BuildContext context) {
-    Widget dot(bool on) => Container(
-      width: on ? 18 : 6,
-      height: 6,
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: BoxDecoration(
-        color: on ? T.ink : T.inkFaint,
-        borderRadius: BorderRadius.circular(3),
-        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 6)],
-      ),
-    );
-    return Center(
-      child: Semantics(
-        button: true,
-        label: 'All apps',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: SizedBox(
-            width: 96,
-            height: T.tapMin,
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [dot(true), dot(false)]),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Text('${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}', style: DS.wallpaperDate);
 }

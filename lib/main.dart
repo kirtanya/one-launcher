@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'home.dart';
 import 'prefs.dart';
-import 'tokens.dart';
 import 'ui/ds.dart';
 
 Future<void> main() async {
@@ -37,8 +36,8 @@ class OneLauncher extends StatelessWidget {
         brightness: Brightness.dark,
         fontFamily: DS.font,
         scaffoldBackgroundColor: Colors.transparent,
-        colorScheme: const ColorScheme.dark(primary: T.accent, surface: T.sheet),
-        textSelectionTheme: const TextSelectionThemeData(cursorColor: T.accent),
+        colorScheme: const ColorScheme.dark(primary: DS.ink, surface: DS.card),
+        textSelectionTheme: const TextSelectionThemeData(cursorColor: DS.ink, selectionHandleColor: DS.ink, selectionColor: DS.hero),
         splashFactory: InkSparkle.splashFactory,
       ),
       // On the web preview there is no wallpaper, so paint a sample one.

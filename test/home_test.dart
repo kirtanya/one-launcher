@@ -8,6 +8,7 @@ import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
+  await (FontLoader('Antonio')..addFont(Future.value(ByteData.view(File('assets/fonts/Antonio-300.ttf').readAsBytesSync().buffer)))).load();
   final loader = FontLoader('InstrumentSans');
   for (final w in [400, 500, 600]) {
     loader.addFont(Future.value(ByteData.view(File('assets/fonts/InstrumentSans-$w.ttf').readAsBytesSync().buffer)));
@@ -29,7 +30,7 @@ const _apps = {
 };
 
 void main() {
-  testWidgets('home, app view with folders, open folder, search', (tester) async {
+  testWidgets('one screen: clock on top, app sheet below, swipe up hides clock', (tester) async {
     await _loadFonts();
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.88; // 375pt wide
@@ -38,48 +39,51 @@ void main() {
       if (call.method == 'getApps') {
         return [
           for (final e in _apps.entries)
-            {'package': e.value, 'label': e.key, 'system': e.key == 'Settings' || e.key == 'Clock', 'category': -1,
-             'installed': e.key == 'Figma' || e.key == 'Uber' ? now : 0},
+            {
+              'package': e.value,
+              'label': e.key,
+              'system': e.key == 'Settings' || e.key == 'Clock',
+              'category': -1,
+              'installed': e.key == 'Figma' || e.key == 'Uber' ? now : 0,
+            },
         ];
       }
       return null;
     });
     SharedPreferences.setMockInitialValues({
-      'favourites': ['com.whatsapp', 'com.Slack', 'com.figma.mirror', 'com.spotify.music'],
-      'launchCounts': '{"com.whatsapp":9,"com.Slack":7,"com.figma.mirror":4}',
+      'favourites': ['com.whatsapp', 'com.Slack'],
+      'launchCounts': '{"com.figma.mirror":4}',
     });
     final prefs = await Prefs.load();
 
-    await tester.pumpWidget(ColoredBox(color: const Color(0xFF3A4A6B), child: OneLauncher(prefs: prefs)));
-    await tester.pump();
-    expect(find.text('WhatsApp'), findsOneWidget);
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/home.png'));
-
-    // Swipe left → app view.
-    await tester.fling(find.text('WhatsApp'), const Offset(-300, 0), 1500);
+    await tester.pumpWidget(ColoredBox(color: const Color(0xFF6B5A4A), child: OneLauncher(prefs: prefs)));
     await tester.pumpAndSettle();
-    expect(find.text('Social'), findsOneWidget);
-    expect(find.text('Money'), findsOneWidget);
+    final clock = find.byType(FittedBox).first;
+    expect(clock.hitTestable(), findsOneWidget);
     expect(find.text('#whatsapp'), findsOneWidget);
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/app_view.png'));
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1_rest.png'));
+
+    // Drag the sheet halfway up: clock shrinks and fades.
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Your apps')));
+    await gesture.moveBy(const Offset(0, -150), timeStamp: const Duration(milliseconds: 300));
+    await tester.pump();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/2_dragging.png'));
+    await gesture.moveBy(const Offset(0, -60), timeStamp: const Duration(milliseconds: 400));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(clock.hitTestable(), findsNothing, reason: 'clock hidden when sheet is full');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/3_full.png'));
 
     await tester.tap(find.text('Money'));
     await tester.pumpAndSettle();
     expect(find.text('PhonePe'), findsOneWidget);
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/folder_open.png'));
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/4_folder.png'));
 
     await tester.tap(find.byTooltip('Search apps'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'sp');
     await tester.pumpAndSettle();
     expect(find.text('Open'), findsOneWidget);
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/search.png'));
-
-    // Swipe right → back home.
-    await tester.tap(find.byTooltip('Close search'));
-    await tester.pumpAndSettle();
-    await tester.fling(find.text('Social'), const Offset(300, 0), 1500);
-    await tester.pumpAndSettle();
-    expect(find.text('Social').hitTestable(), findsNothing);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/5_search.png'));
   });
 }

@@ -22,6 +22,13 @@ class DS {
   static const inkFaint = Color(0xFFB8B8B8);
   static const hairline = Color(0xFFE6E6E6);
 
+  // Over the wallpaper (top half). Light glyphs + a soft shadow so any wallpaper works.
+  static const onWallpaper = Color(0xFFFFFFFF);
+  static const clockInk = Color(0xE6FFFFFF); // 90%, the clock lets the wallpaper breathe through
+  static const glass = Color(0x2EFFFFFF); // frosted circle button fill (18%)
+  static const glassLine = Color(0x40FFFFFF); // its hairline (25%)
+  static const wallpaperShadow = [Shadow(color: Color(0x59000000), blurRadius: 18)];
+
   static const alert = Color(0xFFE0624A);
   static const dot = Color(0xFFEF7389);
 
@@ -34,6 +41,7 @@ class DS {
   // ---- Shape ----
   static const rCard = 28.0;
   static const rMedia = 20.0;
+  static const rSheet = 32.0;
   static const circle = 44.0;
   static const tap = 48.0;
   static const datePillW = 44.0, datePillH = 64.0;
@@ -50,6 +58,19 @@ class DS {
   static const meta = TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkFaint);
   static const pill = TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w600);
   static const iconLabel = TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2);
+
+  /// The big clock: tall condensed digits that fill the width (scaled with FittedBox).
+  static const clockFont = 'Antonio';
+  static const clock = TextStyle(
+    fontFamily: clockFont,
+    fontSize: 200,
+    fontWeight: FontWeight.w300,
+    height: 1,
+    letterSpacing: -4,
+    color: clockInk,
+    shadows: wallpaperShadow,
+  );
+  static const wallpaperDate = TextStyle(fontFamily: font, fontSize: 17, fontWeight: FontWeight.w500, color: onWallpaper, shadows: wallpaperShadow);
 
   // ---- Motion ----
   static const fast = Duration(milliseconds: 180);
