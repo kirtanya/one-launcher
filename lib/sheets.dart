@@ -379,7 +379,7 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
   final r = await showOneSheetWith(
     context,
     back: back,
-    height: back ? drawerHeight(context, prefs) : null,
+    height: drawerHeight(context, prefs), // chips (above the drawer) stay in view
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -523,7 +523,114 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
       },
     ),
   );
+  if (r != _toChipLook) return r;
+  // Chip look (one level down); its back arrow returns here.
+  final r2 = context.mounted ? await _showChipLook(context, prefs: prefs) : null;
+  if (r2 == sheetBack && context.mounted) return showCustomiseChips(context, prefs: prefs, back: back);
+  return r2;
 }
+
+/// Quick actions → Chip look: colour, opacity, shape, size, what to show, outline. Short and
+/// lightly shaded so the chips above it — on the home screen — show every change live.
+Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  back: true,
+  height: drawerHeight(context, prefs),
+  barrier: const Color(0x14000000),
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final look = ChipLook.of(prefs);
+      // Each change starts from the saved look (not this build's copy), so quick taps add up.
+      void set(ChipLook Function(ChipLook) change) => prefs.setChipLook(change(ChipLook.of(prefs)).toJson());
+      Widget label(String text) => Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+        child: Text(text, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+      );
+      Widget choices(Map<String, String> options, String current, void Function(String) pick) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+        child: Wrap(
+          spacing: DS.s8,
+          runSpacing: DS.s8,
+          children: [
+            for (final MapEntry(:key, :value) in options.entries)
+              _Chip(
+                label: value,
+                selected: key == current,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  pick(key);
+                },
+              ),
+          ],
+        ),
+      );
+      final pct = (look.opacity * 100).round();
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
+            child: SheetHeader(title: 'Chip look', subtitle: 'Changes show on the chips above'),
+          ),
+          label('Colour'),
+          choices(ChipLook.tones, look.tone, (t) => set((l) => l.copyWith(tone: t, opacity: ChipLook.defaultOpacity(t)))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text('Opacity', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                ),
+                Text(pct >= 100 ? 'Solid' : '$pct%', style: DS.rowSub),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.blur_on_rounded, size: 18, color: DS.inkMuted),
+                Expanded(
+                  child: Slider(
+                    value: look.opacity,
+                    min: .1,
+                    max: 1,
+                    divisions: 18, // 5% steps
+                    label: '$pct%',
+                    activeColor: DS.ink,
+                    inactiveColor: DS.cardMuted,
+                    thumbColor: DS.ink,
+                    onChanged: (x) {
+                      if ((x - look.opacity).abs() > .01) HapticFeedback.selectionClick();
+                      set((l) => l.copyWith(opacity: x));
+                    },
+                  ),
+                ),
+                Icon(Icons.circle, size: 18, color: DS.inkMuted),
+              ],
+            ),
+          ),
+          label('Shape'),
+          choices(ChipLook.shapes, look.shape, (v) => set((l) => l.copyWith(shape: v))),
+          label('Size'),
+          choices(ChipLook.sizes, look.size, (v) => set((l) => l.copyWith(size: v))),
+          label('Show'),
+          choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
+          _Group(null, [
+            _SwitchRow(Icons.crop_square_rounded, 'Outline', 'Thin edge around each chip', look.outline, (v) => set((l) => l.copyWith(outline: v))),
+            _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () {
+              HapticFeedback.lightImpact();
+              set((_) => const ChipLook());
+            }),
+          ]),
+          const SizedBox(height: DS.s8),
+        ],
+      );
+    },
+  ),
+);
 
 /// Every app widget on the phone, grouped by app. Tap one to add it as a top page.
 Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) {

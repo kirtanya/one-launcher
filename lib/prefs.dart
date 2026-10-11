@@ -155,7 +155,9 @@ class Prefs extends ChangeNotifier {
   /// How the quick-action chips look (colour, opacity, shape, size, content, outline) — see ChipLook.
   Map get chipLook => _json('chipLook');
   Future<void> setChipLook(Map<String, Object> look) async {
-    await _sp.setString('chipLook', jsonEncode(look));
+    final saving = _sp.setString('chipLook', jsonEncode(look)); // memory updates at once
+    _parsed.remove('chipLook'); // so a quick second change builds on this one
+    await saving;
     notifyListeners();
   }
 
