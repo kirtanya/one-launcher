@@ -403,6 +403,14 @@ class Prefs extends ChangeNotifier {
     return _setList('hidden', list);
   }
 
+  /// Scroll-to-open: the folder that settles in the middle of the app list opens by itself
+  /// (and the one before closes). Off by default.
+  bool get autoOpenFolders => _sp.getBool('autoOpenFolders') ?? false;
+  Future<void> setAutoOpenFolders(bool v) async {
+    await _sp.setBool('autoOpenFolders', v);
+    notifyListeners();
+  }
+
   Future<void> setAutoOpenSingleMatch(bool v) async {
     await _sp.setBool('autoOpenSingleMatch', v);
     notifyListeners();

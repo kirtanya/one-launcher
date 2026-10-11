@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -139,7 +140,15 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   double _glideFrom = 0;
 
   @override
+  void initState() {
+    super.initState();
+    widget.expanded.addListener(_trackFull);
+    _trackFull();
+  }
+
+  @override
   void dispose() {
+    widget.expanded.removeListener(_trackFull);
     _glide.dispose();
     super.dispose();
   }
@@ -194,8 +203,79 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     widget.scroll.position.jumpTo(_glideFrom + (target - _glideFrom) * t);
   }
 
+  // ---- Scroll-to-open (Settings → Open folders as you scroll) --------------------
+
+  /// Folder ids in list order (from the last build).
+  List<String> _folderIds = const [];
+
+  /// The user moved the list since the last time it came to rest.
+  bool _userMoved = false;
+
+  /// The scroll began with the sheet already full screen (swiping the sheet itself up doesn't
+  /// count: that's opening the drawer, not browsing folders).
+  bool _startedFull = false;
+
+  /// When the sheet last reached full screen. A fling that opens the drawer carries on into
+  /// the list for a moment — that momentum is still "opening", not browsing.
+  Duration? _fullSince; // frame clock
+  void _trackFull() {
+    final full = widget.expanded.value > .98;
+    if (full && _fullSince == null) _fullSince = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+    if (!full) _fullSince = null;
+  }
+
+  /// When the user's scroll comes to rest (finger lifted, fling finished), open the folder at
+  /// the middle of the list and close the other — the same glide as tapping it. Not mid-drag:
+  /// folders resizing under the finger would make the list jump.
+  bool _onScrollEnd(ScrollEndNotification n) {
+    if (n.metrics.axis != Axis.vertical || n.depth != 0 || !_userMoved) return false;
+    _userMoved = false;
+    if (!_startedFull) return false;
+    if (!widget.prefs.autoOpenFolders || widget.searching || widget.expanded.value < .98) return false;
+    // Measure after this frame's layout; the list is at rest, so ask for that frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_glide.isAnimating) _focusMiddle();
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+    return false;
+  }
+
+  void _focusMiddle() {
+    if (!widget.scroll.hasClients || _folderIds.isEmpty) return;
+    final pos = widget.scroll.position;
+    final pad = MediaQuery.paddingOf(context);
+    final inset = DS.gutter + pad.top; // pinned spacer at the top
+    final visible = pos.viewportDimension - inset - (pad.bottom + SearchDock.height + DS.s24); // above the dock
+    // The focus line sits in the middle of what's visible. Near either end the list can't bring
+    // a folder to the middle (the last folders never get there), so the line slides toward that
+    // end instead: at the very bottom it reaches the last folder, at the very top the green card.
+    var line = inset + visible / 2;
+    line += math.max(0, visible / 2 - (pos.maxScrollExtent - pos.pixels));
+    line -= math.max(0, visible / 2 - (pos.pixels - pos.minScrollExtent));
+    final at = pos.pixels + line; // in list coordinates
+
+    String? pick; // null = above the first folder (the green card): close any open one
+    for (final id in _folderIds) {
+      final marker = _markerKeys[id]?.currentContext?.findRenderObject();
+      final body = _bodyKeys[id]?.currentContext?.findRenderObject() as RenderBox?;
+      if (marker == null || body == null || !marker.attached) continue;
+      final top = RenderAbstractViewport.of(marker).getOffsetToReveal(marker, 0).offset; // gap above the folder
+      if (at < top) break;
+      pick = id; // at or below this folder's top: it, unless a later folder starts above the line
+      if (at < top + DS.stack + _headerExtent + body.size.height) break;
+    }
+    if (pick == _openId) return;
+    if (pick == null) {
+      HapticFeedback.selectionClick();
+      setState(() => _openId = null);
+    } else {
+      _toggle(pick); // opens it, closes the other, glides it to the middle
+    }
+  }
+
   /// A finger on the list takes over from the glide.
   bool _onScrollStart(ScrollStartNotification n) {
+    if (n.depth == 0) _userMoved = false; // a new scroll: decide afresh where it started
     if (n.dragDetails != null && _glide.isAnimating) _glide.stop();
     return false;
   }
@@ -211,7 +291,12 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     // Only scrolling the user does (a drag, or the fling after it) moves the search bar.
     // The folder glide and other scrolls the app makes itself must leave it alone.
     final byUser = _handoff || (widget.scroll.hasClients && widget.scroll.position.userScrollDirection != ScrollDirection.idle);
-    if (_glide.isAnimating || !byUser) return false;
+    if (_glide.isAnimating) return false;
+    // Scroll-to-open counts every movement but the glide — including a fling handed on from
+    // an open folder's grid, which reaches the list as a plain (not user-marked) scroll.
+    if (!_userMoved) _startedFull = _fullSince != null && SchedulerBinding.instance.currentSystemFrameTimeStamp - _fullSince! > const Duration(milliseconds: 250); // first move of this scroll
+    _userMoved = true;
+    if (!byUser) return false;
     if (n.metrics.pixels <= 0) {
       widget.onCompact(false);
     } else if (d > 2) {
@@ -232,6 +317,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final statusBar = padding.top;
     final prefs = widget.prefs;
     final (apps, groups, top) = _derived();
+    _folderIds = [for (final (f, _) in groups) f.id];
     final pinned = prefs.favourites.toSet();
 
     // The green hero card IS the Most used folder: always first, always open.
@@ -337,31 +423,34 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       clipBehavior: Clip.antiAlias,
       child: NotificationListener<ScrollStartNotification>(
         onNotification: _onScrollStart,
-        child: NotificationListener<ScrollUpdateNotification>(
-          onNotification: _onScroll,
-          child: CustomScrollView(
-            controller: widget.scroll,
-            physics: const ClampingScrollPhysics(),
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            slivers: [
-              // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
-              // reaches full screen, and pinned folder headers stop just below it. Only this
-              // spacer follows the sheet's drag, so the cards don't rebuild every frame.
-              PinnedHeaderSliver(
-                child: ValueListenableBuilder<double>(
-                  valueListenable: widget.expanded,
-                  builder: (context, e, _) => SizedBox(
-                    height: DS.gutter + statusBar * e,
-                    child: ColoredBox(color: DS.canvas),
+        child: NotificationListener<ScrollEndNotification>(
+          onNotification: _onScrollEnd,
+          child: NotificationListener<ScrollUpdateNotification>(
+            onNotification: _onScroll,
+            child: CustomScrollView(
+              controller: widget.scroll,
+              physics: const ClampingScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              slivers: [
+                // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
+                // reaches full screen, and pinned folder headers stop just below it. Only this
+                // spacer follows the sheet's drag, so the cards don't rebuild every frame.
+                PinnedHeaderSliver(
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: widget.expanded,
+                    builder: (context, e, _) => SizedBox(
+                      height: DS.gutter + statusBar * e,
+                      child: ColoredBox(color: DS.canvas),
+                    ),
                   ),
                 ),
-              ),
-              ...content,
-              // Room for the floating search dock (and the keyboard while searching).
-              SliverToBoxAdapter(
-                child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + SearchDock.height + DS.s32)),
-              ),
-            ],
+                ...content,
+                // Room for the floating search dock (and the keyboard while searching).
+                SliverToBoxAdapter(
+                  child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + SearchDock.height + DS.s32)),
+                ),
+              ],
+            ),
           ),
         ),
       ),

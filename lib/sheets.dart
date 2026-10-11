@@ -1253,6 +1253,13 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ]),
             _Group('Apps & search', [
               _SwitchRow(
+                Icons.unfold_more_rounded,
+                'Open folders as you scroll',
+                'The folder that stops in the middle opens',
+                prefs.autoOpenFolders,
+                prefs.setAutoOpenFolders,
+              ),
+              _SwitchRow(
                 Icons.search_rounded,
                 'Open the only match',
                 'When search finds just one app',
