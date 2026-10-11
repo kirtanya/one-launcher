@@ -93,7 +93,7 @@ Future<void> showCustomiseFolder(
     context,
     header: SheetHeader(
       title: 'Customise',
-      subtitle: prefs.folderName(folder),
+      subtitle: isMostUsed ? 'Pinned & most used' : prefs.folderName(folder),
       leading: Container(
         width: 48,
         height: 48,
@@ -102,14 +102,16 @@ Future<void> showCustomiseFolder(
       ),
     ),
     actions: [
-      SheetAction(Icons.edit_outlined, 'Rename', () => then(() => showRenameFolder(context, prefs: prefs, folder: folder))),
       if (!isMostUsed) ...[
+        SheetAction(Icons.edit_outlined, 'Rename', () => then(() => showRenameFolder(context, prefs: prefs, folder: folder))),
         SheetAction(Icons.checklist_rounded, 'Choose apps', () => then(() => showChooseApps(context, prefs: prefs, folder: folder, allApps: allApps))),
         SheetAction(Icons.arrow_upward_rounded, 'Move up', () => then(() => move(-1)), enabled: i > 0),
         SheetAction(Icons.arrow_downward_rounded, 'Move down', () => then(() => move(1)), enabled: i >= 0 && i < visibleOrder.length - 1),
         SheetAction(Icons.restart_alt_rounded, 'Reset folder', () => then(() => prefs.resetFolder(folder.id)), danger: true),
-      ] else
-        SheetAction(Icons.history_rounded, 'Clear history', () => then(prefs.clearLaunches), danger: true),
+      ] else ...[
+        if (prefs.favourites.isNotEmpty) SheetAction(Icons.push_pin_outlined, 'Unpin all', () => then(prefs.unpinAll)),
+        SheetAction(Icons.history_rounded, 'Clear most-used history', () => then(prefs.clearLaunches), danger: true),
+      ],
     ],
   );
 }

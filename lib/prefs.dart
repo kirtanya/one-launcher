@@ -50,6 +50,8 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> unpinAll() => _setList('favourites', []);
+
   Future<void> clearLaunches() async {
     await _sp.remove('launchCounts');
     notifyListeners();

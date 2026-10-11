@@ -73,6 +73,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         query: _query.text,
         onLaunch: _launch,
         onCompact: _setCompact,
+        onWantFull: _expand,
+        onDismissSearch: _dismissSearch,
       ),
     ),
   );
@@ -157,6 +159,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _onSubmit(String q) {
     final r = searchApps(_apps, q);
     if (r.isNotEmpty) _launch(r.first);
+  }
+
+  bool _collapseOnRelease = false;
+
+  /// Pulled down while searching: close the keyboard and results now, and drop the
+  /// sheet back to the clock once the finger lifts (so we don't fight the drag).
+  void _dismissSearch() {
+    if (!_searching) return;
+    _stopSearch();
+    _collapseOnRelease = true;
   }
 
   void _setCompact(bool v) {
@@ -248,7 +260,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
 
                 // ---- Bottom half: the app view sheet. ----
-                _sheetWidget,
+                NotificationListener<ScrollEndNotification>(
+                  onNotification: (_) {
+                    if (_collapseOnRelease) {
+                      _collapseOnRelease = false;
+                      _collapse();
+                    }
+                    return false;
+                  },
+                  child: NotificationListener<DraggableScrollableNotification>(
+                    // Dragging the whole sheet down while searching also ends the search.
+                    onNotification: (n) {
+                      if (_showResults && n.extent < 0.97) _dismissSearch();
+                      return false;
+                    },
+                    child: _sheetWidget,
+                  ),
+                ),
 
                 // ---- Fade under the dock, so it reads as floating above the cards. ----
                 Positioned(

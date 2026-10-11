@@ -60,13 +60,17 @@ void main() {
     await tester.pumpAndSettle();
     final clock = find.byType(FittedBox).first;
     expect(clock.hitTestable(), findsOneWidget);
-    expect(find.text('Most used'), findsOneWidget, reason: 'green card is the Most used folder');
+    expect(find.text('Most used'), findsNothing, reason: 'green card has no header now');
     expect(find.text('Figma'), findsOneWidget, reason: 'most-used app shows in it');
+    // Pinned first: WhatsApp & Slack (pinned) come before Figma (most used), with pin badges.
+    expect(tester.getTopLeft(find.text('WhatsApp').first).dx, lessThan(tester.getTopLeft(find.text('Figma')).dx));
+    expect(find.byIcon(Icons.push_pin), findsNWidgets(2));
+    expect(find.byTooltip('Customise pinned & most used'), findsOneWidget);
     expect(find.text('Search 20 apps'), findsOneWidget, reason: 'dock starts as a full bar');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1_rest.png'));
 
     // Swipe the sheet up to full screen.
-    await tester.fling(find.text('Most used'), const Offset(0, -300), 1500);
+    await tester.fling(find.text('Figma'), const Offset(0, -300), 1500);
     await tester.pumpAndSettle();
     expect(clock.hitTestable(), findsNothing, reason: 'clock hidden when sheet is full');
 
@@ -86,6 +90,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('PhonePe'), findsOneWidget);
     expect(find.text('Gmail'), findsNothing, reason: 'only one folder open at a time');
+    // The opened folder glides to the middle of the screen.
+    final screenMid = tester.view.physicalSize.height / tester.view.devicePixelRatio / 2;
+    final moneyCardMid = (tester.getTopLeft(find.text('Money')).dy + tester.getBottomLeft(find.text('Splitwise')).dy) / 2;
+    expect((moneyCardMid - screenMid).abs(), lessThan(80), reason: 'open folder is centred (mid=$moneyCardMid, screen=$screenMid)');
     expect(find.byTooltip('Customise folder'), findsOneWidget, reason: 'only the open folder shows •••');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/3_one_folder_open.png'));
 
@@ -101,12 +109,18 @@ void main() {
     expect(find.text('Payments'), findsOneWidget);
 
     // Search from the bottom dock.
-    await tester.tap(find.text('Search 20 apps'));
+    await tester.tap(find.byIcon(Icons.search_rounded).last); // dock is the round button here
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'sp');
     await tester.pumpAndSettle();
     expect(find.text('Open'), findsOneWidget);
     expect(find.text('Payments'), findsOneWidget, reason: 'results show the renamed folder');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/5_search.png'));
+
+    // Pull the results down → search closes, keyboard goes, back to the clock.
+    await tester.drag(find.text('Splitwise'), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'search closed');
+    expect(find.byType(FittedBox).first.hitTestable(), findsOneWidget, reason: 'back home with the clock');
   });
 }

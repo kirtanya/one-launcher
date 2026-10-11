@@ -43,12 +43,13 @@ enum CircleTone { ink, soft, outline, onCanvas, glass }
 
 /// 44pt round action with a 48pt tap area.
 class CircleButton extends StatelessWidget {
-  const CircleButton({super.key, required this.icon, required this.onTap, this.tone = CircleTone.ink, this.tooltip, this.turns = 0});
+  const CircleButton({super.key, required this.icon, required this.onTap, this.tone = CircleTone.ink, this.tooltip, this.turns = 0, this.size = DS.circle});
   final IconData icon;
   final VoidCallback onTap;
   final CircleTone tone;
   final String? tooltip;
   final double turns; // rotate the icon (e.g. expand chevron)
+  final double size; // visual diameter; the tap area stays 48
 
   @override
   Widget build(BuildContext context) {
@@ -69,12 +70,12 @@ class CircleButton extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             child: SizedBox.square(
-              dimension: DS.circle,
+              dimension: size,
               child: AnimatedRotation(
                 turns: turns,
                 duration: Motion.snapDuration,
                 curve: Motion.snap,
-                child: Icon(icon, size: 20, color: fg),
+                child: Icon(icon, size: size * 0.45, color: fg),
               ),
             ),
           ),

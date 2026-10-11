@@ -27,6 +27,8 @@ class AppDrawer extends StatefulWidget {
     required this.query,
     required this.onLaunch,
     required this.onCompact,
+    required this.onWantFull,
+    required this.onDismissSearch,
   });
 
   final List<AppEntry> apps;
@@ -37,6 +39,8 @@ class AppDrawer extends StatefulWidget {
   final String query;
   final ValueChanged<AppEntry> onLaunch;
   final ValueChanged<bool> onCompact; // list scrolled up (true) or back down (false)
+  final VoidCallback onWantFull; // expand the sheet to full screen
+  final VoidCallback onDismissSearch; // user pulled down while searching
 
   @override
   State<AppDrawer> createState() => AppDrawerState();
@@ -63,10 +67,16 @@ class AppDrawerState extends State<AppDrawer> {
     return [for (final p in widget.prefs.favourites) ?byPkg[p]];
   }
 
-  List<AppEntry> _mostUsed(List<AppEntry> apps) {
+  /// Pinned apps first (in pin order), then the most-opened ones, up to 8.
+  List<AppEntry> _pinnedAndMostUsed(List<AppEntry> apps) {
     final byPkg = {for (final a in apps) a.package: a};
+    final list = _pinned(apps);
     final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
-    return [for (final e in used.take(_mostUsedCount)) byPkg[e.key]!];
+    for (final e in used) {
+      if (list.length >= _mostUsedCount) break;
+      if (!list.contains(byPkg[e.key])) list.add(byPkg[e.key]!);
+    }
+    return list;
   }
 
   // ---- Actions -------------------------------------------------------------
@@ -77,15 +87,33 @@ class AppDrawerState extends State<AppDrawer> {
     showAppSheet(context, prefs: widget.prefs, app: app);
   }
 
-  /// Accordion: opening one folder closes the other.
+  final _folderKeys = <String, GlobalKey>{};
+  GlobalKey _keyFor(String id) => _folderKeys.putIfAbsent(id, GlobalKey.new);
+
+  /// Accordion: opening one folder closes the other, then the opened folder glides to the
+  /// middle of the screen (expanding the sheet first if it's at half height).
   void _toggle(String id) {
     HapticFeedback.selectionClick();
-    setState(() => _openId = _openId == id ? null : id);
+    final opening = _openId != id;
+    setState(() => _openId = opening ? id : null);
+    if (!opening) return;
+    widget.onWantFull();
+    // Wait for the open/close sizes to settle so the centre is measured on the final layout.
+    Future.delayed(Motion.snapDuration, () {
+      final ctx = _folderKeys[id]?.currentContext;
+      if (!mounted || ctx == null || !ctx.mounted || _openId != id) return;
+      Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Motion.snapDuration, curve: Motion.settle);
+    });
   }
 
   bool _onScroll(ScrollUpdateNotification n) {
     if (n.metrics.axis != Axis.vertical) return false;
     final d = n.scrollDelta ?? 0;
+    // Pulling the results down while searching = done searching.
+    if (widget.searching && n.dragDetails != null && d < -2) {
+      widget.onDismissSearch();
+      return false;
+    }
     if (n.metrics.pixels <= 0) {
       widget.onCompact(false);
     } else if (d > 2) {
@@ -107,13 +135,13 @@ class AppDrawerState extends State<AppDrawer> {
     final prefs = widget.prefs;
     final apps = _visible;
     final groups = groupApps(apps, prefs.folderOverrides, order: prefs.folderOrder);
-    final used = _mostUsed(apps);
+    final top = _pinnedAndMostUsed(apps);
+    final pinned = prefs.favourites.toSet();
 
     // The green hero card IS the Most used folder: always first, always open.
     final hero = _HeroCard(
-      name: prefs.folderName(mostUsed),
-      used: used,
-      pinned: _pinned(apps),
+      apps: top,
+      pinned: pinned,
       onCustomise: () => showCustomiseFolder(context, prefs: prefs, folder: mostUsed, allApps: widget.apps),
       onLaunch: widget.onLaunch,
       onLongPress: _longPress,
@@ -134,7 +162,7 @@ class AppDrawerState extends State<AppDrawer> {
         hero,
         for (final (i, (folder, list)) in groups.indexed)
           _FolderCard(
-            key: ValueKey('folder-${folder.id}'),
+            key: _keyFor(folder.id),
             folder: folder,
             name: prefs.folderName(folder),
             apps: list,
@@ -207,35 +235,27 @@ class AppDrawerState extends State<AppDrawer> {
 
 // ---- Cards ------------------------------------------------------------------
 
+/// The green card: pinned apps first, then the most used. No header; a small menu sits at the bottom.
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({required this.name, required this.used, required this.pinned, required this.onCustomise, required this.onLaunch, required this.onLongPress});
+  const _HeroCard({required this.apps, required this.pinned, required this.onCustomise, required this.onLaunch, required this.onLongPress});
 
-  final String name;
-  final List<AppEntry> used, pinned;
+  final List<AppEntry> apps;
+  final Set<String> pinned; // package ids
   final VoidCallback onCustomise;
   final ValueChanged<AppEntry> onLaunch, onLongPress;
 
   @override
   Widget build(BuildContext context) {
-    final tag = DS.meta.copyWith(color: DS.heroMuted, fontSize: 15);
     return OneCard(
       tone: CardTone.hero,
-      padding: const EdgeInsets.fromLTRB(DS.s12, DS.s8, DS.s8, DS.s4),
+      padding: const EdgeInsets.fromLTRB(DS.s12, DS.s16, DS.s12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const SizedBox(width: DS.s8),
-              MetaRow(icon: mostUsed.icon, text: name, color: DS.heroMuted),
-              const Spacer(),
-              CircleButton(icon: Icons.more_horiz_rounded, tone: CircleTone.soft, tooltip: 'Customise $name', onTap: onCustomise),
-            ],
-          ),
-          if (used.isEmpty)
+          if (apps.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s12, DS.s16),
-              child: Text('Apps you open most will gather here', style: DS.display),
+              padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s12, 0),
+              child: Text('Pin apps or open a few, they’ll gather here', style: DS.display),
             )
           else
             LayoutBuilder(
@@ -243,51 +263,28 @@ class _HeroCard extends StatelessWidget {
                 final w = c.maxWidth / 4;
                 return Wrap(
                   children: [
-                    for (final (i, a) in used.indexed)
+                    for (final (i, a) in apps.indexed)
                       SizedBox(
                         width: w,
                         child: PopIn(
                           delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-                          child: _GridApp(app: a, labelColor: DS.heroInk, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                          child: _GridApp(
+                            app: a,
+                            labelColor: DS.heroInk,
+                            pinned: pinned.contains(a.package),
+                            onTap: () => onLaunch(a),
+                            onLongPress: () => onLongPress(a),
+                          ),
                         ),
                       ),
                   ],
                 );
               },
             ),
-          const SizedBox(height: DS.s8),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: DS.s8),
-            child: CardDivider(color: DS.heroDivider),
-          ),
-          // Pinned apps as tags. Tap to open.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: DS.s8),
-            child: Wrap(
-              spacing: DS.s16,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: DS.tap),
-                  child: const Icon(Icons.push_pin_outlined, size: 18, color: DS.heroMuted),
-                ),
-                if (pinned.isEmpty)
-                  Text('Long-press any app to pin it here', style: tag)
-                else
-                  for (final a in pinned)
-                    Pressable(
-                      scale: 0.92,
-                      child: InkWell(
-                        onTap: () => onLaunch(a),
-                        borderRadius: BorderRadius.circular(8),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: DS.tap),
-                          child: Align(widthFactor: 1, child: Text('#${a.label.toLowerCase().replaceAll(' ', '')}', style: tag)),
-                        ),
-                      ),
-                    ),
-              ],
-            ),
+          // Small menu, bottom-right.
+          Align(
+            alignment: Alignment.centerRight,
+            child: CircleButton(icon: Icons.more_horiz_rounded, tone: CircleTone.soft, size: 32, tooltip: 'Customise pinned & most used', onTap: onCustomise),
           ),
         ],
       ),
@@ -429,9 +426,10 @@ class _FolderCard extends StatelessWidget {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor = DS.ink});
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor = DS.ink, this.pinned = false});
   final AppEntry app;
   final Color labelColor;
+  final bool pinned;
   final VoidCallback onTap, onLongPress;
 
   @override
@@ -446,7 +444,28 @@ class _GridApp extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: DS.s8, horizontal: DS.s4),
           child: Column(
             children: [
-              AppIcon(app, size: DS.appIcon),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AppIcon(app, size: DS.appIcon),
+                  // Small ink pin badge on pinned apps.
+                  if (pinned)
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: DS.ink,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: DS.hero, width: 2),
+                        ),
+                        child: const Icon(Icons.push_pin, size: 11, color: DS.card),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 6),
               Text(
                 app.label,
