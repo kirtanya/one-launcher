@@ -8,6 +8,8 @@ import 'apps.dart';
 import 'prefs.dart';
 import 'search.dart';
 import 'search_dock.dart';
+import 'top/pages.dart';
+import 'top/top_carousel.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -45,6 +47,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Bumped on every setState so the sheet's contents rebuild without rebuilding the sheet.
   final _rev = ValueNotifier<int>(0);
+
+  /// Pinged when the launcher comes back to the front or a permission changes, so the
+  /// top pages (screen time, battery, calendar) reload.
+  final _refresh = ValueNotifier<int>(0);
 
   @override
   void setState(VoidCallback fn) {
@@ -86,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     prefs.addListener(_rebuild);
     Apps.instance.onAppsChanged = _loadApps;
     Apps.instance.onHomePressed = _goHome;
+    Apps.instance.onPermissionsChanged = () => _refresh.value++;
     _sheet.addListener(() => _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0));
     _loadApps();
   }
@@ -99,12 +106,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _focus.dispose();
     _expanded.dispose();
     _rev.dispose();
+    _refresh.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadApps();
+    if (state == AppLifecycleState.resumed) {
+      _loadApps();
+      _refresh.value++;
+    }
   }
 
   void _rebuild() => setState(() {});
@@ -249,9 +260,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     child: _TopArea(
+                      carousel: TopCarousel(prefs: prefs, refresh: _refresh, onTapClock: () => _openNamed(['clock'])),
+                      onCustomise: () {
+                        HapticFeedback.mediumImpact();
+                        showCustomiseTop(context, prefs: prefs);
+                      },
                       onSwipeUp: _expand,
                       onSwipeDown: Apps.instance.openNotifications,
-                      onTapClock: () => _openNamed(['clock']),
                       onTapDate: () => _openNamed(['calendar', 'google calendar']),
                       onWallpaper: Apps.instance.openWallpaperPicker,
                       onSettings: _settings,
@@ -323,15 +338,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
 class _TopArea extends StatelessWidget {
   const _TopArea({
+    required this.carousel,
     required this.onSwipeUp,
     required this.onSwipeDown,
-    required this.onTapClock,
     required this.onTapDate,
     required this.onWallpaper,
     required this.onSettings,
+    required this.onCustomise,
   });
 
-  final VoidCallback onSwipeUp, onSwipeDown, onTapClock, onTapDate, onWallpaper, onSettings;
+  final Widget carousel;
+  final VoidCallback onSwipeUp, onSwipeDown, onTapDate, onWallpaper, onSettings, onCustomise;
 
   @override
   Widget build(BuildContext context) {
@@ -342,7 +359,7 @@ class _TopArea extends StatelessWidget {
         if (v < -200) onSwipeUp();
         if (v > 200) onSwipeDown();
       },
-      onLongPress: onSettings,
+      onLongPress: onCustomise, // long-press the top half → choose its pages
       child: DecoratedBox(
         // Gentle dark wash at the top so the status bar and buttons read on bright wallpapers.
         decoration: const BoxDecoration(
@@ -370,63 +387,11 @@ class _TopArea extends StatelessWidget {
                     CircleButton(icon: Icons.tune_rounded, tone: CircleTone.glass, tooltip: 'Launcher settings', onTap: onSettings),
                   ],
                 ),
-                Expanded(
-                  child: GestureDetector(
-                    onTap: onTapClock,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: DS.s8),
-                      child: _Clock(),
-                    ),
-                  ),
-                ),
+                Expanded(child: carousel),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Ticks once a minute (checks every second so it flips on time).
-mixin _Ticking<W extends StatefulWidget> on State<W> {
-  DateTime now = DateTime.now();
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final n = DateTime.now();
-      if (n.minute != now.minute) setState(() => now = n);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-}
-
-class _Clock extends StatefulWidget {
-  @override
-  State<_Clock> createState() => _ClockState();
-}
-
-class _ClockState extends State<_Clock> with _Ticking {
-  @override
-  Widget build(BuildContext context) {
-    final is24 = MediaQuery.alwaysUse24HourFormatOf(context);
-    final h = is24 ? now.hour : (now.hour % 12 == 0 ? 12 : now.hour % 12);
-    final time = '${h.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    return Semantics(
-      label: 'Time $time. Opens Clock',
-      button: true,
-      excludeSemantics: true,
-      child: FittedBox(
-        fit: BoxFit.contain,
-        child: Text(time, style: DS.clock),
       ),
     );
   }
@@ -437,7 +402,7 @@ class _Date extends StatefulWidget {
   State<_Date> createState() => _DateState();
 }
 
-class _DateState extends State<_Date> with _Ticking {
+class _DateState extends State<_Date> with Ticking {
   static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'apps.dart';
 import 'folders.dart';
 import 'prefs.dart';
+import 'top/top_widgets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
@@ -257,6 +258,90 @@ Future<void> showChooseApps(BuildContext context, {required Prefs prefs, require
   );
 }
 
+/// Choose and order the pages of the swipeable top half.
+Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => ListenableBuilder(
+      listenable: prefs,
+      builder: (ctx, _) {
+        final order = prefs.topOrder;
+        final on = prefs.topEnabled;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+              child: SheetHeader(title: 'Top widgets', subtitle: 'Swipe the clock sideways · drag to reorder'),
+            ),
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: order.length,
+              onReorderItem: (from, to) {
+                final list = [...order];
+                list.insert(to, list.removeAt(from));
+                prefs.setTopOrder(list);
+              },
+              proxyDecorator: (child, _, _) => Material(color: DS.card, elevation: 6, borderRadius: BorderRadius.circular(DS.rMedia), child: child),
+              itemBuilder: (ctx, i) {
+                final w = topWidgets[order[i]]!;
+                final enabled = on.contains(w.id);
+                final last = enabled && on.length == 1; // keep at least one page
+                return Padding(
+                  key: ValueKey(w.id),
+                  padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s16, 0),
+                  child: Row(
+                    children: [
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: const SizedBox.square(
+                          dimension: DS.tap,
+                          child: Icon(Icons.drag_indicator_rounded, color: DS.inkFaint),
+                        ),
+                      ),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(color: enabled ? DS.ink : DS.cardMuted, shape: BoxShape.circle),
+                        child: Icon(w.icon, size: 20, color: enabled ? DS.card : DS.inkMuted),
+                      ),
+                      const SizedBox(width: DS.s16),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: DS.s12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(w.name, style: DS.rowTitle),
+                              Text(w.description, style: DS.rowSub.copyWith(fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Switch(
+                        value: enabled,
+                        activeThumbColor: DS.card,
+                        activeTrackColor: DS.ink,
+                        inactiveThumbColor: DS.inkFaint,
+                        inactiveTrackColor: DS.cardMuted,
+                        onChanged: last ? null : (v) => prefs.setTopEnabled(w.id, v),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: DS.s8),
+          ],
+        );
+      },
+    ),
+  );
+}
+
 /// Long-press empty space on the home screen, or the settings button in the app view.
 Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) {
   return showOneSheetWith(
@@ -271,13 +356,17 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'One Launcher', subtitle: 'Long-press the clock to come back here'),
+              child: SheetHeader(title: 'One Launcher', subtitle: 'Settings for your launcher'),
             ),
             _Toggle('Open app when search finds only one', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: DS.s8),
               child: CardDivider(),
             ),
+            _Row(Icons.view_carousel_outlined, 'Top widgets', () {
+              Navigator.pop(ctx);
+              showCustomiseTop(context, prefs: prefs);
+            }),
             _Row(Icons.wallpaper_rounded, 'Change wallpaper', () {
               Navigator.pop(ctx);
               Apps.instance.openWallpaperPicker();

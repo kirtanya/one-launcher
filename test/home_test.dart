@@ -48,6 +48,18 @@ void main() {
             },
         ];
       }
+      if (call.method == 'getScreenTime') {
+        return {
+          'granted': true,
+          'total': 13920000,
+          'top': [
+            {'package': 'com.whatsapp', 'label': 'WhatsApp', 'ms': 4200000},
+            {'package': 'com.google.android.youtube', 'label': 'YouTube', 'ms': 3100000},
+            {'package': 'com.Slack', 'label': 'Slack', 'ms': 1800000},
+          ],
+        };
+      }
+      if (call.method == 'getBattery') return {'level': 64, 'charging': true, 'full': false, 'chargeMsLeft': 2700000};
       return null;
     });
     SharedPreferences.setMockInitialValues({
@@ -68,6 +80,27 @@ void main() {
     expect(find.byTooltip('Customise pinned & most used'), findsOneWidget);
     expect(find.text('Search 20 apps'), findsOneWidget, reason: 'dock starts as a full bar');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1_rest.png'));
+
+    // Top carousel: swipe left on the clock → Screen time.
+    await tester.fling(clock, const Offset(-250, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('Screen time today'), findsOneWidget);
+    expect(find.text('3h 52m'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1b_screen_time.png'));
+
+    // Long-press the top half → choose its pages; switch Battery on.
+    await tester.longPress(find.text('Screen time today'));
+    await tester.pumpAndSettle();
+    expect(find.text('Top widgets'), findsOneWidget);
+    await tester.tap(find.byType(Switch).at(2));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c_customise_top.png'));
+    Navigator.of(tester.element(find.text('Top widgets'))).pop();
+    await tester.pumpAndSettle();
+    await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('64%'), findsOneWidget, reason: 'battery page added after screen time');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1d_battery.png'));
 
     // Swipe the sheet up to full screen.
     await tester.fling(find.text('Figma'), const Offset(0, -300), 1500);

@@ -1,6 +1,15 @@
 package com.kirtanya.one_launcher
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AppOpsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
+import android.content.ContentUris
+import android.content.pm.PackageManager
+import android.os.BatteryManager
+import android.provider.CalendarContract
+import java.util.Calendar
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -33,6 +42,10 @@ import java.util.concurrent.Executors
  * or when apps are installed / removed.
  */
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val CALENDAR_REQUEST = 7
+    }
+
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -92,6 +105,35 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "openNotifications" -> result.success(expandNotifications())
+                // ---- Top carousel widgets ----
+                "getScreenTime" -> worker.execute {
+                    val data = screenTime()
+                    main.post { result.success(data) }
+                }
+                "openUsageAccess" -> {
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(true)
+                }
+                "openScreenTime" -> result.success(openScreenTime())
+                "getBattery" -> result.success(battery())
+                "openBatterySettings" -> {
+                    startActivity(Intent(Intent.ACTION_POWER_USAGE_SUMMARY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(true)
+                }
+                "getNextEvent" -> worker.execute {
+                    val data = nextEvent()
+                    main.post { result.success(data) }
+                }
+                "requestCalendar" -> {
+                    requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR), CALENDAR_REQUEST)
+                    result.success(true)
+                }
+                "openEvent" -> {
+                    val id = (call.argument<Number>("id"))!!.toLong()
+                    startActivity(Intent(Intent.ACTION_VIEW, ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(true)
+                }
                 "openWallpaperPicker" -> {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
                     result.success(true)
@@ -222,6 +264,112 @@ class MainActivity : FlutterActivity() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
         return true
+    }
+
+    // ---- Top carousel: screen time, battery, next event ----------------------
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CALENDAR_REQUEST && ::channel.isInitialized) channel.invokeMethod("permissionsChanged", null)
+    }
+
+    private fun hasUsageAccess(): Boolean {
+        val ops = getSystemService(AppOpsManager::class.java)
+        val mode = if (Build.VERSION.SDK_INT >= 29) {
+            ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } else {
+            @Suppress("DEPRECATION") ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /** Today's foreground time per app (from midnight), worked out from resume/pause events. */
+    private fun screenTime(): Map<String, Any> {
+        if (!hasUsageAccess()) return mapOf("granted" to false)
+        val usm = getSystemService(UsageStatsManager::class.java)
+        val start = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val now = System.currentTimeMillis()
+        // Launchers (incl. this one) and the system UI aren't "screen time".
+        val homes = packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+            .map { it.activityInfo.packageName }.toSet() + setOf(packageName, "com.android.systemui")
+        val totals = HashMap<String, Long>()
+        val resumedAt = HashMap<String, Long>()
+        val events = usm.queryEvents(start, now)
+        val e = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            val pkg = e.packageName ?: continue
+            when (e.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> resumedAt.putIfAbsent(pkg, e.timeStamp)
+                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> resumedAt.remove(pkg)?.let {
+                    totals[pkg] = (totals[pkg] ?: 0L) + (e.timeStamp - it)
+                }
+            }
+        }
+        resumedAt.forEach { (pkg, t) -> totals[pkg] = (totals[pkg] ?: 0L) + (now - t) }
+        val counted = totals.filterKeys { it !in homes }.filterValues { it > 0 }
+        val top = counted.entries.sortedByDescending { it.value }.take(3).map {
+            val label = try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(it.key, 0)).toString() } catch (x: Exception) { it.key }
+            mapOf("package" to it.key, "label" to label, "ms" to it.value)
+        }
+        return mapOf("granted" to true, "total" to counted.values.sum(), "top" to top)
+    }
+
+    private fun openScreenTime(): Boolean = try {
+        startActivity(Intent().setClassName("com.google.android.apps.wellbeing", "com.google.android.apps.wellbeing.settings.TopLevelSettingsActivity")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: Exception) {
+        startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        false
+    }
+
+    private fun battery(): Map<String, Any> {
+        val i = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = i?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val status = i?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        val bm = getSystemService(BatteryManager::class.java)
+        val remaining = if (charging && Build.VERSION.SDK_INT >= 28) bm.computeChargeTimeRemaining() else -1L
+        return mapOf(
+            "level" to (if (level >= 0) level * 100 / scale else -1),
+            "charging" to charging,
+            "full" to (status == BatteryManager.BATTERY_STATUS_FULL),
+            "chargeMsLeft" to remaining,
+        )
+    }
+
+    /** The next timed event in the next 2 days (falls back to an all-day one). */
+    private fun nextEvent(): Map<String, Any> {
+        if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) return mapOf("granted" to false)
+        val now = System.currentTimeMillis()
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, now - 86_400_000L)
+            ContentUris.appendId(it, now + 2 * 86_400_000L)
+        }.build()
+        val cols = arrayOf(
+            CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY,
+        )
+        var allDay: Map<String, Any>? = null
+        contentResolver.query(uri, cols, "${CalendarContract.Instances.VISIBLE} = 1 AND ${CalendarContract.Instances.END} > ?", arrayOf(now.toString()),
+            "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
+            while (c.moveToNext()) {
+                val event = mapOf(
+                    "granted" to true,
+                    "id" to c.getLong(0),
+                    "title" to (c.getString(1) ?: "(No title)"),
+                    "begin" to c.getLong(2),
+                    "end" to c.getLong(3),
+                    "allDay" to (c.getInt(4) == 1),
+                )
+                if (c.getInt(4) == 1) { if (allDay == null) allDay = event } else return event
+            }
+        }
+        return allDay ?: mapOf("granted" to true)
     }
 
     @SuppressLint("WrongConstant")

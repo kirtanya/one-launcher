@@ -32,6 +32,7 @@ class Apps {
   final _icons = <String, Future<Uint8List?>>{};
   VoidCallback? onHomePressed;
   VoidCallback? onAppsChanged;
+  VoidCallback? onPermissionsChanged;
 
   void init() {
     if (isDemo) return;
@@ -42,6 +43,8 @@ class Apps {
         case 'appsChanged':
           _icons.clear();
           onAppsChanged?.call();
+        case 'permissionsChanged':
+          onPermissionsChanged?.call();
       }
     });
   }
@@ -78,6 +81,45 @@ class Apps {
   Future<void> openNotifications() => _call('openNotifications');
   Future<void> openWallpaperPicker() => _call('openWallpaperPicker');
   Future<void> openHomeSettings() => _call('openHomeSettings');
+
+  // ---- Top carousel data ----
+
+  /// {granted, total (ms), top: [{package, label, ms}]}
+  Future<Map> screenTime() async {
+    if (isDemo) {
+      return {
+        'granted': true,
+        'total': 13_920_000,
+        'top': [
+          {'package': 'com.whatsapp', 'label': 'WhatsApp', 'ms': 4_200_000},
+          {'package': 'com.google.android.youtube', 'label': 'YouTube', 'ms': 3_100_000},
+          {'package': 'com.Slack', 'label': 'Slack', 'ms': 1_800_000},
+        ],
+      };
+    }
+    return await _ch.invokeMapMethod('getScreenTime') ?? const {};
+  }
+
+  /// {level (0-100), charging, full, chargeMsLeft (-1 = unknown)}
+  Future<Map> battery() async {
+    if (isDemo) return {'level': 64, 'charging': true, 'full': false, 'chargeMsLeft': 2_700_000};
+    return await _ch.invokeMapMethod('getBattery') ?? const {};
+  }
+
+  /// {granted, id?, title?, begin?, end?, allDay?}
+  Future<Map> nextEvent() async {
+    if (isDemo) {
+      final b = DateTime.now().add(const Duration(minutes: 40)).millisecondsSinceEpoch;
+      return {'granted': true, 'id': 1, 'title': 'Design review', 'begin': b, 'end': b + 1_800_000, 'allDay': false};
+    }
+    return await _ch.invokeMapMethod('getNextEvent') ?? const {};
+  }
+
+  Future<void> openUsageAccess() => _call('openUsageAccess');
+  Future<void> openScreenTime() => _call('openScreenTime');
+  Future<void> openBatterySettings() => _call('openBatterySettings');
+  Future<void> requestCalendar() => _call('requestCalendar');
+  Future<void> openEvent(int id) => _call('openEvent', {'id': id});
 
   Future<void> _call(String method, [Map<String, dynamic>? args]) async {
     if (isDemo) return;

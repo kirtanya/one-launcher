@@ -50,6 +50,27 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Top carousel pages, in order, and which are switched on.
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next'];
+  List<String> get topOrder {
+    final saved = _sp.getStringList('topOrder') ?? const [];
+    return [...saved.where(topDefaultOrder.contains), ...topDefaultOrder.where((id) => !saved.contains(id))];
+  }
+
+  Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time']).toSet();
+  List<String> get topPages => [
+    for (final id in topOrder)
+      if (topEnabled.contains(id)) id,
+  ];
+
+  Future<void> setTopOrder(List<String> ids) => _setList('topOrder', ids);
+  Future<void> setTopEnabled(String id, bool on) {
+    final set = topEnabled;
+    on ? set.add(id) : set.remove(id);
+    if (set.isEmpty) return Future.value(); // keep at least one page
+    return _setList('topEnabled', set.toList());
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {
