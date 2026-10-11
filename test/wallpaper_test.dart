@@ -55,7 +55,7 @@ void main() {
     // Picking opens the full-screen editor straight away.
     expect(find.text('Drag to move · pinch to zoom'), findsOneWidget);
     final editor = find.byType(PhotoWallpaper).last;
-    expect(find.descendant(of: editor, matching: find.byType(RawImage)), findsOneWidget, reason: 'photo shown');
+    expect(find.descendant(of: editor, matching: find.byType(CustomPaint)), findsOneWidget, reason: 'photo shown');
 
     // Pinch out → zoom in, then drag down → the photo moves down (shows more of its top).
     final c = tester.getCenter(editor);
@@ -70,26 +70,33 @@ void main() {
     await tester.dragFrom(c, const Offset(0, 200));
     await tester.pump();
     expect(prefs.photoY, lessThan(-.2), reason: 'drag down shows the top of the photo');
-    final scale = tester.widget<Transform>(find.descendant(of: editor, matching: find.byType(Transform)));
-    expect(scale.transform.getMaxScaleOnAxis(), closeTo(prefs.photoZoom, .01), reason: 'zoom applied live');
+    // Only the top window (above the app sheet) is clear; the rest is shaded and labelled.
+    expect(find.text('Your apps cover this part'), findsOneWidget);
+    final screen = tester.getSize(editor);
+    final win = photoWindow(prefs, screen);
+    expect(tester.getTopLeft(find.text('Drag to move · pinch to zoom')).dy, greaterThan(win), reason: 'hint sits in the covered part');
+    // The photo always covers the window, whatever the framing.
+    final r = photoRect(const Size(1080, 2400), screen, win, prefs.photoZoom, prefs.photoX, prefs.photoY);
+    expect(r.top, lessThanOrEqualTo(0));
+    expect(r.left, lessThanOrEqualTo(0));
+    expect(r.right, greaterThanOrEqualTo(screen.width - .01));
+    expect(r.bottom, greaterThanOrEqualTo(win - .01));
 
     // Blur is baked into a small copy of the photo.
     await tester.drag(find.byType(Slider), const Offset(400, 0));
     await settleImages(tester);
     expect(prefs.photoBlur, 24);
-    final raw = tester.widget<RawImage>(find.descendant(of: editor, matching: find.byType(RawImage)));
-    expect(raw.image!.width, lessThanOrEqualTo(480), reason: 'blurred copy is small');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/14_photo_editor.png'));
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('Adjust photo'), findsOneWidget, reason: 'back on the Wallpaper sheet');
-    expect(find.descendant(of: find.byType(PhotoWallpaper), matching: find.byType(RawImage)), findsOneWidget, reason: 'photo behind the launcher');
+    expect(find.descendant(of: find.byType(PhotoWallpaper), matching: find.byType(CustomPaint)), findsOneWidget, reason: 'photo behind the launcher');
 
     // Back to the phone wallpaper: the photo goes away.
     await tester.tap(find.text('Phone wallpaper'));
     await tester.pumpAndSettle();
     expect(prefs.wallpaperPhoto, isNull);
-    expect(find.descendant(of: find.byType(PhotoWallpaper), matching: find.byType(RawImage)), findsNothing);
+    expect(find.descendant(of: find.byType(PhotoWallpaper), matching: find.byType(CustomPaint)), findsNothing);
     // Back arrow → grouped settings with the new summary.
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();

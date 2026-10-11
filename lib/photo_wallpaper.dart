@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,17 @@ import 'prefs.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'ui/photo_file.dart';
+
+/// The part of the screen where the photo is actually seen: the top area above the app sheet.
+double photoWindow(Prefs p, Size screen) => screen.height * p.topShare;
+
+/// Where the photo is drawn: it covers the visible window (full width, [windowH] tall) at
+/// [zoom]; x / y (−1…1) choose which part of the photo fills that window.
+Rect photoRect(Size img, Size screen, double windowH, double zoom, double x, double y) {
+  final s = math.max(screen.width / img.width, windowH / img.height) * zoom;
+  final w = img.width * s, h = img.height * s;
+  return Rect.fromLTWH(-(w - screen.width) * (x + 1) / 2, -(h - windowH) * (y + 1) / 2, w, h);
+}
 
 /// The user's own photo behind the launcher (Settings → Wallpaper → Your photo), framed by
 /// zoom / position / blur. Draws nothing when the phone wallpaper is used.
@@ -131,18 +143,30 @@ class _PhotoWallpaperState extends State<PhotoWallpaper> {
     final img = _blurred ?? _sharp;
     if (_path == null || img == null) return const SizedBox.shrink();
     final p = widget.prefs;
-    final at = Alignment(p.photoX, p.photoY);
-    // Zooming around the chosen spot keeps that part of the photo on screen.
     return RepaintBoundary(
-      child: ClipRect(
-        child: Transform.scale(
-          scale: p.photoZoom,
-          alignment: at,
-          child: RawImage(image: img, fit: BoxFit.cover, alignment: at, filterQuality: FilterQuality.medium, width: double.infinity, height: double.infinity),
-        ),
+      child: CustomPaint(
+        size: Size.infinite,
+        painter: _PhotoPainter(img, Size(_sharp!.width.toDouble(), _sharp!.height.toDouble()), p.topShare, p.photoZoom, p.photoX, p.photoY),
       ),
     );
   }
+}
+
+class _PhotoPainter extends CustomPainter {
+  _PhotoPainter(this.img, this.full, this.share, this.zoom, this.x, this.y);
+  final ui.Image img; // may be the small blurred copy
+  final Size full; // the photo's real shape
+  final double share, zoom, x, y;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF000000)); // under a short photo
+    final dst = photoRect(full, size, size.height * share, zoom, x, y);
+    canvas.drawImageRect(img, Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()), dst, Paint()..filterQuality = FilterQuality.medium);
+  }
+
+  @override
+  bool shouldRepaint(_PhotoPainter o) => o.img != img || o.share != share || o.zoom != zoom || o.x != x || o.y != y;
 }
 
 /// Full-screen photo framing, like setting a lock-screen wallpaper: drag to move, pinch to
@@ -181,12 +205,11 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     final screen = MediaQuery.sizeOf(context);
     final img = PhotoWallpaper.size.value ?? screen;
     final zoom = (_zoom0 * d.scale).clamp(1.0, 3.0);
-    // The photo covers the screen; at zoom z it overflows by (cover·z − screen) on each axis.
-    // Moving the alignment from −1 to 1 slides it across that whole overflow.
-    final cover = img.width / img.height > screen.width / screen.height
-        ? Size(screen.height * img.width / img.height, screen.height)
-        : Size(screen.width, screen.width * img.height / img.width);
-    final over = Size(cover.width * zoom - screen.width, cover.height * zoom - screen.height);
+    // The photo covers the visible window; at zoom z it overflows that window on each axis.
+    // Moving x / y from −1 to 1 slides it across that whole overflow.
+    final win = photoWindow(p, screen);
+    final r = photoRect(img, screen, win, zoom, 0, 0);
+    final over = Size(r.width - screen.width, r.height - win);
     final drag = d.focalPoint - _focal0;
     final x = over.width < 1 ? p.photoX : (_at0.dx - 2 * drag.dx / over.width).clamp(-1.0, 1.0);
     final y = over.height < 1 ? p.photoY : (_at0.dy - 2 * drag.dy / over.height).clamp(-1.0, 1.0);
@@ -223,20 +246,41 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               ],
             ),
           ),
-          // Hint.
-          Positioned(
-            top: pad.top + DS.s16,
-            left: 0,
-            right: 0,
-            child: IgnorePointer(
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
-                  decoration: BoxDecoration(color: DS.chipOnWallpaper, borderRadius: BorderRadius.circular(DS.s20)),
-                  child: Text('Drag to move · pinch to zoom', style: DS.rowSub.copyWith(color: DS.onWallpaper)),
+          // Only the top window is seen on the home screen: the rest is shaded, as the
+          // app sheet covers it there. Frame the photo inside the clear part.
+          ListenableBuilder(
+            listenable: p,
+            builder: (context, _) {
+              final win = photoWindow(p, MediaQuery.sizeOf(context));
+              return Positioned(
+                top: win,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0xB8000000),
+                      border: Border(top: BorderSide(color: DS.glassLine, width: 1.5)),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: DS.s16),
+                      child: Column(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
+                            decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(DS.s20)),
+                            child: Text('Drag to move · pinch to zoom', style: DS.rowSub.copyWith(color: DS.onWallpaper)),
+                          ),
+                          const SizedBox(height: DS.s8),
+                          Text('Your apps cover this part', style: DS.rowSub.copyWith(color: DS.onWallpaper.withValues(alpha: .6))),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
           // Blur + Reset / Done.
           Positioned(
