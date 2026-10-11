@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
@@ -12,7 +13,7 @@ void main() {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
       if (call.method == 'getApps') {
         return [
-          for (final n in ['WhatsApp', 'Slack', 'Gmail', 'Paytm', 'PhonePe', 'Splitwise', 'Spotify', 'Maps', 'Uber'])
+          for (final n in ['WhatsApp', 'Slack', 'Gmail', 'Paytm', 'PhonePe', 'Splitwise', 'Spotify', 'Maps', 'Uber', 'Settings'])
             {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
           for (var i = 1; i <= 80; i++)
             {'package': 'com.game$i', 'label': 'Game ${i.toString().padLeft(2, '0')}', 'system': false, 'category': 0, 'installed': 0},
@@ -41,25 +42,44 @@ void main() {
     final cardMid = (yEnd - 12 + tester.getBottomLeft(find.text('Splitwise')).dy + 16) / 2;
     expect((cardMid - screenH / 2).abs(), lessThan(90), reason: 'short folder ends centred-ish (card mid $cardMid)');
 
-    // Open the 80-app Games folder: taller than the screen → header stops at the top, not above.
+    // Open the 80-app Games folder: it's capped so the card above and the folder below
+    // (Tools) both stay in view; its apps scroll inside the card.
     await tester.tap(find.text('Games'));
     await tester.pumpAndSettle();
-    final headerTop = tester.getTopLeft(find.text('Games')).dy;
-    // ignore: avoid_print
-    print('Games header text y after open: $headerTop');
-    expect(headerTop, inInclusiveRange(8, 60), reason: 'long folder header sits at the top, visible');
+    final header = tester.getTopLeft(find.text('Games')).dy;
+    final toolsY = tester.getTopLeft(find.text('Tools')).dy;
+    final dockTop = tester.getTopLeft(find.byIcon(Icons.search_rounded).last).dy - 16; // top of the search bar
+    expect(header, greaterThan(70), reason: 'a slice of the card above stays visible');
+    expect(toolsY, lessThan(dockTop - 8), reason: 'the folder below stays visible above the search bar');
+    expect(toolsY - header, lessThan(screenH), reason: 'folder never taller than the screen');
 
-    // Scroll through the folder: header stays pinned while the apps move under it.
-    await tester.drag(find.text('Game 12'), const Offset(0, -300));
+    // Drag inside the folder: only its apps move.
+    final app0 = tester.getTopLeft(find.text('Game 12')).dy;
+    await tester.drag(find.text('Game 12'), const Offset(0, -250));
     await tester.pumpAndSettle();
-    final pinnedY = tester.getTopLeft(find.text('Games')).dy;
-    final appY0 = tester.getTopLeft(find.text('Game 20')).dy;
-    await tester.drag(find.text('Game 20'), const Offset(0, -250));
+    expect(tester.getTopLeft(find.text('Games')).dy, closeTo(header, 1), reason: 'main list stays put');
+    expect(tester.getTopLeft(find.text('Game 12')).dy, lessThan(app0 - 200), reason: 'apps scrolled inside the card');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/8_folder_scrolls_inside.png'));
+
+    // Keep dragging past the folder's last row: the rest moves the main list.
+    for (var k = 0; k < 6; k++) {
+      await tester.dragFrom(Offset(180, header + 200), const Offset(0, -400));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.getTopLeft(find.text('Games')).dy, lessThan(header - 40), reason: 'main list took over after the folder ended');
+    expect(find.text('Game 80').hitTestable(), findsOneWidget, reason: 'reached the end of the folder');
+
+    // Close and reopen Games (it re-centres; its grid starts at the top again), then one hard
+    // flick: the fling runs through the folder and its leftover momentum scrolls the main list.
+    await tester.tap(find.text('Games'));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('Games')).dy, closeTo(pinnedY, 1), reason: 'header stays pinned while scrolling');
-    expect(pinnedY, lessThan(40), reason: 'pinned at the top of the sheet');
-    expect(tester.getTopLeft(find.text('Game 20')).dy, lessThan(appY0 - 40), reason: 'apps scroll under it (until the list ends)');
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/8_sticky_header.png'));
+    await tester.tap(find.text('Games'));
+    await tester.pumpAndSettle();
+    final restY = tester.getTopLeft(find.text('Games')).dy;
+    await tester.flingFrom(Offset(180, restY + 200), const Offset(0, -300), 9000);
+    await tester.pumpAndSettle();
+    expect(find.text('Game 80').hitTestable(), findsOneWidget, reason: 'fling went through the folder');
+    expect(tester.getTopLeft(find.text('Games')).dy, lessThan(restY - 20), reason: 'and carried on into the main list');
   });
 
   testWidgets('a folder gliding into view does not expand the shrunk search bar', (tester) async {

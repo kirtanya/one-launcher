@@ -120,6 +120,19 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   /// Height of a folder's header row (pill 64 + padding 12 × 2).
   static const _headerExtent = 88.0;
 
+  /// An open folder never fills the screen: a slice of the card above and the folder below
+  /// always stays visible (once it's centred). Longer folders scroll their grid inside.
+  static const _peek = 56.0;
+
+  double _maxBodyHeight(MediaQueryData mq) {
+    final visible = mq.size.height - (DS.gutter + mq.padding.top) - (mq.padding.bottom + SearchDock.height + DS.s24);
+    return math.max(160, visible - 2 * (_peek + DS.stack) - _headerExtent);
+  }
+
+  /// True while a folder's grid is handing its leftover drag to the main list, so the search
+  /// bar treats that movement as the user's own scrolling.
+  bool _handoff = false;
+
   /// Drives the "open folder → centre it" glide, in step with the folder growing.
   late final AnimationController _glide = AnimationController(vsync: this, duration: Motion.snapDuration)..addListener(_glideTick);
   String? _glideId;
@@ -181,7 +194,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   }
 
   bool _onScroll(ScrollUpdateNotification n) {
-    if (n.metrics.axis != Axis.vertical) return false;
+    if (n.metrics.axis != Axis.vertical || n.depth != 0) return false; // the main list only
     final d = n.scrollDelta ?? 0;
     // Pulling the results down while searching = done searching.
     if (widget.searching && n.dragDetails != null && d < -2) {
@@ -190,7 +203,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     }
     // Only scrolling the user does (a drag, or the fling after it) moves the search bar.
     // The folder glide and other scrolls the app makes itself must leave it alone.
-    final byUser = widget.scroll.hasClients && widget.scroll.position.userScrollDirection != ScrollDirection.idle;
+    final byUser = _handoff || (widget.scroll.hasClients && widget.scroll.position.userScrollDirection != ScrollDirection.idle);
     if (_glide.isAnimating || !byUser) return false;
     if (n.metrics.pixels <= 0) {
       widget.onCompact(false);
@@ -292,6 +305,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                       apps: list,
                       open: _openId == folder.id,
                       tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+                      maxHeight: _maxBodyHeight(mq),
+                      outer: widget.scroll,
+                      onHandoff: (on) => _handoff = on,
                       onLaunch: widget.onLaunch,
                       onLongPress: _longPress,
                     ),
@@ -545,26 +561,96 @@ class _FolderHeader extends StatelessWidget {
 }
 
 /// The app grid under an open folder's header; springs open/closed.
-class _FolderBody extends StatelessWidget {
-  const _FolderBody({super.key, required this.apps, required this.open, required this.tone, required this.onLaunch, required this.onLongPress});
+/// The app grid under an open folder's header; springs open/closed. Never taller than
+/// [maxHeight]: longer folders scroll their grid, and when the grid reaches its end the rest of
+/// the drag (or fling) carries on scrolling the main list ([outer]).
+class _FolderBody extends StatefulWidget {
+  const _FolderBody({
+    super.key,
+    required this.apps,
+    required this.open,
+    required this.tone,
+    required this.maxHeight,
+    required this.outer,
+    required this.onHandoff,
+    required this.onLaunch,
+    required this.onLongPress,
+  });
 
   final List<AppEntry> apps;
   final bool open;
   final CardTone tone;
+  final double maxHeight;
+  final ScrollController outer;
+  final ValueChanged<bool> onHandoff;
   final ValueChanged<AppEntry> onLaunch, onLongPress;
 
   @override
+  State<_FolderBody> createState() => _FolderBodyState();
+}
+
+class _FolderBodyState extends State<_FolderBody> {
+  final _grid = ScrollController();
+  bool _flungOn = false; // a fling already passed on to the main list
+
+  @override
+  void dispose() {
+    _grid.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_FolderBody old) {
+    super.didUpdateWidget(old);
+    if (!widget.open && _grid.hasClients) _grid.jumpTo(0); // reopen at the top
+  }
+
+  ScrollPositionWithSingleContext? get _outer =>
+      widget.outer.hasClients && widget.outer.position is ScrollPositionWithSingleContext ? widget.outer.position as ScrollPositionWithSingleContext : null;
+
+  /// Nested scrolling: whatever the grid can't use goes to the main list.
+  bool _onGridScroll(ScrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical) return false;
+    final outer = _outer;
+    if (outer == null) return false;
+    if (n is ScrollStartNotification) _flungOn = false;
+    if (n is OverscrollNotification) {
+      if (n.dragDetails != null) {
+        // Dragging past the grid's end: move the main list by the leftover.
+        widget.onHandoff(true);
+        outer.jumpTo((outer.pixels + n.overscroll).clamp(outer.minScrollExtent, outer.maxScrollExtent));
+        widget.onHandoff(false);
+      } else if (!_flungOn && n.velocity != 0) {
+        // A fling ran out of grid: let the main list carry the momentum.
+        _flungOn = true;
+        outer.goBallistic(n.velocity);
+      }
+    } else if (n is ScrollEndNotification && n.dragDetails != null && !_flungOn) {
+      // Flicked while already at the grid's end: the whole fling goes to the main list.
+      final v = -(n.dragDetails!.primaryVelocity ?? 0);
+      if ((v > 0 && n.metrics.extentAfter == 0) || (v < 0 && n.metrics.extentBefore == 0)) {
+        _flungOn = true;
+        outer.goBallistic(v);
+      }
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final apps = widget.apps;
+    // Space for the grid: body minus divider + gap (13) and bottom padding (16).
+    final gridMax = widget.maxHeight - 29;
     // No overshoot here: the centring glide follows this height every frame.
     return AnimatedSize(
       duration: Motion.snapDuration,
       curve: Motion.settle,
       alignment: Alignment.topCenter,
-      child: !open
+      child: !widget.open
           ? const SizedBox(width: double.infinity)
           : Container(
               decoration: BoxDecoration(
-                color: tone == CardTone.muted ? DS.cardMuted : DS.card,
+                color: widget.tone == CardTone.muted ? DS.cardMuted : DS.card,
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(DS.rCard)),
               ),
               padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
@@ -578,23 +664,53 @@ class _FolderBody extends StatelessWidget {
                       child: Text('No apps here yet.', style: DS.rowSub),
                     )
                   else
-                    LayoutBuilder(
-                      builder: (context, c) {
-                        final w = c.maxWidth / 4;
-                        return Wrap(
-                          children: [
-                            for (final (i, a) in apps.indexed)
-                              SizedBox(
-                                width: w,
-                                // Icons pop in row by row.
-                                child: PopIn(
-                                  delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-                                  child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: gridMax),
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onGridScroll,
+                        child: ListenableBuilder(
+                          listenable: _grid,
+                          // Soft fade at an edge that has more apps beyond it.
+                          builder: (context, child) {
+                            final p = _grid.hasClients && _grid.position.haveDimensions ? _grid.position : null;
+                            final top = p != null && p.extentBefore > 0, bottom = p != null && p.extentAfter > 0;
+                            // Always the same widgets (only the gradient changes): swapping the tree
+                            // would rebuild the scroller and throw away its scroll position.
+                            return ShaderMask(
+                              blendMode: BlendMode.dstIn,
+                              shaderCallback: (r) => LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [top ? Colors.transparent : Colors.black, Colors.black, Colors.black, bottom ? Colors.transparent : Colors.black],
+                                stops: const [0, .08, .9, 1],
+                              ).createShader(r),
+                              child: child,
+                            );
+                          },
+                          child: SingleChildScrollView(
+                            controller: _grid,
+                            physics: const ClampingScrollPhysics(),
+                            child: LayoutBuilder(
+                              builder: (context, c) {
+                                final w = c.maxWidth / 4;
+                                return Wrap(
+                                  children: [
+                                    for (final (i, a) in apps.indexed)
+                                      SizedBox(
+                                        width: w,
+                                        // Icons pop in row by row.
+                                        child: PopIn(
+                                          delay: ((i ~/ 4) * 0.06 + (i % 4) * 0.02).clamp(0, .6),
+                                          child: _GridApp(app: a, onTap: () => widget.onLaunch(a), onLongPress: () => widget.onLongPress(a)),
+                                        ),
+                                      ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                 ],
               ),
