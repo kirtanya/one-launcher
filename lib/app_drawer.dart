@@ -214,7 +214,8 @@ class AppDrawerState extends State<AppDrawer> {
             child: IgnorePointer(
               child: ValueListenableBuilder<double>(
                 valueListenable: widget.expanded,
-                builder: (context, e, _) => ColoredBox(color: DS.canvas.withValues(alpha: e)),
+                // Only once the sheet is fully open; mid-drag it would darken the top cards.
+                builder: (context, e, _) => ColoredBox(color: DS.canvas.withValues(alpha: ((e - .97) / .03).clamp(0.0, 1.0))),
               ),
             ),
           ),

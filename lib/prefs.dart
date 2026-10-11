@@ -12,7 +12,7 @@ class Prefs extends ChangeNotifier {
 
   static Future<Prefs> load() async => Prefs._(await SharedPreferences.getInstance());
 
-  static const maxFavourites = 4; // pinned apps shown as tags in the hero card
+  static const maxFavourites = 8; // pinned apps lead the green card (it shows 8 apps)
 
   List<String> get favourites => _sp.getStringList('favourites') ?? const [];
   List<String> get hidden => _sp.getStringList('hidden') ?? const [];

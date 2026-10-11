@@ -9,10 +9,10 @@ import 'pages.dart';
 /// The swipeable top half: Clock, Screen time, Battery, Up next — whichever the user
 /// switched on, in their order. Pages snap; neighbours fade and shrink a little as you swipe.
 class TopCarousel extends StatefulWidget {
-  const TopCarousel({super.key, required this.prefs, required this.refresh, required this.onTapClock});
+  const TopCarousel({super.key, required this.prefs, required this.refresh, required this.onTapClock, required this.onTapDate});
   final Prefs prefs;
   final Listenable refresh;
-  final VoidCallback onTapClock;
+  final VoidCallback onTapClock, onTapDate;
 
   @override
   State<TopCarousel> createState() => _TopCarouselState();
@@ -32,7 +32,7 @@ class _TopCarouselState extends State<TopCarousel> {
     'screen_time' => ScreenTimePage(refresh: widget.refresh),
     'battery' => BatteryPage(refresh: widget.refresh),
     'up_next' => UpNextPage(refresh: widget.refresh),
-    _ => ClockPage(onTap: widget.onTapClock),
+    _ => ClockPage(onTap: widget.onTapClock, onTapDate: widget.onTapDate),
   };
 
   @override
@@ -66,7 +66,7 @@ class _TopCarouselState extends State<TopCarousel> {
         // Page dots (only when there's more than one page).
         if (ids.length > 1)
           Padding(
-            padding: const EdgeInsets.only(top: DS.s8),
+            padding: const EdgeInsets.only(top: DS.s4),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [

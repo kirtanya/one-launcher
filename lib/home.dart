@@ -8,7 +8,6 @@ import 'apps.dart';
 import 'prefs.dart';
 import 'search.dart';
 import 'search_dock.dart';
-import 'top/pages.dart';
 import 'top/top_carousel.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
@@ -29,7 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Sheet height when resting (fraction of the screen).
-  static const _rest = 0.52;
+  static const _rest = 0.75; // apps get 3/4 of the screen, the top widgets 1/4
 
   List<AppEntry> _apps = const [];
   final _sheet = DraggableScrollableController();
@@ -260,7 +259,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     ),
                     child: _TopArea(
-                      carousel: TopCarousel(prefs: prefs, refresh: _refresh, onTapClock: () => _openNamed(['clock'])),
+                      carousel: TopCarousel(
+                        prefs: prefs,
+                        refresh: _refresh,
+                        onTapClock: () => _openNamed(['clock']),
+                        onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                      ),
                       onCustomise: () {
                         HapticFeedback.mediumImpact();
                         showCustomiseTop(context, prefs: prefs);
@@ -368,26 +372,21 @@ class _TopArea extends StatelessWidget {
         child: SafeArea(
           bottom: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s8, DS.rSheet + DS.s8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            padding: const EdgeInsets.fromLTRB(DS.s8, DS.s4, DS.s8, DS.rSheet + DS.s4),
+            child: Stack(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: GestureDetector(
-                          onTap: onTapDate,
-                          child: Padding(padding: const EdgeInsets.all(DS.s8), child: _Date()),
-                        ),
-                      ),
-                    ),
-                    CircleButton(icon: Icons.wallpaper_rounded, tone: CircleTone.glass, tooltip: 'Wallpaper', onTap: onWallpaper),
-                    CircleButton(icon: Icons.tune_rounded, tone: CircleTone.glass, tooltip: 'Launcher settings', onTap: onSettings),
-                  ],
+                Positioned.fill(child: carousel),
+                // Glass buttons share the first line with the page label (date on the clock page).
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: Row(
+                    children: [
+                      CircleButton(icon: Icons.wallpaper_rounded, tone: CircleTone.glass, tooltip: 'Wallpaper', onTap: onWallpaper),
+                      CircleButton(icon: Icons.tune_rounded, tone: CircleTone.glass, tooltip: 'Launcher settings', onTap: onSettings),
+                    ],
+                  ),
                 ),
-                Expanded(child: carousel),
               ],
             ),
           ),
@@ -395,17 +394,4 @@ class _TopArea extends StatelessWidget {
       ),
     );
   }
-}
-
-class _Date extends StatefulWidget {
-  @override
-  State<_Date> createState() => _DateState();
-}
-
-class _DateState extends State<_Date> with Ticking {
-  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  @override
-  Widget build(BuildContext context) => Text('${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}', style: DS.wallpaperDate);
 }

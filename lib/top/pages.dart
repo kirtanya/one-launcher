@@ -30,12 +30,15 @@ mixin Ticking<W extends StatefulWidget> on State<W> {
 
 /// Shared layout for every page: small label, big condensed figure, then a detail line.
 class _Page extends StatelessWidget {
-  const _Page({required this.label, required this.big, this.detail, this.onTap, this.semantics});
+  const _Page({required this.label, required this.big, this.detail, this.onTap, this.onTapLabel, this.semantics});
   final String label;
   final String big;
   final Widget? detail;
-  final VoidCallback? onTap;
+  final VoidCallback? onTap, onTapLabel;
   final String? semantics;
+
+  /// The two glass buttons sit at the right end of the label line.
+  static const _buttonsWidth = 2 * DS.tap + DS.s8;
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +53,19 @@ class _Page extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: DS.wallpaperDate.copyWith(color: DS.clockInk, fontSize: 15)),
+              SizedBox(
+                height: DS.tap,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: _buttonsWidth),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      onTap: onTapLabel,
+                      child: Text(label, style: DS.wallpaperDate, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
+                  ),
+                ),
+              ),
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
@@ -60,6 +75,7 @@ class _Page extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: DS.s8), // breathing room under the big figure
               if (detail != null) ...[detail!, const SizedBox(height: DS.s4)],
             ],
           ),
@@ -102,34 +118,29 @@ String _duration(int ms) {
 // ---- Clock --------------------------------------------------------------------
 
 class ClockPage extends StatefulWidget {
-  const ClockPage({super.key, required this.onTap});
-  final VoidCallback onTap;
+  const ClockPage({super.key, required this.onTap, required this.onTapDate});
+  final VoidCallback onTap, onTapDate;
 
   @override
   State<ClockPage> createState() => _ClockPageState();
 }
 
 class _ClockPageState extends State<ClockPage> with Ticking {
+  static const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
   @override
   Widget build(BuildContext context) {
     final is24 = MediaQuery.alwaysUse24HourFormatOf(context);
     final h = is24 ? now.hour : (now.hour % 12 == 0 ? 12 : now.hour % 12);
     final time = '${h.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+    // The date is the label (tap → Calendar); the time is the big figure (tap → Clock).
+    return _Page(
+      label: '${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}',
+      big: time,
       onTap: widget.onTap,
-      child: Semantics(
-        label: 'Time $time. Opens Clock',
-        button: true,
-        excludeSemantics: true,
-        child: Padding(
-          padding: const EdgeInsets.only(right: DS.s8),
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: Text(time, style: DS.clock),
-          ),
-        ),
-      ),
+      onTapLabel: widget.onTapDate,
+      semantics: 'Time $time. Opens Clock',
     );
   }
 }
