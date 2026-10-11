@@ -81,6 +81,33 @@ void main() {
     expect(prefs.quickChips, isNot(contains('b:camera')));
   });
 
+  testWidgets('quick actions: search finds built-in actions and app shortcuts to add', (tester) async {
+    final (prefs, _) = await launch(tester);
+    await tester.drag(find.text('Set timer'), const Offset(-800, 0));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Customise quick actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chip look'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'gmail');
+    await tester.pumpAndSettle();
+    expect(find.text('Compose'), findsOneWidget, reason: 'matches the app name');
+    expect(find.text('Chip look'), findsNothing, reason: 'while searching only addable actions show');
+    expect(find.text('Built-in'), findsNothing, reason: 'no built-in matches → no empty section');
+    await tester.tap(find.text('Compose'));
+    await tester.pumpAndSettle();
+    expect(prefs.quickChips, contains('s:com.google.android.gm|compose|0'));
+
+    await tester.enterText(find.byType(TextField), 'blue');
+    await tester.pumpAndSettle();
+    expect(find.text('Bluetooth'), findsOneWidget, reason: 'built-in action found');
+    expect(find.text('Alarms'), findsNothing);
+    expect(find.text('No app shortcuts match “blue”.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chip look'), findsOneWidget, reason: 'cleared → full sheet again');
+  });
+
   testWidgets('not the home app: explains why app shortcuts are missing', (tester) async {
     final (prefs, _) = await launch(tester, shortcutsAllowed: false);
     expect(prefs.qrSeeded, isFalse, reason: 'will try again once allowed');

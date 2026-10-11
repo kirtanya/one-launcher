@@ -88,6 +88,7 @@ const sheetBack = 'back';
 /// sheets that already scroll a list of their own (Flexible + ListView inside).
 /// [back]: a 2nd-level sheet — shows a back arrow, and back / tapping outside return
 /// [sheetBack] so the caller can reopen the level above. Swiping it down closes everything.
+/// [keyboard]: the sheet has a text field — its content makes room for the keyboard.
 /// [barrier]: the shade behind the sheet (default when null).
 /// [height]: the sheet's height cap; with [fill] it is exactly that tall (content scrolls).
 Future<Object?> showOneSheetWith(
@@ -98,6 +99,7 @@ Future<Object?> showOneSheetWith(
   double? height,
   bool fill = false,
   Color? barrier,
+  bool keyboard = false,
 }) {
   return showModalBottomSheet<Object?>(
     context: context,
@@ -121,7 +123,7 @@ Future<Object?> showOneSheetWith(
             constraints: height == null ? const BoxConstraints() : (fill ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.only(bottom: DS.s12),
+                padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
                 child: Column(
                   mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -224,6 +226,70 @@ class SheetHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// True if every word of [query] appears in one of [fields] (case-insensitive). Empty matches all.
+bool matchesQuery(String query, Iterable<String> fields) {
+  final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  final text = fields.join(' ').toLowerCase();
+  return words.every(text.contains);
+}
+
+/// Search pill used inside sheets (widget picker, quick actions): icon, hint, clear button.
+/// Owns its text controller (so it lives exactly as long as the field, close animation included).
+class SheetSearchField extends StatefulWidget {
+  const SheetSearchField({super.key, required this.hint, required this.onChanged});
+  final String hint;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<SheetSearchField> createState() => _SheetSearchFieldState();
+}
+
+class _SheetSearchFieldState extends State<SheetSearchField> {
+  final _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s24, DS.s8),
+      child: TextField(
+        controller: _text,
+        onChanged: widget.onChanged,
+        cursorColor: DS.ink,
+        style: DS.rowTitle,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          hintStyle: DS.rowSub.copyWith(fontSize: 16),
+          prefixIcon: Icon(Icons.search_rounded, color: DS.inkMuted),
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _text,
+            builder: (context, v, _) => v.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    tooltip: 'Clear search',
+                    icon: Icon(Icons.close_rounded, color: DS.inkMuted),
+                    onPressed: () {
+                      _text.clear();
+                      widget.onChanged('');
+                    },
+                  ),
+          ),
+          filled: true,
+          fillColor: DS.cardMuted,
+          contentPadding: const EdgeInsets.symmetric(horizontal: DS.s20, vertical: DS.s12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
+        ),
+      ),
     );
   }
 }

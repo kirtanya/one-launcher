@@ -59,6 +59,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Month'), findsOneWidget);
     expect(find.text('4 × 2'), findsOneWidget);
+    // Search narrows the list (by widget or app name).
+    await tester.enterText(find.byType(TextField), 'sched');
+    await tester.pumpAndSettle();
+    expect(find.text('Schedule'), findsOneWidget);
+    expect(find.text('Month'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'calendar month');
+    await tester.pumpAndSettle();
+    expect(find.text('Month'), findsOneWidget, reason: 'app + widget words together');
+    expect(find.text('Schedule'), findsNothing);
+    await tester.enterText(find.byType(TextField), 'weather');
+    await tester.pumpAndSettle();
+    expect(find.text('No widgets match “weather”.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pumpAndSettle();
+    expect(find.text('Schedule'), findsOneWidget);
     await tester.tap(find.text('Month'));
     await tester.pumpAndSettle();
     expect(prefs.topPages, contains('widget:7'));

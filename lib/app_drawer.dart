@@ -294,7 +294,11 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (_glide.isAnimating) return false;
     // Scroll-to-open counts every movement but the glide — including a fling handed on from
     // an open folder's grid, which reaches the list as a plain (not user-marked) scroll.
-    if (!_userMoved) _startedFull = _fullSince != null && SchedulerBinding.instance.currentSystemFrameTimeStamp - _fullSince! > const Duration(milliseconds: 250); // first move of this scroll
+    if (!_userMoved) {
+      // First move of this scroll: did it start with the drawer already full screen?
+      final since = _fullSince;
+      _startedFull = since != null && SchedulerBinding.instance.currentSystemFrameTimeStamp - since > const Duration(milliseconds: 250);
+    }
     _userMoved = true;
     if (!byUser) return false;
     if (n.metrics.pixels <= 0) {
