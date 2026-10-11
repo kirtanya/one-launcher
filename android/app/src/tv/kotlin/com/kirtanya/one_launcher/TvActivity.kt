@@ -27,7 +27,11 @@ import java.util.concurrent.Executors
 class TvActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
+    private val images = Executors.newFixedThreadPool(3) // artwork downloads in parallel
     private val main = Handler(Looper.getMainLooper())
+    private val content by lazy { TvContent(this) }
+    // What's playing / paused right now (needs Notification access, like the phone's Now playing).
+    private val media by lazy { MediaWatcher(this, artWidth = 960, square = false) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -39,7 +43,25 @@ class TvActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "one_launcher/tv")
         channel.setMethodCallHandler { call, result ->
+            if (media.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
+                "getWatchNext" -> worker.execute {
+                    val list = content.watchNext()
+                    main.post { result.success(list) }
+                }
+                "getChannels" -> worker.execute {
+                    val list = content.channels()
+                    main.post { result.success(list) }
+                }
+                "getImage" -> {
+                    val uri = call.argument<String>("uri")!!
+                    val w = call.argument<Int>("width") ?: 480
+                    images.execute {
+                        val bytes = content.image(uri, w)
+                        main.post { result.success(bytes) }
+                    }
+                }
+                "openProgram" -> result.success(content.open(call.argument<String>("intent"), call.argument<String>("package")))
                 "getApps" -> worker.execute {
                     val apps = loadApps()
                     main.post { result.success(apps) }
@@ -80,6 +102,22 @@ class TvActivity : FlutterActivity() {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        media.start()
+    }
+
+    override fun onStop() {
+        media.stop()
+        super.onStop()
+    }
+
+    // Back from an app: "Continue watching" may have changed.
+    override fun onResume() {
+        super.onResume()
+        if (::channel.isInitialized) channel.invokeMethod("resumed", null)
     }
 
     override fun onDestroy() {

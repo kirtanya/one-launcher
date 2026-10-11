@@ -366,6 +366,10 @@ class Prefs extends ChangeNotifier {
   bool isFavourite(String pkg) => favourites.contains(pkg);
   bool get favouritesFull => favourites.length >= maxFavourites;
 
+  /// TV: apps opened from the launcher, newest first ("Jump back in").
+  List<String> get tvRecents => _sp.getStringList('tvRecents') ?? const [];
+  Future<void> noteTvLaunch(String pkg) => _setList('tvRecents', [pkg, ...tvRecents.where((p) => p != pkg)].take(12).toList());
+
   /// Favourites in a new order (TV: Move left / right).
   Future<void> setFavourites(List<String> ids) => _setList('favourites', ids);
 

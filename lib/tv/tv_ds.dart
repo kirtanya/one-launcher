@@ -24,6 +24,15 @@ class TvDS {
   static const labelH = 40.0; // focused app name under the tile
   static const rowH = rowTitleH + rowPadTop + tileH + labelH;
 
+  // ---- Cinematic home ----
+  static const heroTop = 92.0; // title block, under the top bar
+  static const heroW = 470.0;
+  static const rowsTop = .55; // rows start at 55% of the screen; the backdrop owns the rest
+  static const wideW = 208.0, wideH = 117.0; // shows & films (16:9, bigger than app banners)
+  static const cardRowTitleH = 26.0, cardRowPad = 10.0, cardRowGap = 22.0;
+  static const focusScaleCard = 1.08;
+  static const progressH = 3.0;
+
   // ---- Colour ----
   static Color get canvas => DS.canvas;
   static const ink = DS.onCanvas;
@@ -41,6 +50,14 @@ class TvDS {
   static const label = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: ink);
   static const hint = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
   static const tileName = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
+  static const heroEyebrow = TextStyle(fontFamily: DS.font, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.4, color: inkMuted);
+  static const heroTitle = TextStyle(fontFamily: DS.font, fontSize: 40, fontWeight: FontWeight.w600, height: 1.05, letterSpacing: -.8, color: ink);
+  static const heroMeta = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xD9FFFFFF));
+  static const heroBody = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: inkMuted);
+  static const keycap = TextStyle(fontFamily: DS.font, fontSize: 12, fontWeight: FontWeight.w600, color: ink);
+  static const topClock = TextStyle(fontFamily: DS.font, fontSize: 20, fontWeight: FontWeight.w500, color: ink);
+  static const panel = Color(0xFF1C1C1C);
+  static const scrim = Color(0xFF000000); // backdrop fades into the canvas through this
   static const panelTitle = TextStyle(fontFamily: DS.font, fontSize: 24, fontWeight: FontWeight.w600, color: ink);
   static const panelRow = TextStyle(fontFamily: DS.font, fontSize: 17, fontWeight: FontWeight.w500, color: ink);
 }

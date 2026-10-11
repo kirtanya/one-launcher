@@ -4,13 +4,15 @@
     <!-- A TV app: no touchscreen needed, shows up in the TV's app row. -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
     <uses-feature android:name="android.software.leanback" android:required="false"/>
+    <!-- Streaming apps' Watch Next / channels. Android grants other apps' rows only to the TV's
+         system launcher; where a TV allows more, those rows appear. -->
+    <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
     <application
         android:label="One Launcher TV"
         android:banner="@drawable/tv_banner"
         tools:replace="android:label">
-        <!-- Phone-only parts -->
+        <!-- Phone-only parts (MediaListener stays: "Continue watching" reads the playing show) -->
         <activity android:name=".MainActivity" tools:node="remove"/>
-        <service android:name=".MediaListener" tools:node="remove"/>
 
         <activity
             android:name=".TvActivity"

@@ -40,11 +40,14 @@ void main() {
 
     await tester.pumpWidget(OneLauncherTv(prefs: prefs));
     await tester.pumpAndSettle();
-    expect(find.text('Favourites'), findsOneWidget);
-    expect(find.text('Games'), findsOneWidget);
-    // Starts on the first favourite (Watch & Listen apps until you pick your own).
+    expect(find.text('Continue watching'), findsOneWidget);
+    expect(find.text('Your apps'), findsOneWidget);
+    // Starts on what you were watching; the title block describes it.
     final first = _focused()!;
-    expect(first, startsWith('fav:'));
+    expect(first, startsWith('continue:now:'));
+    expect(find.text('The Long Night'), findsWidgets);
+    expect(find.textContaining('CONTINUE WATCHING · NETFLIX'), findsOneWidget);
+    expect(find.textContaining('min left'), findsWidgets);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_1_home.png'));
 
     // → → moves along the row; ↓ goes to the next row, ↑ comes back to the same tile.
@@ -52,8 +55,10 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     final third = _focused()!;
     expect(third, isNot(first));
+    expect(find.text('Final Over'), findsWidgets, reason: 'title block follows focus');
     await _press(tester, LogicalKeyboardKey.arrowDown);
-    expect(_focused(), isNot(startsWith('fav:')));
+    expect(_focused(), startsWith('fav:'));
+    expect(find.text('YOUR APPS'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_2_next_row.png'));
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), third, reason: 'row remembers the last tile');
@@ -70,12 +75,23 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('Remove from Favourites').evaluate().isNotEmpty || find.text('Add to Favourites').evaluate().isNotEmpty, isTrue);
-    expect(find.text('App info'), findsOneWidget, reason: 'panel still open after release');
+    expect(find.text('Watch'), findsNWidgets(2), reason: 'programme options; panel still open after release');
+    expect(find.text('App info'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_3_options.png'));
     await tester.tapAt(const Offset(40, 270)); // outside the panel
     await tester.pumpAndSettle();
     expect(find.text('App info'), findsNothing);
+    // An app's options.
+    await _press(tester, LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Add to Your apps').evaluate().isNotEmpty || find.text('Remove from Your apps').evaluate().isNotEmpty, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await _press(tester, LogicalKeyboardKey.arrowUp);
 
     // Search: header → search button → type → ↓ into results.
     await _press(tester, LogicalKeyboardKey.arrowUp);

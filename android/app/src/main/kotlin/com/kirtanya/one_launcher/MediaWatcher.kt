@@ -23,7 +23,13 @@ import java.io.ByteArrayOutputStream
  * the track or play state changes, and passes play/pause/skip back. Listens only between
  * start() and stop() (while the launcher is on screen).
  */
-class MediaWatcher(private val activity: Activity, private val push: (Map<String, Any?>) -> Unit) {
+/** [artWidth]/[square]: the phone wants small square album art; the TV wants wide backdrops. */
+class MediaWatcher(
+    private val activity: Activity,
+    private val artWidth: Int = 256,
+    private val square: Boolean = true,
+    private val push: (Map<String, Any?>) -> Unit,
+) {
     private val sessions = activity.getSystemService(MediaSessionManager::class.java)
     private val component = ComponentName(activity, MediaListener::class.java)
     private val main = Handler(Looper.getMainLooper())
@@ -124,7 +130,13 @@ class MediaWatcher(private val activity: Activity, private val push: (Map<String
             ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
         artBytes = bmp?.let {
-            val size = 256
+            if (!square) {
+                // Keep the picture's shape (video stills are wide), just cap its size.
+                val w = minOf(artWidth, it.width)
+                val scaled = Bitmap.createScaledBitmap(it, w, maxOf(1, it.height * w / it.width), true)
+                return@let ByteArrayOutputStream().also { o -> scaled.compress(Bitmap.CompressFormat.JPEG, 88, o) }.toByteArray()
+            }
+            val size = artWidth
             val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             // Centre-crop into a square.
             val s = minOf(it.width, it.height)

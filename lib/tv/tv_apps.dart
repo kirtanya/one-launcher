@@ -22,6 +22,14 @@ class TvApps {
 
   VoidCallback? onHomePressed;
   VoidCallback? onAppsChanged;
+  VoidCallback? onResumed; // back on the home screen (Continue watching may have changed)
+
+  /// What's playing / paused now (MediaWatcher.kt). Keys: granted, active, package, app,
+  /// title, artist, art (jpeg), playing, position, duration (ms), plus 'at' = when received.
+  final media = ValueNotifier<Map?>(null);
+
+  final _images = <String, Future<MemoryImage?>>{};
+  final _imagesReady = <String, MemoryImage>{};
 
   final _art = <String, Future<TvArt?>>{};
   final _ready = <String, TvArt>{};
@@ -40,6 +48,10 @@ class TvApps {
           _art.clear();
           _ready.clear();
           onAppsChanged?.call();
+        case 'resumed':
+          onResumed?.call();
+        case 'mediaChanged':
+          media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }
     });
   }
@@ -74,6 +86,38 @@ class TvApps {
     });
   }
 
+  // ---- Streaming content (best effort; see TvContent.kt) ----
+
+  /// The streaming apps' "Continue watching" (empty where Android keeps it for the system launcher).
+  Future<List<Map>> watchNext() async => demo ? _demoWatchNext : await _ch.invokeListMethod<Map>('getWatchNext') ?? const [];
+
+  /// The streaming apps' own rows: each {name, package, programs: [...]}.
+  Future<List<Map>> channels() async => demo ? const [] : await _ch.invokeListMethod<Map>('getChannels') ?? const [];
+
+  Future<void> refreshMedia() async {
+    if (demo) {
+      media.value = _demoMedia;
+      return;
+    }
+    final m = await _ch.invokeMapMethod<String, Object?>('mediaState');
+    if (m != null) media.value = {...m, 'at': DateTime.now().millisecondsSinceEpoch};
+  }
+
+  Future<void> mediaOpen() => _call('mediaOpen');
+  Future<void> openNotificationAccess() => _call('openNotificationAccess');
+  Future<void> openProgram(String? intent, String package) => _call('openProgram', {'intent': intent, 'package': package});
+
+  /// Artwork from a program uri, downsized on the TV side; cached.
+  MemoryImage? imageNow(String uri) => _imagesReady[uri];
+  Future<MemoryImage?> image(String uri, {int width = 480}) {
+    if (demo) return Future.value(null);
+    return _images.putIfAbsent('$uri@$width', () async {
+      final bytes = await _ch.invokeMethod<Uint8List>('getImage', {'uri': uri, 'width': width});
+      if (bytes == null) return null;
+      return _imagesReady[uri] = MemoryImage(bytes);
+    });
+  }
+
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
@@ -85,6 +129,41 @@ class TvApps {
     if (demo) return;
     await _ch.invokeMethod(method, args);
   }
+
+  static final _demoMedia = {
+    'granted': true,
+    'active': true,
+    'package': 'com.netflix.ninja',
+    'app': 'Netflix',
+    'title': 'The Long Night',
+    'artist': 'Season 2 · Episode 5',
+    'playing': false,
+    'position': 1980000,
+    'duration': 3120000,
+    'at': 0,
+  };
+
+  static const _demoWatchNext = <Map>[
+    {
+      'id': '1',
+      'package': 'com.amazon.amazonvideo.livingroom',
+      'title': 'Coastline',
+      'season': '1',
+      'episode': '3',
+      'episodeTitle': 'Low Tide',
+      'description': 'A storm strands the crew on the far side of the island.',
+      'position': 900000,
+      'duration': 2700000,
+    },
+    {
+      'id': '2',
+      'package': 'in.startv.hotstar',
+      'title': 'Final Over',
+      'description': 'Highlights from last night’s match.',
+      'position': 0,
+      'duration': 1500000,
+    },
+  ];
 
   static const _demo = [
     AppEntry(package: 'com.netflix.ninja', label: 'Netflix'),
