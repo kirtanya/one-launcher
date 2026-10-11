@@ -48,6 +48,16 @@ android {
         }
     }
 
+    // Native code (the Flutter engine) is stored uncompressed by default: the phone runs it
+    // straight from the APK, so the installed app is smallest and starts fastest.
+    // `-PcompressLibs=true` compresses it instead — a much smaller file to send, but the phone
+    // unpacks it on install (bigger once installed). Used for the shareable APK.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = (project.findProperty("compressLibs") as String?) == "true"
+        }
+    }
+
     buildTypes {
         release {
             // The permanent key when key.properties is present; otherwise the debug key so
