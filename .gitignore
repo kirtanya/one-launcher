@@ -48,3 +48,6 @@ app.*.map.json
 .widget_preview/
 test/failures/
 android/.kotlin/
+
+# TMDB key for the TV app's shows & films search (never commit)
+tmdb.key

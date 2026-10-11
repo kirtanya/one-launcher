@@ -152,6 +152,13 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How the quick-action chips look (colour, opacity, shape, size, content, outline) — see ChipLook.
+  Map get chipLook => _json('chipLook');
+  Future<void> setChipLook(Map<String, Object> look) async {
+    await _sp.setString('chipLook', jsonEncode(look));
+    notifyListeners();
+  }
+
   /// Own photo as the launcher background (a file in app storage), or null = phone wallpaper.
   String? get wallpaperPhoto => _sp.getString('wallpaperPhoto');
 

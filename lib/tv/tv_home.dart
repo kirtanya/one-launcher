@@ -13,6 +13,7 @@ import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
+import 'tv_search.dart';
 
 enum TvKind { app, resume, program }
 
@@ -519,7 +520,7 @@ class _TvHomeState extends State<TvHome> {
                   height: c.maxHeight * .8,
                   child: _Backdrop(item: _backdrop),
                 ),
-                const _Scrims(),
+                const TvScrims(),
 
                 // ---- Title block: what's focused ----
                 Positioned(
@@ -694,42 +695,6 @@ class _Backdrop extends StatelessWidget {
       gradient: RadialGradient(center: const Alignment(.4, -.3), radius: 1.1, colors: [tvTint(it.title).withValues(alpha: .55), Colors.transparent]),
     ),
   );
-}
-
-/// A calm colour from a name (same name → same colour): used where there's no artwork.
-Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().toDouble(), .38, .42).toColor();
-
-/// Darkens the picture into the canvas: from the left (behind the title) and the bottom
-/// (behind the rows), plus a light veil at the top for the top bar.
-class _Scrims extends StatelessWidget {
-  const _Scrims();
-
-  @override
-  Widget build(BuildContext context) {
-    final c = TvDS.canvas;
-    return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [c, c.withValues(alpha: .92), c.withValues(alpha: .35), c.withValues(alpha: 0)], stops: const [0, .3, .55, .75]),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [TvDS.scrim.withValues(alpha: .35), c.withValues(alpha: 0), c.withValues(alpha: .85), c],
-                stops: const [0, .2, .58, .74],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ---- Title block ---------------------------------------------------------------

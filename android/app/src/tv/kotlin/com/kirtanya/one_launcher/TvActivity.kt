@@ -92,6 +92,12 @@ class TvActivity : FlutterActivity() {
                     val q = call.argument<String>("query") ?: ""
                     result.success(open(Intent(Intent.ACTION_SEARCH).setPackage(call.argument<String>("package")).putExtra(SearchManager.QUERY, q)))
                 }
+                // A link (e.g. a YouTube trailer); opened in that app if it's installed.
+                "openUri" -> {
+                    val i = Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("uri")))
+                    val pkg = call.argument<String>("package")
+                    result.success((pkg != null && open(Intent(i).setPackage(pkg))) || open(i))
+                }
                 // Google TV's own search: shows films & shows from every streaming app.
                 "searchEverywhere" -> {
                     val q = call.argument<String>("query") ?: ""

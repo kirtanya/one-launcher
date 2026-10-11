@@ -88,6 +88,7 @@ const sheetBack = 'back';
 /// sheets that already scroll a list of their own (Flexible + ListView inside).
 /// [back]: a 2nd-level sheet — shows a back arrow, and back / tapping outside return
 /// [sheetBack] so the caller can reopen the level above. Swiping it down closes everything.
+/// [barrier]: the shade behind the sheet (default when null).
 /// [height]: the sheet's height cap; with [fill] it is exactly that tall (content scrolls).
 Future<Object?> showOneSheetWith(
   BuildContext context, {
@@ -96,6 +97,7 @@ Future<Object?> showOneSheetWith(
   bool back = false,
   double? height,
   bool fill = false,
+  Color? barrier,
 }) {
   return showModalBottomSheet<Object?>(
     context: context,
@@ -104,6 +106,7 @@ Future<Object?> showOneSheetWith(
     backgroundColor: Colors.transparent,
     elevation: 0,
     isScrollControlled: true,
+    barrierColor: barrier, // lighter for sheets that preview on the home screen behind them
     builder: (ctx) => PopScope(
       canPop: !back,
       onPopInvokedWithResult: (didPop, _) {

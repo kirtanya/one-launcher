@@ -114,13 +114,27 @@ void main() {
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.byType(TextField), findsOneWidget);
-    await tester.enterText(find.byType(TextField), 'you');
+    expect(find.text('Trending this week'), findsOneWidget, reason: 'before typing: what’s trending');
+    await tester.enterText(find.byType(TextField), 'night');
+    await tester.pump(const Duration(milliseconds: 500)); // search waits for typing to pause
     await tester.pumpAndSettle();
-    expect(find.text('2 apps'), findsOneWidget); // YouTube, YouTube Music
-    expect(find.text('Search everywhere for “you”'), findsOneWidget);
-    expect(find.text('Search in Hotstar'), findsOneWidget);
+    expect(find.text('Shows & films'), findsOneWidget);
+    expect(find.text('The Long Night'), findsWidgets);
+    expect(find.text('Night Shift'), findsWidgets);
+    expect(find.text('Search everywhere for “night”'), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(FocusManager.instance.primaryFocus?.context?.widget, isNot(isA<EditableText>()));
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4_search.png'));
+
+    // OK on a poster → its page: ratings, where to watch (apps on this TV), cast.
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(find.text('Where to watch'), findsOneWidget);
+    expect(find.text('Watch on Netflix'), findsOneWidget);
+    expect(find.text('Watch on Hotstar'), findsOneWidget, reason: 'JioHotstar → the Hotstar app');
+    expect(find.text('Watch on Prime Video'), findsOneWidget, reason: 'Amazon Video → Prime Video app');
+    expect(find.text('8.4 TMDB'), findsOneWidget);
+    expect(find.text('Mira Rao'), findsOneWidget);
+    expect(find.text('Trailer'), findsOneWidget);
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_6_title.png'));
   });
 }

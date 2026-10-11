@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../ui/ds.dart';
@@ -222,188 +221,89 @@ Future<void> showTvPanel(BuildContext context, {required String title, Widget? l
   );
 }
 
-// ---- Search --------------------------------------------------------------------
+/// A calm colour from a name (same name → same colour): used where there's no artwork.
+Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().toDouble(), .38, .42).toColor();
 
-/// Type with the TV keyboard (or voice), results fill in as tiles; ↓ moves into them.
-class TvSearch extends StatefulWidget {
-  const TvSearch({super.key, required this.apps, required this.onLaunch});
-  final List<AppEntry> apps;
-  final void Function(AppEntry) onLaunch;
-
-  @override
-  State<TvSearch> createState() => _TvSearchState();
-}
-
-/// Type a show, film or app. Shows & films: "Search everywhere" hands the words to Google TV's
-/// own search (results from every streaming app), or straight to an app that takes searches.
-/// Apps: matching tiles below. ↓ from the field moves into the results.
-class _TvSearchState extends State<TvSearch> {
-  final _q = TextEditingController();
-  final _firstAction = FocusNode();
-  final _firstApp = FocusNode();
-  List<String> _targets = const []; // apps that accept a search
-
-  @override
-  void initState() {
-    super.initState();
-    TvApps.instance.searchTargets().then((t) {
-      if (mounted) setState(() => _targets = t);
-    });
-  }
-
-  @override
-  void dispose() {
-    _q.dispose();
-    _firstAction.dispose();
-    _firstApp.dispose();
-    super.dispose();
-  }
-
-  void _go(VoidCallback action) {
-    Navigator.pop(context);
-    action();
-  }
+/// Darkens a full-bleed picture into the canvas: from the left (behind text) and the bottom,
+/// plus a light veil at the top.
+class TvScrims extends StatelessWidget {
+  const TvScrims({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final raw = _q.text.trim();
-    final q = raw.toLowerCase();
-    final results = q.isEmpty
-        ? (widget.apps.toList()..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase())))
-        : (widget.apps.where((a) => a.label.toLowerCase().contains(q)).toList()
-            ..sort((a, b) => (a.label.toLowerCase().startsWith(q) ? 0 : 1).compareTo(b.label.toLowerCase().startsWith(q) ? 0 : 1)));
-    final byPkg = {for (final a in widget.apps) a.package: a};
-    final targets = [for (final p in _targets) ?byPkg[p]];
-    final hasActions = raw.isNotEmpty;
-    void down() => (hasActions ? _firstAction : _firstApp).requestFocus();
-
-    return Scaffold(
-      backgroundColor: TvDS.canvas,
-      body: Padding(
-        padding: TvDS.safe,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Focus(
-              // The field keeps ↓ for itself; send it to the results instead.
-              onKeyEvent: (_, e) {
-                if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowDown && (hasActions || results.isNotEmpty)) {
-                  down();
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: TextField(
-                controller: _q,
-                autofocus: true,
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) {
-                  if (hasActions || results.isNotEmpty) down();
-                },
-                style: TvDS.panelTitle,
-                cursorColor: TvDS.ink,
-                decoration: InputDecoration(
-                  hintText: 'Search shows, films and apps',
-                  hintStyle: TvDS.panelTitle.copyWith(color: TvDS.inkMuted),
-                  prefixIcon: const Icon(Icons.search_rounded, color: TvDS.inkMuted, size: 28),
-                  filled: true,
-                  fillColor: TvDS.surface,
-                  contentPadding: const EdgeInsets.symmetric(vertical: DS.s16),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(32), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(32),
-                    borderSide: const BorderSide(color: TvDS.ink, width: 2),
-                  ),
-                ),
+    final c = TvDS.canvas;
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [c, c.withValues(alpha: .92), c.withValues(alpha: .35), c.withValues(alpha: 0)], stops: const [0, .3, .55, .75]),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [TvDS.scrim.withValues(alpha: .35), c.withValues(alpha: 0), c.withValues(alpha: .85), c],
+                stops: const [0, .2, .58, .74],
               ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                clipBehavior: Clip.none,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (hasActions) ...[
-                      const SizedBox(height: DS.s20),
-                      const Text('Shows & films', style: TvDS.rowTitle),
-                      const SizedBox(height: DS.s12),
-                      Wrap(
-                        spacing: DS.s12,
-                        runSpacing: DS.s12,
-                        children: [
-                          _SearchPill(
-                            focusNode: _firstAction,
-                            icon: Icons.travel_explore_rounded,
-                            label: 'Search everywhere for “$raw”',
-                            onSelect: () => _go(() => TvApps.instance.searchEverywhere(raw)),
-                          ),
-                          for (final a in targets)
-                            _SearchPill(app: a, label: 'Search in ${a.label}', onSelect: () => _go(() => TvApps.instance.searchIn(a.package, raw))),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: DS.s20),
-                    Text(q.isEmpty ? 'All apps' : '${results.length} ${results.length == 1 ? 'app' : 'apps'}', style: TvDS.rowTitle),
-                    Wrap(
-                      spacing: TvDS.gap,
-                      children: [
-                        for (final (i, a) in results.indexed)
-                          TvAppTile(
-                            key: ValueKey(a.package),
-                            app: a,
-                            focusNode: i == 0 ? _firstApp : null,
-                            onSelect: () => _go(() => widget.onLaunch(a)),
-                            onOptions: () {},
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// A search action: icon (or the app's own icon) + label; white when focused.
-class _SearchPill extends StatelessWidget {
-  const _SearchPill({required this.label, required this.onSelect, this.icon, this.app, this.focusNode});
+/// A pill button: icon (or a small picture) + label (+ quiet detail); white when focused.
+class TvActionPill extends StatelessWidget {
+  const TvActionPill({super.key, required this.label, required this.onSelect, this.icon, this.leading, this.detail, this.focusNode, this.autofocus = false});
   final String label;
+  final String? detail; // e.g. "Stream", "Rent"
   final VoidCallback onSelect;
   final IconData? icon;
-  final AppEntry? app;
+  final Widget? leading;
   final FocusNode? focusNode;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
-      focusNode: focusNode,
-      onSelect: onSelect,
-      builder: (context, f) => AnimatedScale(
-        scale: f ? 1.06 : 1,
-        duration: Motion.popDuration,
-        curve: Motion.pop,
-        child: AnimatedContainer(
-          duration: Motion.pressIn * 2,
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-          decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (app != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: app!, width: 40)),
-                )
-              else
-                Icon(icon, size: 22, color: f ? DS.ink : TvDS.ink),
-              const SizedBox(width: DS.s12),
-              Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? DS.ink : TvDS.ink)),
-            ],
+    return Semantics(
+      button: true,
+      label: label,
+      child: TvFocusable(
+        focusNode: focusNode,
+        autofocus: autofocus,
+        onSelect: onSelect,
+        builder: (context, f) => AnimatedScale(
+          scale: f ? 1.06 : 1,
+          duration: Motion.popDuration,
+          curve: Motion.pop,
+          child: AnimatedContainer(
+            duration: Motion.pressIn * 2,
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+            decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (leading != null)
+                  ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
+                else if (icon != null)
+                  Icon(icon, size: 22, color: f ? DS.ink : TvDS.ink),
+                const SizedBox(width: DS.s12),
+                Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? DS.ink : TvDS.ink)),
+                if (detail != null) ...[
+                  const SizedBox(width: DS.s8),
+                  Text(
+                    detail!,
+                    style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? DS.inkMuted : TvDS.inkMuted),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),

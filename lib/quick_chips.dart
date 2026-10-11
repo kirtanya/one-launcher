@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -7,6 +9,94 @@ import 'quick_actions.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
+
+/// The user's look for the quick-action chips (Quick actions → Chip look). Defaults are the
+/// original dark frosted pill.
+class ChipLook {
+  const ChipLook({this.tone = 'dark', this.opacity = .4, this.shape = 'pill', this.size = 'regular', this.content = 'both', this.outline = true});
+
+  factory ChipLook.of(Prefs prefs) {
+    final m = prefs.chipLook;
+    const d = ChipLook();
+    return ChipLook(
+      tone: m['tone'] as String? ?? d.tone,
+      opacity: (m['opacity'] as num?)?.toDouble().clamp(.1, 1.0) ?? d.opacity,
+      shape: m['shape'] as String? ?? d.shape,
+      size: m['size'] as String? ?? d.size,
+      content: m['content'] as String? ?? d.content,
+      outline: m['outline'] as bool? ?? d.outline,
+    );
+  }
+
+  final String tone, shape, size, content;
+  final double opacity;
+  final bool outline;
+
+  static const tones = {'dark': 'Dark', 'light': 'Light', 'accent': 'Accent', 'card': 'Card'};
+  static const shapes = {'pill': 'Pill', 'rounded': 'Rounded', 'square': 'Square'};
+  static const sizes = {'small': 'Small', 'regular': 'Regular', 'large': 'Large'};
+  static const contents = {'both': 'Icon + label', 'icon': 'Icon only', 'text': 'Label only'};
+
+  /// Opacity a colour starts at when picked (glass tones see-through, solid ones full).
+  static double defaultOpacity(String tone) => switch (tone) {
+    'light' => .3,
+    'dark' => .4,
+    _ => 1,
+  };
+
+  Map<String, Object> toJson() => {'tone': tone, 'opacity': opacity, 'shape': shape, 'size': size, 'content': content, 'outline': outline};
+  ChipLook copyWith({String? tone, double? opacity, String? shape, String? size, String? content, bool? outline}) => ChipLook(
+    tone: tone ?? this.tone,
+    opacity: opacity ?? this.opacity,
+    shape: shape ?? this.shape,
+    size: size ?? this.size,
+    content: content ?? this.content,
+    outline: outline ?? this.outline,
+  );
+
+  Color get fill => switch (tone) {
+    'light' => const Color(0xFFFFFFFF),
+    'accent' => DS.hero,
+    'card' => DS.card,
+    _ => const Color(0xFF141414),
+  }.withValues(alpha: opacity);
+
+  /// Text and icon colour: dark on light glass at higher opacity, light on see-through ones.
+  Color get ink => switch (tone) {
+    'light' => opacity >= .5 ? const Color(0xFF141414) : DS.onWallpaper,
+    'accent' => opacity >= .5 ? DS.heroInk : DS.onWallpaper,
+    'card' => opacity >= .5 ? DS.ink : DS.onWallpaper,
+    _ => DS.onWallpaper,
+  };
+
+  Color get line => tone == 'light' && opacity >= .5 ? const Color(0x1F000000) : DS.glassLine;
+  double get height => switch (size) {
+    'small' => 32,
+    'large' => 48,
+    _ => 40,
+  };
+  double get iconSize => switch (size) {
+    'small' => 16,
+    'large' => 22,
+    _ => 18,
+  };
+  double get fontSize => switch (size) {
+    'small' => 13,
+    'large' => 15,
+    _ => 14,
+  };
+  double get radius => switch (shape) {
+    'rounded' => 12,
+    'square' => 6,
+    _ => height / 2,
+  };
+  ShapeBorder border({Color? lineColor}) => RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(radius),
+    side: outline || lineColor != null ? BorderSide(color: lineColor ?? line) : BorderSide.none,
+  );
+
+  String get summary => '${tones[tone]} · ${(opacity * 100).round()}% · ${shapes[shape]}';
+}
 
 /// Row of quick-action pills floating on the wallpaper just above the app sheet; scrolls
 /// sideways and ends with ＋ to customise. Dark frosted pills so they read on any wallpaper.
@@ -27,6 +117,7 @@ class QuickChipsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final look = ChipLook.of(prefs);
     final labels = prefs.quickLabels;
     final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).toList();
     void customise() {
@@ -49,22 +140,25 @@ class QuickChipsRow extends StatelessWidget {
                         ? ValueListenableBuilder<bool>(
                             valueListenable: Apps.instance.torchOn,
                             builder: (context, on, _) => QuickChip(
+                              look: look,
                               label: builtInActions[id]!.$1,
-                              icon: Icon(on ? Icons.flashlight_on_rounded : builtInActions[id]!.$2, size: 18, color: on ? DS.heroInk : DS.onWallpaper),
+                              icon: Icon(on ? Icons.flashlight_on_rounded : builtInActions[id]!.$2, size: look.iconSize, color: on ? DS.heroInk : look.ink),
                               active: on,
                               onTap: () => _run(context, id, builtInActions[id]!.$1),
                               onLongPress: customise,
                             ),
                           )
                         : QuickChip(
+                            look: look,
                             label: builtInActions[id]!.$1,
-                            icon: Icon(builtInActions[id]!.$2, size: 18, color: DS.onWallpaper),
+                            icon: Icon(builtInActions[id]!.$2, size: look.iconSize, color: look.ink),
                             onTap: () => _run(context, id, builtInActions[id]!.$1),
                             onLongPress: customise,
                           ))
                   : QuickChip(
+                      look: look,
                       label: labels[id]!.split('|').first,
-                      icon: ShortcutIcon(id: id, size: 20, color: DS.onWallpaper),
+                      icon: ShortcutIcon(id: id, size: look.iconSize + 2, color: look.ink),
                       onTap: () => _run(context, id, labels[id]!.split('|').first),
                       onLongPress: customise,
                     ),
@@ -74,16 +168,18 @@ class QuickChipsRow extends StatelessWidget {
             scale: .9,
             child: Tooltip(
               message: 'Customise quick actions',
-              child: Material(
-                color: DS.chipOnWallpaper,
-                shape: StadiumBorder(side: BorderSide(color: DS.glassLine)),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: customise,
-                  child: const SizedBox(
-                    width: DS.tap,
-                    height: 40,
-                    child: Icon(Icons.add_rounded, color: DS.onCanvas, size: 20),
+              child: Center(
+                child: Material(
+                  color: look.fill,
+                  shape: look.border(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: customise,
+                    child: SizedBox(
+                      width: math.max(look.height, 40),
+                      height: look.height,
+                      child: Icon(Icons.add_rounded, color: look.ink, size: look.iconSize + 2),
+                    ),
                   ),
                 ),
               ),
@@ -95,42 +191,58 @@ class QuickChipsRow extends StatelessWidget {
   }
 }
 
-/// One quick-action pill: icon + label on the card colour (hero colour while active).
+/// One quick-action chip, drawn in the user's [look]; the hero colour while active.
 class QuickChip extends StatelessWidget {
-  const QuickChip({super.key, required this.label, required this.icon, required this.onTap, this.onLongPress, this.active = false});
+  const QuickChip({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.onLongPress,
+    this.active = false,
+    this.look = const ChipLook(),
+  });
   final String label;
   final Widget icon;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final bool active;
+  final ChipLook look;
 
   @override
   Widget build(BuildContext context) {
+    final iconOnly = look.content == 'icon', textOnly = look.content == 'text';
+    final h = look.height;
     return Center(
       child: Pressable(
         scale: .94,
-        child: Material(
-          color: active ? DS.hero : DS.chipOnWallpaper,
-          shape: StadiumBorder(side: BorderSide(color: active ? DS.hero : DS.glassLine)),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            child: SizedBox(
-              height: 40,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 16, 0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    icon,
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: active ? DS.heroInk : DS.ink),
-                    ),
-                  ],
-                ),
+        child: Tooltip(
+          message: iconOnly ? label : '',
+          child: Material(
+            color: active ? DS.hero : look.fill,
+            shape: look.border(lineColor: active ? DS.hero : null),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              onLongPress: onLongPress,
+              child: SizedBox(
+                height: h,
+                width: iconOnly ? math.max(h, 40) : null,
+                child: iconOnly
+                    ? Center(child: icon)
+                    : Padding(
+                        padding: EdgeInsets.fromLTRB(textOnly ? h * .4 : h * .3, 0, h * .4, 0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (!textOnly) ...[icon, SizedBox(width: h * .2)],
+                            Text(
+                              label,
+                              style: DS.rowTitle.copyWith(fontSize: look.fontSize, fontWeight: FontWeight.w500, color: active ? DS.heroInk : look.ink),
+                            ),
+                          ],
+                        ),
+                      ),
               ),
             ),
           ),

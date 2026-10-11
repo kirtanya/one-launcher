@@ -135,6 +135,7 @@ class TvApps {
   Future<List<String>> searchTargets() async =>
       demo ? const ['in.startv.hotstar', 'com.android.vending'] : await _ch.invokeListMethod<String>('searchTargets') ?? const [];
   Future<void> searchIn(String package, String query) => _call('searchIn', {'package': package, 'query': query});
+  Future<void> openUri(String uri, {String? package}) => _call('openUri', {'uri': uri, 'package': package});
   Future<void> searchEverywhere(String query) => _call('searchEverywhere', {'query': query});
 
   Future<void> launch(String package) => _call('launch', {'package': package});

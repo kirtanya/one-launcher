@@ -372,9 +372,11 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
 }
 
 /// Choose, order and remove the quick-action chips. Built-in actions and apps' own shortcuts.
-Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, bool back = false}) {
+const _toChipLook = 'chipLook';
+
+Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, bool back = false}) async {
   final shortcuts = Apps.instance.shortcuts(); // load once while the sheet is open
-  return showOneSheetWith(
+  final r = await showOneSheetWith(
     context,
     back: back,
     height: back ? drawerHeight(context, prefs) : null,
@@ -429,6 +431,8 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
               padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
               child: SheetHeader(title: 'Quick actions', subtitle: 'Chips above your apps · drag to reorder'),
             ),
+            _Group(null, [_NavRow(Icons.style_outlined, 'Chip look', ChipLook.of(prefs).summary, () => Navigator.pop(ctx, _toChipLook))]),
+            const SizedBox(height: DS.s8),
             // Current chips.
             ReorderableListView.builder(
               shrinkWrap: true,

@@ -7,6 +7,8 @@
     <!-- Streaming apps' Watch Next / channels. Android grants other apps' rows only to the TV's
          system launcher; where a TV allows more, those rows appear. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
+    <!-- Shows & films search (TMDB) and artwork -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="One Launcher TV"
         android:banner="@drawable/tv_banner"
