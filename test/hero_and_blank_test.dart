@@ -12,11 +12,15 @@ void main() {
     final names = [for (var i = 1; i <= 12; i++) 'App ${i.toString().padLeft(2, '0')}'];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
       if (call.method == 'getApps') {
-        return [for (final n in names) {'package': 'p.${n.replaceAll(' ', '')}', 'label': n, 'system': false, 'category': -1, 'installed': 0}];
+        return [
+          for (final n in names) {'package': 'p.${n.replaceAll(' ', '')}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
+        ];
       }
       return null;
     });
-    SharedPreferences.setMockInitialValues({'favourites': [for (final n in names) 'p.${n.replaceAll(' ', '')}']});
+    SharedPreferences.setMockInitialValues({
+      'favourites': [for (final n in names) 'p.${n.replaceAll(' ', '')}'],
+    });
     final prefs = await Prefs.load();
     await tester.pumpWidget(OneLauncher(prefs: prefs));
     await tester.pumpAndSettle();

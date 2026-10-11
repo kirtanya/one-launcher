@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
@@ -14,8 +13,7 @@ void main() {
       switch (call.method) {
         case 'getApps':
           return [
-            for (final n in ['WhatsApp', 'Slack', 'Paytm'])
-              {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
+            for (final n in ['WhatsApp', 'Slack', 'Paytm']) {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
           ];
         case 'saveBackup':
           saved = (call.arguments as Map)['text'] as String;

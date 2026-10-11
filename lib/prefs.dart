@@ -149,6 +149,14 @@ class Prefs extends ChangeNotifier {
   String get themeSource => _sp.getString('themeSource') ?? 'system';
   int get themeSeed => _sp.getInt('themeSeed') ?? 0xFF4285F4;
   String get themeStyle => _sp.getString('themeStyle') ?? 'tonal';
+
+  /// Cards: 'light', 'dark', or 'auto' (follow the phone's dark theme).
+  String get cardStyle => _sp.getString('cardStyle') ?? 'light';
+  Future<void> setCardStyle(String v) async {
+    await _sp.setString('cardStyle', v);
+    notifyListeners();
+  }
+
   Future<void> setTheme({String? source, int? seed, String? style}) async {
     if (source != null) await _sp.setString('themeSource', source);
     if (seed != null) await _sp.setInt('themeSeed', seed);

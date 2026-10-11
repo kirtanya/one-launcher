@@ -85,19 +85,44 @@ Future<void> showOneSheet(BuildContext context, {Widget? header, required List<S
 Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder builder, bool scrollable = true}) {
   return showModalBottomSheet(
     context: context,
-    backgroundColor: DS.card,
-    showDragHandle: true,
+    // The sheet paints its own background and handle (below) so they follow live theme
+    // changes — the route's own colour is fixed when it opens.
+    backgroundColor: Colors.transparent,
+    elevation: 0,
     isScrollControlled: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rCard))),
-    builder: (ctx) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: DS.s12),
-        child: scrollable
-            ? ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
-                child: SingleChildScrollView(child: builder(ctx)),
-              )
-            : builder(ctx),
+    builder: (ctx) => ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
+      // A Material (not a plain box) so rows keep their tap ripples.
+      child: Material(
+        color: DS.card,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: DS.s12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Drag handle.
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: DS.s16),
+                    width: 32,
+                    height: 4,
+                    decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                Flexible(
+                  child: scrollable
+                      ? ConstrainedBox(
+                          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
+                          child: SingleChildScrollView(child: builder(ctx)),
+                        )
+                      : builder(ctx),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     ),
   );

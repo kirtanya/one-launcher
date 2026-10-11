@@ -12,11 +12,22 @@ import 'palette.dart';
 /// - system:   the phone's Material You colours (from the wallpaper), in any style
 /// - basic:    one of 8 fixed colours, in any style
 /// - original: One's own green look
-class OneTheme extends ChangeNotifier {
+class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
   OneTheme(this.prefs) {
     prefs.addListener(_apply);
+    WidgetsBinding.instance.addObserver(this); // "Auto" cards follow the phone's dark theme
     _apply();
   }
+
+  @override
+  void didChangePlatformBrightness() => _apply();
+
+  /// Dark cards right now? ('auto' asks the phone.)
+  bool get darkCards => switch (prefs.cardStyle) {
+    'dark' => true,
+    'auto' => WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark,
+    _ => false,
+  };
 
   final Prefs prefs;
   CorePalette? _system;
@@ -69,21 +80,21 @@ class OneTheme extends ChangeNotifier {
   }
 
   /// The palette for a given choice (also used to draw the swatches).
-  OnePalette paletteFor(String source, {int? seed, String style = 'tonal'}) {
+  OnePalette paletteFor(String source, {int? seed, String style = 'tonal', bool darkCards = false}) {
     final variant = styles[style]?.$2 ?? DynamicSchemeVariant.tonalSpot;
     switch (source) {
       case 'system':
         final sys = _system;
-        if (sys == null) return OnePalette.original;
+        if (sys == null) return darkCards ? OnePalette.originalDark : OnePalette.original;
         // Tonal = exactly the phone's own scheme; other styles re-derive from its main colour.
         if (variant == DynamicSchemeVariant.tonalSpot) {
-          return OnePalette.fromSchemes(_fromCore(sys, Brightness.light), _fromCore(sys, Brightness.dark));
+          return OnePalette.fromSchemes(_fromCore(sys, Brightness.light), _fromCore(sys, Brightness.dark), darkCards: darkCards);
         }
-        return OnePalette.fromSeed(Color(sys.primary.get(40)), variant);
+        return OnePalette.fromSeed(Color(sys.primary.get(40)), variant, darkCards: darkCards);
       case 'basic':
-        return OnePalette.fromSeed(Color(seed ?? basicSeeds.first.toARGB32()), variant);
+        return OnePalette.fromSeed(Color(seed ?? basicSeeds.first.toARGB32()), variant, darkCards: darkCards);
       default:
-        return OnePalette.original;
+        return darkCards ? OnePalette.originalDark : OnePalette.original;
     }
   }
 
@@ -125,16 +136,18 @@ class OneTheme extends ChangeNotifier {
 
   void _apply() {
     final source = prefs.themeSource == 'system' && !hasSystem ? 'original' : prefs.themeSource;
-    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}';
+    final dark = darkCards;
+    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark';
     if (key == _key) return;
     _key = key;
-    DS.palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle);
+    DS.palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
     notifyListeners();
   }
 
   @override
   void dispose() {
     prefs.removeListener(_apply);
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }

@@ -680,6 +680,28 @@ Future<void> showColoursSheet(BuildContext context, {required Prefs prefs, requi
                   ),
                 },
               ),
+              // Cards: light / dark / follow the phone's dark theme.
+              const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s24, DS.s24, DS.s16), child: CardDivider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Cards', style: DS.rowTitle),
+                    const SizedBox(height: DS.s8),
+                    Wrap(
+                      spacing: DS.s8,
+                      runSpacing: DS.s8,
+                      children: [
+                        for (final (id, label) in [('light', 'Light'), ('dark', 'Dark'), ('auto', 'Auto')])
+                          _Chip(label: label, selected: prefs.cardStyle == id, onTap: () => prefs.setCardStyle(id)),
+                      ],
+                    ),
+                    const SizedBox(height: DS.s8),
+                    Text('Auto follows your phone’s dark theme.', style: DS.rowSub.copyWith(fontSize: 13)),
+                  ],
+                ),
+              ),
               const SizedBox(height: DS.s24),
             ],
           );

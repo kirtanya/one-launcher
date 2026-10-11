@@ -18,8 +18,26 @@ void main() {
           ];
         case 'listWidgetProviders':
           return [
-            {'provider': 'com.google.android.calendar/.Month', 'serial': 0, 'work': false, 'package': 'com.google.android.calendar', 'label': 'Month', 'app': 'Calendar', 'cols': 4, 'rows': 2},
-            {'provider': 'com.google.android.calendar/.Schedule', 'serial': 0, 'work': false, 'package': 'com.google.android.calendar', 'label': 'Schedule', 'app': 'Calendar', 'cols': 2, 'rows': 2},
+            {
+              'provider': 'com.google.android.calendar/.Month',
+              'serial': 0,
+              'work': false,
+              'package': 'com.google.android.calendar',
+              'label': 'Month',
+              'app': 'Calendar',
+              'cols': 4,
+              'rows': 2,
+            },
+            {
+              'provider': 'com.google.android.calendar/.Schedule',
+              'serial': 0,
+              'work': false,
+              'package': 'com.google.android.calendar',
+              'label': 'Schedule',
+              'app': 'Calendar',
+              'cols': 2,
+              'rows': 2,
+            },
           ];
         case 'addWidget':
           return 7;

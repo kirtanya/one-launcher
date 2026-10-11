@@ -31,7 +31,9 @@ void main() {
       }
       return null;
     });
-    SharedPreferences.setMockInitialValues({'favourites': ['com.whatsapp', 'com.slack']});
+    SharedPreferences.setMockInitialValues({
+      'favourites': ['com.whatsapp', 'com.slack'],
+    });
     await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
     await tester.pumpAndSettle();
     // No Material You in tests → falls back to One's original look.
@@ -51,11 +53,28 @@ void main() {
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/9_theme_sheet.png'));
 
+    // Cards: Dark → dark cards with light text; then Auto (phone is in light mode in tests).
+    await tester.ensureVisible(find.text('Dark'));
+    await tester.tap(find.text('Dark'));
+    await tester.pumpAndSettle();
+    expect(DS.palette.card.computeLuminance(), lessThan(.1), reason: 'dark cards');
+    expect(DS.palette.ink.computeLuminance(), greaterThan(.6), reason: 'light text on them');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/11_dark_cards_sheet.png'));
+    await tester.tap(find.text('Auto'));
+    await tester.pumpAndSettle();
+    expect(DS.palette.card.computeLuminance(), greaterThan(.8), reason: 'auto + light phone = light cards');
+    await tester.tap(find.text('Dark'));
+    await tester.pumpAndSettle();
+
     Navigator.of(tester.element(find.text('Colours & style'))).pop();
     await tester.pumpAndSettle();
     // Const widgets got rebuilt too: the dividers use the new hairline colour.
-    final dividerColors = tester.widgetList<Container>(find.descendant(of: find.byType(Scaffold), matching: find.byType(Container))).map((c) => c.color).toSet();
+    final dividerColors = tester
+        .widgetList<Container>(find.descendant(of: find.byType(Scaffold), matching: find.byType(Container)))
+        .map((c) => c.color)
+        .toSet();
     expect(dividerColors.contains(OnePalette.original.hairline), isFalse, reason: 'no stale original colours');
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/10_theme_purple.png'));
+    expect(dividerColors.contains(OnePalette.original.card), isFalse, reason: 'no stale white cards');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/10_theme_purple_dark.png'));
   });
 }

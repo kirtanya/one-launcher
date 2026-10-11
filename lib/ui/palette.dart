@@ -37,10 +37,42 @@ class OnePalette {
     hairline: Color(0xFFE6E6E6),
   );
 
+  /// "One original" with dark cards: charcoal cards, deep green hero, light text.
+  static const originalDark = OnePalette(
+    canvas: Color(0xFF111111),
+    card: Color(0xFF262626),
+    cardMuted: Color(0xFF1E1E1E),
+    hero: Color(0xFF2E4724),
+    heroSoft: Color(0xFF3B5A2F),
+    heroInk: Color(0xFFD6EEC4),
+    heroMuted: Color(0xFF9DB88A),
+    heroDivider: Color(0xFF46633A),
+    ink: Color(0xFFF2F2F2),
+    inkMuted: Color(0xFFA8A8A8),
+    inkFaint: Color(0xFF7C7C7C),
+    hairline: Color(0xFF3A3A3A),
+  );
+
   /// Maps a Material 3 scheme onto One's roles, keeping One's structure: a dark tinted sheet,
-  /// light tinted cards, and the primary container as the hero card.
-  factory OnePalette.fromSchemes(ColorScheme light, ColorScheme dark) {
+  /// tinted cards (light, or dark with [darkCards]) and the primary container as the hero card.
+  factory OnePalette.fromSchemes(ColorScheme light, ColorScheme dark, {bool darkCards = false}) {
     Color mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
+    if (darkCards) {
+      return OnePalette(
+        canvas: dark.surfaceContainerLowest,
+        card: dark.surfaceContainerHigh,
+        cardMuted: dark.surfaceContainer,
+        hero: dark.primaryContainer,
+        heroSoft: mix(dark.primaryContainer, dark.onPrimaryContainer, .14),
+        heroInk: dark.onPrimaryContainer,
+        heroMuted: mix(dark.onPrimaryContainer, dark.primaryContainer, .4),
+        heroDivider: mix(dark.onPrimaryContainer, dark.primaryContainer, .75),
+        ink: dark.onSurface,
+        inkMuted: dark.onSurfaceVariant,
+        inkFaint: dark.outline,
+        hairline: dark.outlineVariant,
+      );
+    }
     return OnePalette(
       canvas: dark.surfaceContainerLow,
       card: light.surfaceContainerLowest,
@@ -57,8 +89,9 @@ class OnePalette {
     );
   }
 
-  factory OnePalette.fromSeed(Color seed, DynamicSchemeVariant variant) => OnePalette.fromSchemes(
+  factory OnePalette.fromSeed(Color seed, DynamicSchemeVariant variant, {bool darkCards = false}) => OnePalette.fromSchemes(
     ColorScheme.fromSeed(seedColor: seed, dynamicSchemeVariant: variant),
     ColorScheme.fromSeed(seedColor: seed, dynamicSchemeVariant: variant, brightness: Brightness.dark),
+    darkCards: darkCards,
   );
 }
