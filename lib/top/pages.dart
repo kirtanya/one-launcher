@@ -38,9 +38,6 @@ class _Page extends StatelessWidget {
   final VoidCallback? onTap, onTapLabel;
   final String? semantics;
 
-  /// The two glass buttons sit at the right end of the label line.
-  static const _buttonsWidth = 2 * DS.tap + DS.s8;
-
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -55,15 +52,12 @@ class _Page extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: DS.tap,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: _buttonsWidth),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: onTapLabel,
-                      child: Text(label, style: DS.wallpaperDate, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
+                height: 32,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: GestureDetector(
+                    onTap: onTapLabel,
+                    child: Text(label, style: DS.wallpaperDate, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
               ),

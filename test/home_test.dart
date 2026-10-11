@@ -30,12 +30,26 @@ Future<void> _loadFonts() async {
 }
 
 const _apps = {
-  'WhatsApp': 'com.whatsapp', 'Instagram': 'com.instagram.android', 'Messages': 'com.google.android.apps.messaging',
-  'Slack': 'com.Slack', 'Gmail': 'com.google.android.gm', 'Figma': 'com.figma.mirror', 'Calendar': 'com.google.android.calendar',
-  'Paytm': 'net.one97.paytm', 'PhonePe': 'com.phonepe.app', 'Splitwise': 'com.splitwise.SplitwiseMobile',
-  'Spotify': 'com.spotify.music', 'YouTube': 'com.google.android.youtube', 'Photos': 'com.google.android.apps.photos',
-  'Swiggy': 'in.swiggy.android', 'Zomato': 'com.application.zomato', 'Maps': 'com.google.android.apps.maps', 'Uber': 'com.ubercab',
-  'Clock': 'com.google.android.deskclock', 'Settings': 'com.android.settings', 'Mystery': 'org.example.mystery',
+  'WhatsApp': 'com.whatsapp',
+  'Instagram': 'com.instagram.android',
+  'Messages': 'com.google.android.apps.messaging',
+  'Slack': 'com.Slack',
+  'Gmail': 'com.google.android.gm',
+  'Figma': 'com.figma.mirror',
+  'Calendar': 'com.google.android.calendar',
+  'Paytm': 'net.one97.paytm',
+  'PhonePe': 'com.phonepe.app',
+  'Splitwise': 'com.splitwise.SplitwiseMobile',
+  'Spotify': 'com.spotify.music',
+  'YouTube': 'com.google.android.youtube',
+  'Photos': 'com.google.android.apps.photos',
+  'Swiggy': 'in.swiggy.android',
+  'Zomato': 'com.application.zomato',
+  'Maps': 'com.google.android.apps.maps',
+  'Uber': 'com.ubercab',
+  'Clock': 'com.google.android.deskclock',
+  'Settings': 'com.android.settings',
+  'Mystery': 'org.example.mystery',
 };
 
 void main() {
@@ -77,7 +91,12 @@ void main() {
     });
     final prefs = await Prefs.load();
 
-    await tester.pumpWidget(ColoredBox(color: const Color(0xFF6B5A4A), child: OneLauncher(prefs: prefs)));
+    await tester.pumpWidget(
+      ColoredBox(
+        color: const Color(0xFF6B5A4A),
+        child: OneLauncher(prefs: prefs),
+      ),
+    );
     await tester.pumpAndSettle();
     final clock = find.byType(FittedBox).first;
     expect(clock.hitTestable(), findsOneWidget);
@@ -177,9 +196,15 @@ void main() {
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
     expect(find.text('Top widgets size'), findsOneWidget);
-    await tester.drag(find.byType(Slider), const Offset(400, 0));
+    await tester.drag(find.byType(Slider).first, const Offset(400, 0));
     await tester.pumpAndSettle();
     expect(find.text('50% · apps 50%'), findsOneWidget);
+    // Padding slider: more room around the top widgets → the big figure moves inward.
+    final figureX = tester.getTopLeft(find.byType(FittedBox).first).dx;
+    await tester.drag(find.byType(Slider).last, const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('40 pt'), findsOneWidget);
+    expect(tester.getTopLeft(find.byType(FittedBox).first).dx, greaterThan(figureX + 15), reason: 'padding applied live');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
     Navigator.of(tester.element(find.text('Top widgets size'))).pop();
     await tester.pumpAndSettle();

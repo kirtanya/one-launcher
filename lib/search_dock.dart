@@ -22,6 +22,8 @@ class SearchDock extends StatelessWidget {
     required this.onClose,
     required this.onChanged,
     required this.onSubmitted,
+    required this.onWallpaper,
+    required this.onSettings,
   });
 
   final bool compact;
@@ -29,18 +31,22 @@ class SearchDock extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focus;
   final String hint;
-  final VoidCallback onActivate, onClose;
+  final VoidCallback onActivate, onClose, onWallpaper, onSettings;
   final ValueChanged<String> onChanged, onSubmitted;
 
   static const height = 56.0;
   static const shadow = [BoxShadow(color: Color(0x47000000), blurRadius: 24, offset: Offset(0, 8))];
   static const gap = 8.0;
+  static const _slot = height + gap;
 
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final bottom = math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12;
     final small = compact && !active;
+    // Wallpaper + settings sit right of the bar at rest; they slide out while searching
+    // or while the list is scrolled (dock shrinks to just the search circle).
+    final tools = !active && !small;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, bottom),
@@ -48,7 +54,23 @@ class SearchDock extends StatelessWidget {
         height: height,
         child: LayoutBuilder(
           builder: (context, c) {
-            final width = active ? c.maxWidth - height - gap : (small ? height : c.maxWidth);
+            final w = c.maxWidth;
+            final pillRight = active ? _slot : (small ? 0.0 : 2 * _slot);
+            final pillWidth = active ? w - _slot : (small ? height : w - 2 * _slot);
+            Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
+              duration: Motion.snapDuration,
+              curve: Motion.snap,
+              top: 0,
+              bottom: 0,
+              right: right,
+              width: height,
+              child: AnimatedOpacity(
+                duration: Motion.snapDuration,
+                curve: Curves.easeOut,
+                opacity: shown ? 1 : 0,
+                child: IgnorePointer(ignoring: !shown, child: child),
+              ),
+            );
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -58,8 +80,8 @@ class SearchDock extends StatelessWidget {
                   curve: Motion.settle,
                   top: 0,
                   bottom: 0,
-                  right: active ? height + gap : 0,
-                  width: width,
+                  right: pillRight,
+                  width: pillWidth,
                   child: _Pill(
                     small: small,
                     active: active,
@@ -71,36 +93,55 @@ class SearchDock extends StatelessWidget {
                     onSubmitted: onSubmitted,
                   ),
                 ),
+                slide(
+                  right: tools ? _slot : -(2 * _slot),
+                  shown: tools,
+                  child: _DockCircle(icon: Icons.wallpaper_rounded, tooltip: 'Wallpaper', onTap: onWallpaper),
+                ),
+                slide(
+                  right: tools ? 0 : -_slot,
+                  shown: tools,
+                  child: _DockCircle(icon: Icons.tune_rounded, tooltip: 'Launcher settings', onTap: onSettings),
+                ),
                 // Close button slides in from the right while searching.
-                AnimatedPositioned(
-                  duration: Motion.snapDuration,
-                  curve: Motion.snap,
-                  top: 0,
-                  bottom: 0,
+                slide(
                   right: active ? 0 : -(height + DS.s16),
-                  width: height,
-                  child: Pressable(
-                    scale: .88,
-                    child: DecoratedBox(
-                      decoration: const BoxDecoration(shape: BoxShape.circle, boxShadow: SearchDock.shadow),
-                      child: Tooltip(
-                        message: 'Close search',
-                        child: Material(
-                          color: DS.card,
-                          shape: const CircleBorder(),
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            onTap: onClose,
-                            child: const Icon(Icons.close_rounded, color: DS.ink),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  shown: active,
+                  child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: onClose),
                 ),
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+}
+
+/// White floating circle with a soft shadow, matching the search pill.
+class _DockCircle extends StatelessWidget {
+  const _DockCircle({required this.icon, required this.tooltip, required this.onTap});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      scale: .88,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(shape: BoxShape.circle, boxShadow: SearchDock.shadow),
+        child: Tooltip(
+          message: tooltip,
+          child: Material(
+            color: DS.card,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: Icon(icon, color: DS.ink),
+            ),
+          ),
         ),
       ),
     );

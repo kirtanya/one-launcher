@@ -10,7 +10,6 @@ import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
 import 'sheets.dart';
-import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 
@@ -288,11 +287,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         HapticFeedback.mediumImpact();
                         showCustomiseTop(context, prefs: prefs);
                       },
+                      padding: prefs.topPadding,
                       onSwipeUp: _expand,
                       onSwipeDown: Apps.instance.openNotifications,
-                      onTapDate: () => _openNamed(['calendar', 'google calendar']),
-                      onWallpaper: Apps.instance.openWallpaperPicker,
-                      onSettings: _settings,
                     ),
                   ),
                 ),
@@ -346,6 +343,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onClose: _stopSearch,
                     onChanged: _onQuery,
                     onSubmitted: _onSubmit,
+                    onWallpaper: Apps.instance.openWallpaperPicker,
+                    onSettings: _settings,
                   ),
                 ),
               ],
@@ -360,18 +359,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 // ---- Top area ---------------------------------------------------------------
 
 class _TopArea extends StatelessWidget {
-  const _TopArea({
-    required this.carousel,
-    required this.onSwipeUp,
-    required this.onSwipeDown,
-    required this.onTapDate,
-    required this.onWallpaper,
-    required this.onSettings,
-    required this.onCustomise,
-  });
+  const _TopArea({required this.carousel, required this.padding, required this.onSwipeUp, required this.onSwipeDown, required this.onCustomise});
 
   final Widget carousel;
-  final VoidCallback onSwipeUp, onSwipeDown, onTapDate, onWallpaper, onSettings, onCustomise;
+  final double padding; // user-set breathing room (Settings → Top widgets padding)
+  final VoidCallback onSwipeUp, onSwipeDown, onCustomise;
 
   @override
   Widget build(BuildContext context) {
@@ -384,30 +376,17 @@ class _TopArea extends StatelessWidget {
       },
       onLongPress: onCustomise, // long-press the top half → choose its pages
       child: DecoratedBox(
-        // Gentle dark wash at the top so the status bar and buttons read on bright wallpapers.
+        // Gentle dark wash at the top so the status bar reads on bright wallpapers.
         decoration: const BoxDecoration(
           gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x40000000), Color(0x00000000)], stops: [0, .45]),
         ),
         child: SafeArea(
           bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(DS.s8, DS.s4, DS.s8, DS.rSheet + DS.s4),
-            child: Stack(
-              children: [
-                Positioned.fill(child: carousel),
-                // Glass buttons share the first line with the page label (date on the clock page).
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Row(
-                    children: [
-                      CircleButton(icon: Icons.wallpaper_rounded, tone: CircleTone.glass, tooltip: 'Wallpaper', onTap: onWallpaper),
-                      CircleButton(icon: Icons.tune_rounded, tone: CircleTone.glass, tooltip: 'Launcher settings', onTap: onSettings),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          child: AnimatedPadding(
+            duration: Motion.snapDuration,
+            curve: Motion.settle,
+            padding: EdgeInsets.fromLTRB(DS.s8 + padding, DS.s4 + padding * .5, DS.s8 + padding, DS.rSheet + DS.s4 + padding * .5),
+            child: carousel,
           ),
         ),
       ),

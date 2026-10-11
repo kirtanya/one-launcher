@@ -372,6 +372,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
               child: CardDivider(),
             ),
             _SplitSlider(prefs: prefs),
+            _PaddingSlider(prefs: prefs),
             _Row(Icons.view_carousel_outlined, 'Top widgets', () {
               Navigator.pop(ctx);
               showCustomiseTop(context, prefs: prefs);
@@ -520,6 +521,54 @@ class _FontPicker extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Settings → Layout: breathing room around the top widgets. Updates live.
+class _PaddingSlider extends StatelessWidget {
+  const _PaddingSlider({required this.prefs});
+  final Prefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = prefs.topPadding;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Top widgets padding', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+              ),
+              Text(v == 0 ? 'None' : '${v.round()} pt', style: DS.rowSub),
+            ],
+          ),
+          Row(
+            children: [
+              const Icon(Icons.fullscreen_rounded, size: 18, color: DS.inkMuted),
+              Expanded(
+                child: Slider(
+                  value: v,
+                  max: Prefs.topPaddingMax,
+                  divisions: 5, // 0, 8, 16 … 40
+                  label: '${v.round()} pt',
+                  activeColor: DS.ink,
+                  inactiveColor: DS.cardMuted,
+                  thumbColor: DS.ink,
+                  onChanged: (x) {
+                    if ((x - v).abs() > .5) HapticFeedback.selectionClick();
+                    prefs.setTopPadding(x);
+                  },
+                ),
+              ),
+              const Icon(Icons.fullscreen_exit_rounded, size: 18, color: DS.inkMuted),
+            ],
+          ),
+        ],
       ),
     );
   }

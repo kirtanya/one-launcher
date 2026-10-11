@@ -86,6 +86,14 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Extra breathing room around the top widgets (pt).
+  static const topPaddingMax = 40.0;
+  double get topPadding => (_sp.getDouble('topPadding') ?? 16).clamp(0, topPaddingMax);
+  Future<void> setTopPadding(double v) async {
+    await _sp.setDouble('topPadding', v.clamp(0, topPaddingMax));
+    notifyListeners();
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {

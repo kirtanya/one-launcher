@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart';
+
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import 'apps.dart';
@@ -46,7 +50,7 @@ class AppDrawer extends StatefulWidget {
   State<AppDrawer> createState() => AppDrawerState();
 }
 
-class AppDrawerState extends State<AppDrawer> {
+class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
   static const _mostUsedCount = 8;
   String? _openId; // the one open folder (Most used is the hero card, always open)
 
@@ -87,23 +91,76 @@ class AppDrawerState extends State<AppDrawer> {
     showAppSheet(context, prefs: widget.prefs, app: app);
   }
 
-  final _folderKeys = <String, GlobalKey>{};
-  GlobalKey _keyFor(String id) => _folderKeys.putIfAbsent(id, GlobalKey.new);
+  // Each folder has a zero-height marker just above it (to find where it starts) and a key on
+  // its app grid (to know how tall it currently is).
+  final _markerKeys = <String, GlobalKey>{};
+  final _bodyKeys = <String, GlobalKey>{};
+  GlobalKey _marker(String id) => _markerKeys.putIfAbsent(id, GlobalKey.new);
+  GlobalKey _body(String id) => _bodyKeys.putIfAbsent(id, GlobalKey.new);
+  final _headerKeys = <String, GlobalKey>{};
+  GlobalKey _header(String id) => _headerKeys.putIfAbsent(id, GlobalKey.new); // keeps header state when it starts/stops pinning
 
-  /// Accordion: opening one folder closes the other, then the opened folder glides to the
-  /// middle of the screen (expanding the sheet first if it's at half height).
+  /// Height of a folder's header row (pill 64 + padding 12 × 2).
+  static const _headerExtent = 88.0;
+
+  /// Drives the "open folder → centre it" glide, in step with the folder growing.
+  late final AnimationController _glide = AnimationController(vsync: this, duration: Motion.snapDuration)..addListener(_glideTick);
+  String? _glideId;
+  double _glideFrom = 0;
+
+  @override
+  void dispose() {
+    _glide.dispose();
+    super.dispose();
+  }
+
+  /// Accordion: opening one folder closes the other. The sheet expands, the folder opens and
+  /// it glides to the middle — all in one motion. A folder taller than the screen stops with
+  /// its header at the top instead.
   void _toggle(String id) {
     HapticFeedback.selectionClick();
     final opening = _openId != id;
     setState(() => _openId = opening ? id : null);
-    if (!opening) return;
+    if (!opening || !widget.scroll.hasClients) return;
     widget.onWantFull();
-    // Wait for the open/close sizes to settle so the centre is measured on the final layout.
-    Future.delayed(Motion.snapDuration, () {
-      final ctx = _folderKeys[id]?.currentContext;
-      if (!mounted || ctx == null || !ctx.mounted || _openId != id) return;
-      Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Motion.snapDuration, curve: Motion.settle);
-    });
+    _glideId = id;
+    _glideFrom = widget.scroll.position.pixels;
+    _glide.forward(from: 0);
+  }
+
+  /// Where the list should be scrolled to frame folder [id], measured on the current layout.
+  double? _targetFor(String id) {
+    final marker = _markerKeys[id]?.currentContext?.findRenderObject();
+    final body = _bodyKeys[id]?.currentContext?.findRenderObject() as RenderBox?;
+    if (marker == null || body == null || !marker.attached || !widget.scroll.hasClients) return null;
+    final pos = widget.scroll.position;
+    final mq = MediaQuery.of(context);
+    // Aim at the layout the sheet is heading to (full screen), not the current one: the sheet
+    // expands during the same motion, and a moving target would make the folder overshoot.
+    final inset = DS.gutter + mq.padding.top; // pinned top spacer at full screen
+    final dock = mq.padding.bottom + SearchDock.height + DS.s24; // floating search dock
+    final visible = mq.size.height - inset - dock;
+    // The marker is the gap just above the folder, so the folder starts DS.stack below it.
+    final top = RenderAbstractViewport.of(marker).getOffsetToReveal(marker, 0).offset + DS.stack;
+    final cardH = _headerExtent + body.size.height;
+    final centred = top - inset - (visible - cardH) / 2;
+    final headerAtTop = top - inset;
+    return math.min(centred, headerAtTop).clamp(pos.minScrollExtent, pos.maxScrollExtent);
+  }
+
+  void _glideTick() {
+    final id = _glideId;
+    if (id == null || !widget.scroll.hasClients) return;
+    final target = _targetFor(id);
+    if (target == null) return;
+    final t = Motion.settle.transform(_glide.value);
+    widget.scroll.position.jumpTo(_glideFrom + (target - _glideFrom) * t);
+  }
+
+  /// A finger on the list takes over from the glide.
+  bool _onScrollStart(ScrollStartNotification n) {
+    if (n.dragDetails != null && _glide.isAnimating) _glide.stop();
+    return false;
   }
 
   bool _onScroll(ScrollUpdateNotification n) {
@@ -147,79 +204,111 @@ class AppDrawerState extends State<AppDrawer> {
       onLongPress: _longPress,
     );
 
-    final cards = <Widget>[
-      if (widget.searching)
-        widget.query.trim().isEmpty
-            ? hero // suggestions while the field is empty
-            : _ResultsCard(
-                query: widget.query.trim(),
-                results: searchApps(widget.apps, widget.query),
-                prefs: prefs,
-                onTap: widget.onLaunch,
-                onLongPress: _longPress,
-              )
-      else ...[
-        hero,
-        for (final (i, (folder, list)) in groups.indexed)
-          _FolderCard(
-            key: _keyFor(folder.id),
-            folder: folder,
-            name: prefs.folderName(folder),
-            apps: list,
-            open: _openId == folder.id,
-            tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-            onToggle: () => _toggle(folder.id),
-            onCustomise: () =>
-                showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
-            onLaunch: widget.onLaunch,
-            onLongPress: _longPress,
+    final gutter = const EdgeInsets.symmetric(horizontal: DS.gutter);
+    Widget box(Widget child) => SliverPadding(
+      padding: gutter,
+      sliver: SliverToBoxAdapter(child: child),
+    );
+
+    Widget folderHeader(int i, Folder folder, List<AppEntry> list) => KeyedSubtree(
+      key: _header(folder.id),
+      child: PopIn(
+        delay: ((i + 1) * 0.05).clamp(0, .4),
+        offset: const Offset(0, 24),
+        fromScale: .97,
+        child: _FolderHeader(
+          folder: folder,
+          name: prefs.folderName(folder),
+          apps: list,
+          open: _openId == folder.id,
+          tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+          onToggle: () => _toggle(folder.id),
+          onCustomise: () =>
+              showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
+        ),
+      ),
+    );
+
+    final List<Widget> content;
+    if (widget.searching) {
+      content = [
+        box(
+          widget.query.trim().isEmpty
+              ? hero // suggestions while the field is empty
+              : _ResultsCard(
+                  query: widget.query.trim(),
+                  results: searchApps(widget.apps, widget.query),
+                  prefs: prefs,
+                  onTap: widget.onLaunch,
+                  onLongPress: _longPress,
+                ),
+        ),
+      ];
+    } else {
+      content = [
+        box(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero)),
+        for (final (i, (folder, list)) in groups.indexed) ...[
+          // Gap above the folder; its key marks where the folder starts.
+          SliverToBoxAdapter(
+            child: SizedBox(key: _marker(folder.id), height: DS.stack),
           ),
-      ],
-    ];
+          SliverPadding(
+            padding: gutter,
+            // Header + grid as one group: an open folder's header pins to the top while its
+            // apps scroll under it, and leaves with the folder's end.
+            sliver: SliverMainAxisGroup(
+              slivers: [
+                // Open folder: header pins to the top while its apps scroll under it.
+                if (_openId == folder.id)
+                  PinnedHeaderSliver(child: folderHeader(i, folder, list))
+                else
+                  SliverToBoxAdapter(child: folderHeader(i, folder, list)),
+                SliverToBoxAdapter(
+                  child: _FolderBody(
+                    key: _body(folder.id),
+                    apps: list,
+                    open: _openId == folder.id,
+                    tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+                    onLaunch: widget.onLaunch,
+                    onLongPress: _longPress,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ];
+    }
 
     return Material(
       color: DS.canvas,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          NotificationListener<ScrollUpdateNotification>(
-            onNotification: _onScroll,
-            child: ListView.separated(
+      child: NotificationListener<ScrollStartNotification>(
+        onNotification: _onScrollStart,
+        child: NotificationListener<ScrollUpdateNotification>(
+          onNotification: _onScroll,
+          child: ValueListenableBuilder<double>(
+            valueListenable: widget.expanded,
+            builder: (context, e, _) => CustomScrollView(
               controller: widget.scroll,
               physics: const ClampingScrollPhysics(),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, bottom),
-              itemCount: cards.length + 1,
-              separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : DS.stack),
-              itemBuilder: (context, i) {
-                if (i == 0) {
-                  // Top spacing (no handle). As the sheet reaches full screen it also makes room for the status bar.
-                  return ValueListenableBuilder<double>(
-                    valueListenable: widget.expanded,
-                    builder: (context, e, _) => SizedBox(height: DS.gutter + statusBar * e),
-                  );
-                }
-                // Cards pop in one after another the first time they appear.
-                return PopIn(delay: ((i - 1) * 0.05).clamp(0, .4), offset: const Offset(0, 24), fromScale: .97, child: cards[i - 1]);
-              },
+              slivers: [
+                // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
+                // reaches full screen, and pinned folder headers stop just below it.
+                PinnedHeaderSliver(
+                  child: SizedBox(
+                    height: DS.gutter + statusBar * e,
+                    child: const ColoredBox(color: DS.canvas),
+                  ),
+                ),
+                ...content,
+                SliverToBoxAdapter(child: SizedBox(height: bottom)),
+              ],
             ),
           ),
-          // Solid strip behind the status bar once the sheet is full, so cards don't scroll under the clock/battery icons.
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: statusBar,
-            child: IgnorePointer(
-              child: ValueListenableBuilder<double>(
-                valueListenable: widget.expanded,
-                // Only once the sheet is fully open; mid-drag it would darken the top cards.
-                builder: (context, e, _) => ColoredBox(color: DS.canvas.withValues(alpha: ((e - .97) / .03).clamp(0.0, 1.0))),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -284,9 +373,10 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _FolderCard extends StatelessWidget {
-  const _FolderCard({
-    super.key,
+/// Top of a folder card: count pill, name, preview of app names, ••• (when open) and chevron.
+/// Rounded all round when closed; only on top when open (the grid continues below).
+class _FolderHeader extends StatelessWidget {
+  const _FolderHeader({
     required this.folder,
     required this.name,
     required this.apps,
@@ -294,8 +384,6 @@ class _FolderCard extends StatelessWidget {
     required this.tone,
     required this.onToggle,
     required this.onCustomise,
-    required this.onLaunch,
-    required this.onLongPress,
   });
 
   final Folder folder;
@@ -304,115 +392,137 @@ class _FolderCard extends StatelessWidget {
   final bool open;
   final CardTone tone;
   final VoidCallback onToggle, onCustomise;
-  final ValueChanged<AppEntry> onLaunch, onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final names = apps.take(3).map((a) => a.label).join(', ') + (apps.length > 3 ? '…' : '');
-    return OneCard(
-      tone: tone,
-      padding: EdgeInsets.zero,
-      child: Column(
-        children: [
-          // Row header — tap anywhere to open/close.
-          InkWell(
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s8, DS.s12),
-              child: Row(
+    const r = Radius.circular(DS.rCard);
+    return AnimatedContainer(
+      duration: Motion.snapDuration,
+      curve: Motion.settle,
+      decoration: BoxDecoration(
+        color: tone == CardTone.muted ? DS.cardMuted : DS.card,
+        borderRadius: BorderRadius.vertical(top: r, bottom: open ? Radius.zero : r),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s8, DS.s12),
+            child: Row(
+              children: [
+                DatePill(big: '${apps.length}', small: apps.length == 1 ? 'app' : 'apps'),
+                const SizedBox(width: DS.s16),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(name, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(folder.icon, size: 16, color: DS.inkFaint),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(names, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                // "Customise" appears only on the open folder.
+                AnimatedSwitcher(
+                  duration: Motion.snapDuration,
+                  switchInCurve: Motion.pop,
+                  transitionBuilder: (child, a) => ScaleTransition(
+                    scale: a,
+                    child: FadeTransition(opacity: a, child: child),
+                  ),
+                  child: open
+                      ? CircleButton(
+                          key: const ValueKey('more'),
+                          icon: Icons.more_horiz_rounded,
+                          tone: CircleTone.outline,
+                          tooltip: 'Customise folder',
+                          onTap: onCustomise,
+                        )
+                      : const SizedBox(key: ValueKey('none')),
+                ),
+                CircleButton(
+                  icon: Icons.keyboard_arrow_down_rounded,
+                  tone: CircleTone.outline,
+                  turns: open ? .5 : 0,
+                  tooltip: open ? 'Close folder' : 'Open folder',
+                  onTap: onToggle,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The app grid under an open folder's header; springs open/closed.
+class _FolderBody extends StatelessWidget {
+  const _FolderBody({super.key, required this.apps, required this.open, required this.tone, required this.onLaunch, required this.onLongPress});
+
+  final List<AppEntry> apps;
+  final bool open;
+  final CardTone tone;
+  final ValueChanged<AppEntry> onLaunch, onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    // No overshoot here: the centring glide follows this height every frame.
+    return AnimatedSize(
+      duration: Motion.snapDuration,
+      curve: Motion.settle,
+      alignment: Alignment.topCenter,
+      child: !open
+          ? const SizedBox(width: double.infinity)
+          : Container(
+              decoration: BoxDecoration(
+                color: tone == CardTone.muted ? DS.cardMuted : DS.card,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(DS.rCard)),
+              ),
+              padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
+              child: Column(
                 children: [
-                  DatePill(big: '${apps.length}', small: apps.length == 1 ? 'app' : 'apps'),
-                  const SizedBox(width: DS.s16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  const CardDivider(),
+                  const SizedBox(height: DS.s12),
+                  if (apps.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(DS.s16),
+                      child: Text('No apps here yet.', style: DS.rowSub),
+                    )
+                  else
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final w = c.maxWidth / 4;
+                        return Wrap(
                           children: [
-                            Flexible(
-                              child: Text(name, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(folder.icon, size: 16, color: DS.inkFaint),
+                            for (final (i, a) in apps.indexed)
+                              SizedBox(
+                                width: w,
+                                // Icons pop in row by row.
+                                child: PopIn(
+                                  delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                                  child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
+                                ),
+                              ),
                           ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(names, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ],
+                        );
+                      },
                     ),
-                  ),
-                  // "Customise" appears only on the open folder.
-                  AnimatedSwitcher(
-                    duration: Motion.snapDuration,
-                    switchInCurve: Motion.pop,
-                    transitionBuilder: (child, a) => ScaleTransition(
-                      scale: a,
-                      child: FadeTransition(opacity: a, child: child),
-                    ),
-                    child: open
-                        ? CircleButton(
-                            key: const ValueKey('more'),
-                            icon: Icons.more_horiz_rounded,
-                            tone: CircleTone.outline,
-                            tooltip: 'Customise folder',
-                            onTap: onCustomise,
-                          )
-                        : const SizedBox(key: ValueKey('none')),
-                  ),
-                  CircleButton(
-                    icon: Icons.keyboard_arrow_down_rounded,
-                    tone: CircleTone.outline,
-                    turns: open ? .5 : 0,
-                    tooltip: open ? 'Close folder' : 'Open folder',
-                    onTap: onToggle,
-                  ),
                 ],
               ),
             ),
-          ),
-          // Apps grid.
-          AnimatedSize(
-            duration: Motion.snapDuration,
-            curve: Motion.snap,
-            alignment: Alignment.topCenter,
-            child: !open
-                ? const SizedBox(width: double.infinity)
-                : Padding(
-                    padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
-                    child: Column(
-                      children: [
-                        const CardDivider(),
-                        const SizedBox(height: DS.s12),
-                        if (apps.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.all(DS.s16),
-                            child: Text('No apps here yet.', style: DS.rowSub),
-                          )
-                        else
-                          LayoutBuilder(
-                            builder: (context, c) {
-                              final w = c.maxWidth / 4;
-                              return Wrap(
-                                children: [
-                                  for (final (i, a) in apps.indexed)
-                                    SizedBox(
-                                      width: w,
-                                      // Icons pop in row by row.
-                                      child: PopIn(
-                                        delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-                                        child: _GridApp(app: a, onTap: () => onLaunch(a), onLongPress: () => onLongPress(a)),
-                                      ),
-                                    ),
-                                ],
-                              );
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-          ),
-        ],
-      ),
     );
   }
 }
