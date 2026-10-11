@@ -89,8 +89,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Chip look'), findsOneWidget);
 
+    final restTop = tester.getTopLeft(find.text('Quick actions')).dy;
     await tester.enterText(find.byType(TextField), 'gmail');
     await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Quick actions')).dy, lessThan(restTop - 100), reason: 'searching → the sheet goes full screen');
+    expect(tester.getTopLeft(find.text('Quick actions')).dy, lessThan(120));
     expect(find.text('Compose'), findsOneWidget, reason: 'matches the app name');
     expect(find.text('Chip look'), findsNothing, reason: 'while searching only addable actions show');
     expect(find.text('Built-in'), findsNothing, reason: 'no built-in matches → no empty section');
@@ -106,6 +109,9 @@ void main() {
     await tester.tap(find.byTooltip('Clear search'));
     await tester.pumpAndSettle();
     expect(find.text('Chip look'), findsOneWidget, reason: 'cleared → full sheet again');
+    FocusManager.instance.primaryFocus?.unfocus(); // keyboard closed, search empty
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Quick actions')).dy, closeTo(restTop, 2), reason: 'done searching → back to its usual height');
   });
 
   testWidgets('not the home app: explains why app shortcuts are missing', (tester) async {

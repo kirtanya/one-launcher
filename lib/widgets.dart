@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'apps.dart';
 import 'ui/ds.dart';
+import 'ui/motion.dart';
 
 /// App icon from Android, or a letter tile while loading / in the web demo.
 class AppIcon extends StatelessWidget {
@@ -101,6 +102,7 @@ Future<Object?> showOneSheetWith(
   Color? barrier,
   bool keyboard = false,
 }) {
+  var searching = false; // a search field inside is active → the sheet goes full screen
   return showModalBottomSheet<Object?>(
     context: context,
     // The sheet paints its own background and handle (below) so they follow live theme
@@ -109,68 +111,93 @@ Future<Object?> showOneSheetWith(
     elevation: 0,
     isScrollControlled: true,
     barrierColor: barrier, // lighter for sheets that preview on the home screen behind them
-    builder: (ctx) => PopScope(
-      canPop: !back,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.pop(ctx, sheetBack);
-      },
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
-        // A Material (not a plain box) so rows keep their tap ripples.
-        child: Material(
-          color: DS.card,
-          child: ConstrainedBox(
-            constraints: height == null ? const BoxConstraints() : (fill ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
-            child: SafeArea(
-              child: Padding(
-                padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
-                child: Column(
-                  mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Drag handle (+ back arrow on a 2nd-level sheet).
-                    SizedBox(
-                      height: back ? 52 : 36,
-                      child: Stack(
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setSheet) {
+        final screen = MediaQuery.sizeOf(ctx).height;
+        // Searching breaks the usual height rule: full screen, room for results and keyboard.
+        final full = searching;
+        final grow = fill || full;
+        return SheetSearchScope(
+          onActive: (on) {
+            if (on != searching) setSheet(() => searching = on);
+          },
+          child: PopScope(
+            canPop: !back,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) Navigator.pop(ctx, sheetBack);
+            },
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
+              // A Material (not a plain box) so rows keep their tap ripples.
+              child: Material(
+                color: DS.card,
+                child: AnimatedContainer(
+                  duration: Motion.snapDuration,
+                  curve: Curves.easeOutCubic,
+                  constraints: full
+                      ? BoxConstraints.tightFor(height: screen)
+                      : height == null
+                      ? BoxConstraints(maxHeight: screen)
+                      : (fill ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
+                  child: SafeArea(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
+                      child: Column(
+                        mainAxisSize: grow ? MainAxisSize.max : MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Center(
-                            child: Container(
-                              width: 32,
-                              height: 4,
-                              decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                          // Drag handle (+ back arrow on a 2nd-level sheet).
+                          SizedBox(
+                            height: back ? 52 : 36,
+                            child: Stack(
+                              children: [
+                                Center(
+                                  child: Container(
+                                    width: 32,
+                                    height: 4,
+                                    decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                                  ),
+                                ),
+                                if (back)
+                                  Positioned(
+                                    left: DS.s12,
+                                    top: DS.s4,
+                                    child: IconButton(
+                                      tooltip: 'Back',
+                                      icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                                      onPressed: () => Navigator.pop(ctx, sheetBack),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
-                          if (back)
-                            Positioned(
-                              left: DS.s12,
-                              top: DS.s4,
-                              child: IconButton(
-                                tooltip: 'Back',
-                                icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
-                                onPressed: () => Navigator.pop(ctx, sheetBack),
-                              ),
-                            ),
+                          Flexible(
+                            fit: grow ? FlexFit.tight : FlexFit.loose,
+                            child: scrollable ? SingleChildScrollView(child: builder(ctx)) : builder(ctx),
+                          ),
                         ],
                       ),
                     ),
-                    Flexible(
-                      fit: fill ? FlexFit.tight : FlexFit.loose,
-                      child: scrollable
-                          ? ConstrainedBox(
-                              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
-                              child: SingleChildScrollView(child: builder(ctx)),
-                            )
-                          : builder(ctx),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     ),
   );
+}
+
+/// Lets a search field inside a sheet tell the sheet it's searching (so it goes full screen).
+class SheetSearchScope extends InheritedWidget {
+  const SheetSearchScope({super.key, required this.onActive, required super.child});
+  final ValueChanged<bool> onActive;
+
+  static ValueChanged<bool>? of(BuildContext context) => context.getInheritedWidgetOfExactType<SheetSearchScope>()?.onActive;
+
+  @override
+  bool updateShouldNotify(SheetSearchScope old) => false;
 }
 
 class _SheetRow extends StatelessWidget {
@@ -250,9 +277,21 @@ class SheetSearchField extends StatefulWidget {
 
 class _SheetSearchFieldState extends State<SheetSearchField> {
   final _text = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_report);
+    _text.addListener(_report);
+  }
+
+  /// Searching = typing in the field, or a search still showing → the sheet goes full screen.
+  void _report() => SheetSearchScope.of(context)?.call(_focus.hasFocus || _text.text.isNotEmpty);
 
   @override
   void dispose() {
+    _focus.dispose();
     _text.dispose();
     super.dispose();
   }
@@ -263,6 +302,7 @@ class _SheetSearchFieldState extends State<SheetSearchField> {
       padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s24, DS.s8),
       child: TextField(
         controller: _text,
+        focusNode: _focus,
         onChanged: widget.onChanged,
         cursorColor: DS.ink,
         style: DS.rowTitle,

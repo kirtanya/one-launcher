@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -660,9 +659,9 @@ Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) asyn
     context,
     scrollable: false, // scrolls its own list
     keyboard: true,
+    height: MediaQuery.sizeOf(context).height * .85, // full screen while searching
     builder: (ctx) => ConstrainedBox(
-      // Shorter while the keyboard is up, so the sheet stays on screen above it.
-      constraints: BoxConstraints(maxHeight: math.max(240, MediaQuery.sizeOf(ctx).height * .85 - MediaQuery.viewInsetsOf(ctx).bottom)),
+      constraints: const BoxConstraints(), // the sheet sets the height
       child: StatefulBuilder(
         builder: (ctx, setQuery) => FutureBuilder<List<WidgetProvider>>(
           future: providers,
