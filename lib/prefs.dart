@@ -366,6 +366,9 @@ class Prefs extends ChangeNotifier {
   bool isFavourite(String pkg) => favourites.contains(pkg);
   bool get favouritesFull => favourites.length >= maxFavourites;
 
+  /// Favourites in a new order (TV: Move left / right).
+  Future<void> setFavourites(List<String> ids) => _setList('favourites', ids);
+
   Future<void> toggleFavourite(String pkg) {
     final list = [...favourites];
     list.contains(pkg) ? list.remove(pkg) : list.add(pkg);

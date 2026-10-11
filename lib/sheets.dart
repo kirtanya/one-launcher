@@ -273,6 +273,7 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
   return showOneSheetWith(
     context,
     back: back,
+    height: back ? drawerHeight(context, prefs) : null,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -376,6 +377,7 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
   return showOneSheetWith(
     context,
     back: back,
+    height: back ? drawerHeight(context, prefs) : null,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -744,6 +746,7 @@ Future<Object?> showBackupSheet(BuildContext context, {required Prefs prefs, boo
   return showOneSheetWith(
     context,
     back: back,
+    height: back ? drawerHeight(context, prefs) : null,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) {
         Future<void> save() async {
@@ -828,6 +831,7 @@ Future<Object?> showColoursSheet(BuildContext context, {required Prefs prefs, re
   return showOneSheetWith(
     context,
     back: back,
+    height: back ? drawerHeight(context, prefs) : null,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setTab) => ListenableBuilder(
         listenable: Listenable.merge([prefs, theme]),
@@ -1060,6 +1064,9 @@ class _SwatchPainter extends CustomPainter {
 }
 
 /// Long-press empty space on the home screen, or the settings button in the app view.
+/// Height of the app drawer at rest: Settings sheets match it, so the top widgets stay in view.
+double drawerHeight(BuildContext context, Prefs prefs) => MediaQuery.sizeOf(context).height * (1 - prefs.topShare);
+
 /// Settings: a short page of grouped rows. Each row opens its detail as a 2nd-level sheet
 /// with a back arrow; back returns here. Sliders live in their own small sheets so the
 /// home screen stays visible behind them while you drag.
@@ -1079,6 +1086,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
 
   return showOneSheetWith(
     context,
+    height: drawerHeight(context, prefs),
+    fill: true,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -1167,6 +1176,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
 Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
   context,
   back: true,
+  height: drawerHeight(context, prefs),
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) => Column(
@@ -1190,6 +1200,7 @@ Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) =
 Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
   context,
   back: true,
+  height: drawerHeight(context, prefs),
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) {
@@ -1261,6 +1272,7 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
 Future<Object?> _showHiddenApps(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) => showOneSheetWith(
   context,
   back: true,
+  height: drawerHeight(context, prefs),
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) {

@@ -88,7 +88,15 @@ const sheetBack = 'back';
 /// sheets that already scroll a list of their own (Flexible + ListView inside).
 /// [back]: a 2nd-level sheet — shows a back arrow, and back / tapping outside return
 /// [sheetBack] so the caller can reopen the level above. Swiping it down closes everything.
-Future<Object?> showOneSheetWith(BuildContext context, {required WidgetBuilder builder, bool scrollable = true, bool back = false}) {
+/// [height]: the sheet's height cap; with [fill] it is exactly that tall (content scrolls).
+Future<Object?> showOneSheetWith(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  bool scrollable = true,
+  bool back = false,
+  double? height,
+  bool fill = false,
+}) {
   return showModalBottomSheet<Object?>(
     context: context,
     // The sheet paints its own background and handle (below) so they follow live theme
@@ -106,47 +114,51 @@ Future<Object?> showOneSheetWith(BuildContext context, {required WidgetBuilder b
         // A Material (not a plain box) so rows keep their tap ripples.
         child: Material(
           color: DS.card,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: DS.s12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Drag handle (+ back arrow on a 2nd-level sheet).
-                  SizedBox(
-                    height: back ? 52 : 36,
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: Container(
-                            width: 32,
-                            height: 4,
-                            decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
-                          ),
-                        ),
-                        if (back)
-                          Positioned(
-                            left: DS.s12,
-                            top: DS.s4,
-                            child: IconButton(
-                              tooltip: 'Back',
-                              icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
-                              onPressed: () => Navigator.pop(ctx, sheetBack),
+          child: ConstrainedBox(
+            constraints: height == null ? const BoxConstraints() : (fill ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: DS.s12),
+                child: Column(
+                  mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Drag handle (+ back arrow on a 2nd-level sheet).
+                    SizedBox(
+                      height: back ? 52 : 36,
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 32,
+                              height: 4,
+                              decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
                             ),
                           ),
-                      ],
+                          if (back)
+                            Positioned(
+                              left: DS.s12,
+                              top: DS.s4,
+                              child: IconButton(
+                                tooltip: 'Back',
+                                icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                                onPressed: () => Navigator.pop(ctx, sheetBack),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                  Flexible(
-                    child: scrollable
-                        ? ConstrainedBox(
-                            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
-                            child: SingleChildScrollView(child: builder(ctx)),
-                          )
-                        : builder(ctx),
-                  ),
-                ],
+                    Flexible(
+                      fit: fill ? FlexFit.tight : FlexFit.loose,
+                      child: scrollable
+                          ? ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
+                              child: SingleChildScrollView(child: builder(ctx)),
+                            )
+                          : builder(ctx),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

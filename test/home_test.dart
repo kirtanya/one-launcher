@@ -196,6 +196,8 @@ void main() {
     final before = tester.getTopLeft(find.text('WhatsApp').first).dy;
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
+    // Settings is a bottom sheet exactly as tall as the app drawer at rest (top 25%).
+    expect(tester.getTopLeft(find.text('Settings')).dy, closeTo(screenH * .25 + 36, 8), reason: 'sheet top = drawer top');
     // Grouped settings page; the sliders live one level down.
     for (final g in ['Look', 'Home screen', 'Apps & search', 'Launcher']) {
       expect(find.text(g), findsOneWidget);

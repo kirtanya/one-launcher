@@ -37,6 +37,19 @@ android {
         versionName = flutter.versionName
     }
 
+    // Two apps from one codebase: the phone launcher, and One Launcher TV (lib/main_tv.dart,
+    // android/app/src/tv). They install side by side (different ids) and share the Dart code.
+    flavorDimensions += "device"
+    productFlavors {
+        create("phone") {
+            dimension = "device"
+        }
+        create("tv") {
+            dimension = "device"
+            applicationIdSuffix = ".tv"
+        }
+    }
+
     signingConfigs {
         if (keyProps.containsKey("storeFile")) {
             create("release") {

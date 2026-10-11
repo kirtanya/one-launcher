@@ -81,6 +81,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Top widgets'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('Remove Calendar · Month')); // sheet is drawer-height: scroll to it
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Remove Calendar · Month'));
     await tester.pumpAndSettle();
     expect(prefs.topPages, isNot(contains('widget:7')));
