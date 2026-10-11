@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
+import 'package:one_launcher/search_dock.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -59,5 +60,48 @@ void main() {
     expect(pinnedY, lessThan(40), reason: 'pinned at the top of the sheet');
     expect(tester.getTopLeft(find.text('Game 20')).dy, lessThan(appY0 - 40), reason: 'apps scroll under it (until the list ends)');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/8_sticky_header.png'));
+  });
+
+  testWidgets('a folder gliding into view does not expand the shrunk search bar', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'getApps') {
+        return [
+          for (final n in ['WhatsApp', 'Slack', 'Gmail', 'Paytm', 'PhonePe', 'Spotify', 'YouTube', 'Maps', 'Uber', 'Swiggy', 'Zomato', 'Kindle', 'Chess'])
+            {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
+          for (var i = 1; i <= 30; i++) {'package': 'com.tool$i', 'label': 'Tool $i', 'system': true, 'category': -1, 'installed': 0},
+        ];
+      }
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
+    await tester.pumpAndSettle();
+    bool compact() => tester.widget<SearchDock>(find.byType(SearchDock)).compact;
+
+    // Full screen, then scroll the list up so the search bar shrinks to a circle.
+    await tester.fling(find.text('Social'), const Offset(0, -300), 1500);
+    await tester.pumpAndSettle();
+    await tester.drag(find.text('Money'), const Offset(0, -260));
+    await tester.pumpAndSettle();
+    expect(compact(), isTrue, reason: 'user scrolled up');
+
+    // Open a folder sitting high on screen: the list glides back down to centre it.
+    final before = tester.getTopLeft(find.text('Money')).dy;
+    await tester.tap(find.text('Money'));
+    // Check every frame of the glide (the bug flipped it on the first frame).
+    for (var f = 0; f < 40; f++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(compact(), isTrue, reason: 'stays a circle during the glide (frame $f)');
+    }
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Money')).dy, greaterThan(before + 20), reason: 'list scrolled down to centre it');
+    expect(compact(), isTrue, reason: 'scrolling done by the app must not expand the search bar');
+
+    // A real finger scroll back down still expands it.
+    await tester.drag(find.text('Money'), const Offset(0, 200));
+    await tester.pumpAndSettle();
+    expect(compact(), isFalse, reason: 'user scrolled down');
   });
 }

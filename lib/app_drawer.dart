@@ -188,6 +188,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       widget.onDismissSearch();
       return false;
     }
+    // Only scrolling the user does (a drag, or the fling after it) moves the search bar.
+    // The folder glide and other scrolls the app makes itself must leave it alone.
+    final byUser = widget.scroll.hasClients && widget.scroll.position.userScrollDirection != ScrollDirection.idle;
+    if (_glide.isAnimating || !byUser) return false;
     if (n.metrics.pixels <= 0) {
       widget.onCompact(false);
     } else if (d > 2) {
