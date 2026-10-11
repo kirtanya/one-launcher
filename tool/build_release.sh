@@ -9,6 +9,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 FLAGS=(--release --flavor phone --split-debug-info=symbols --obfuscate) # phone app (a TV flavor exists too)
 OUT=build/app/outputs/flutter-apk
+V=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml) # share files carry the version so they don't mix
 
 echo "› Phone build (arm64, uncompressed)"
 flutter build apk "${FLAGS[@]}" --target-platform android-arm64 >/dev/null
@@ -16,11 +17,11 @@ cp "$OUT/app-phone-release.apk" "$OUT/one-launcher-phone.apk"
 
 echo "› Share build: 64-bit phones (compressed)"
 flutter build apk "${FLAGS[@]}" --target-platform android-arm64 -P compressLibs=true >/dev/null
-cp "$OUT/app-phone-release.apk" ~/Desktop/OneLauncher.apk
+cp "$OUT/app-phone-release.apk" ~/Desktop/OneLauncher-$V.apk
 
 echo "› Share build: every phone incl. older 32-bit ones (compressed)"
 flutter build apk "${FLAGS[@]}" --target-platform android-arm,android-arm64 -P compressLibs=true >/dev/null
-cp "$OUT/app-phone-release.apk" ~/Desktop/OneLauncher-all-phones.apk
+cp "$OUT/app-phone-release.apk" ~/Desktop/OneLauncher-$V-all-phones.apk
 
 cp "$OUT/one-launcher-phone.apk" "$OUT/app-phone-release.apk" # leave the phone build as the default output
-ls -lh "$OUT/one-launcher-phone.apk" ~/Desktop/OneLauncher.apk ~/Desktop/OneLauncher-all-phones.apk ~/Desktop/OneLauncherTV.apk | awk '{print $5, $9}'
+ls -lh "$OUT/one-launcher-phone.apk" ~/Desktop/OneLauncher-$V.apk ~/Desktop/OneLauncher-$V-all-phones.apk ~/Desktop/OneLauncherTV.apk | awk '{print $5, $9}'
