@@ -155,5 +155,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'search closed');
     expect(find.byType(FittedBox).first.hitTestable(), findsOneWidget, reason: 'back home with the clock');
+
+    // Settings → Layout: drag the split to 50% → the sheet rests at half the screen.
+    final screenH = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final before = tester.getTopLeft(find.text('WhatsApp').first).dy;
+    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Top widgets size'), findsOneWidget);
+    await tester.drag(find.byType(Slider), const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('50% · apps 50%'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
+    Navigator.of(tester.element(find.text('Top widgets size'))).pop();
+    await tester.pumpAndSettle();
+    final after = tester.getTopLeft(find.text('WhatsApp').first).dy;
+    expect(after, greaterThan(before + 100), reason: 'sheet moved down ($before → $after)');
+    expect(after, closeTo(screenH * .5 + 86, 30), reason: 'rests at half the screen (label sits ~86pt below the sheet edge)');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/7_split_50.png'));
   });
 }

@@ -28,7 +28,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Sheet height when resting (fraction of the screen).
-  static const _rest = 0.75; // apps get 3/4 of the screen, the top widgets 1/4
+  /// Where the sheet rests (fraction of the screen). The user picks the split in Settings.
+  double get _rest => 1 - prefs.topShare;
 
   List<AppEntry> _apps = const [];
   final _sheet = DraggableScrollableController();
@@ -57,13 +58,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _rev.value++;
   }
 
-  /// Built ONCE. Flutter's DraggableScrollableSheet resets its extent whenever the widget is
-  /// rebuilt, which cancels a running snap/animation and drops the scroll position. Reusing
-  /// the same instance makes the framework skip it; its contents listen to [_rev] instead.
-  late final Widget _sheetWidget = DraggableScrollableSheet(
+  /// Built once per split ratio. Flutter's DraggableScrollableSheet resets its extent whenever
+  /// the widget is rebuilt, which cancels a running snap/animation and drops the scroll
+  /// position. Reusing the same instance makes the framework skip it; its contents listen to
+  /// [_rev] instead. Only a new split (Settings → Layout) makes a new one.
+  Widget? _sheetCache;
+  double? _sheetRest;
+
+  Widget get _sheetWidget {
+    final rest = _rest;
+    if (_sheetCache != null && _sheetRest == rest) return _sheetCache!;
+    final hadSheet = _sheetCache != null;
+    _sheetRest = rest;
+    if (hadSheet) {
+      // Glide to the new resting height (unless the sheet is open full screen).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_sheet.isAttached && _expanded.value < 1) _sheet.animateTo(rest, duration: Motion.snapDuration, curve: Motion.settle);
+      });
+    }
+    return _sheetCache = _buildSheet(rest);
+  }
+
+  Widget _buildSheet(double rest) => DraggableScrollableSheet(
     controller: _sheet,
-    initialChildSize: _rest,
-    minChildSize: _rest,
+    initialChildSize: rest,
+    minChildSize: rest,
     maxChildSize: 1,
     snap: true,
     builder: (context, scroll) => ValueListenableBuilder<int>(

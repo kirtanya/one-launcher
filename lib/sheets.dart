@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
@@ -363,6 +364,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
               padding: EdgeInsets.symmetric(vertical: DS.s8),
               child: CardDivider(),
             ),
+            _SplitSlider(prefs: prefs),
             _Row(Icons.view_carousel_outlined, 'Top widgets', () {
               Navigator.pop(ctx);
               showCustomiseTop(context, prefs: prefs);
@@ -401,6 +403,56 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       },
     ),
   );
+}
+
+/// Settings → Layout: how much of the screen the top widgets take. Updates live behind the sheet.
+class _SplitSlider extends StatelessWidget {
+  const _SplitSlider({required this.prefs});
+  final Prefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = prefs.topShare;
+    final pct = (v * 100).round();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Top widgets size', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+              ),
+              Text('$pct% · apps ${100 - pct}%', style: DS.rowSub),
+            ],
+          ),
+          Row(
+            children: [
+              const Icon(Icons.crop_portrait_rounded, size: 18, color: DS.inkMuted),
+              Expanded(
+                child: Slider(
+                  value: v,
+                  min: Prefs.topShareMin,
+                  max: Prefs.topShareMax,
+                  divisions: 6, // 20, 25, 30 … 50 %
+                  label: '$pct%',
+                  activeColor: DS.ink,
+                  inactiveColor: DS.cardMuted,
+                  thumbColor: DS.ink,
+                  onChanged: (x) {
+                    if ((x - v).abs() > .001) HapticFeedback.selectionClick();
+                    prefs.setTopShare(x);
+                  },
+                ),
+              ),
+              const Icon(Icons.splitscreen_rounded, size: 18, color: DS.inkMuted),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Toggle extends StatelessWidget {

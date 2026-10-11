@@ -71,6 +71,14 @@ class Prefs extends ChangeNotifier {
     return _setList('topEnabled', set.toList());
   }
 
+  /// Share of the screen for the top widgets; the app sheet rests on the rest.
+  static const topShareMin = 0.20, topShareMax = 0.50;
+  double get topShare => (_sp.getDouble('topShare') ?? 0.25).clamp(topShareMin, topShareMax);
+  Future<void> setTopShare(double v) async {
+    await _sp.setDouble('topShare', v.clamp(topShareMin, topShareMax));
+    notifyListeners();
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {
