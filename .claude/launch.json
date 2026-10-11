@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "one_launcher",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd ~/one_launcher && flutter build web && cd build/web && python3 -m http.server 8097"
+      ],
+      "port": 8097
+    }
+  ]
+}
