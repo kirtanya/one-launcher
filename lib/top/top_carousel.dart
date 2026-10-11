@@ -30,7 +30,9 @@ class _TopCarouselState extends State<TopCarousel> {
     super.dispose();
   }
 
-  Widget _page(String id) => switch (id) {
+  Widget _page(String id) => id == 'blank' || id.startsWith('widget:') ? _content(id) : _FitMin(child: _content(id));
+
+  Widget _content(String id) => switch (id) {
     'screen_time' => ScreenTimePage(refresh: widget.refresh),
     'battery' => BatteryPage(refresh: widget.refresh),
     'up_next' => UpNextPage(refresh: widget.refresh),
@@ -102,4 +104,24 @@ class _TopCarouselState extends State<TopCarousel> {
       ],
     );
   }
+}
+
+/// Gives a page at least [min] points of height: if the top area is shorter (tiny split,
+/// big padding, status bar), the whole page scales down instead of overflowing.
+class _FitMin extends StatelessWidget {
+  const _FitMin({required this.child});
+  final Widget child;
+  static const min = 96.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      if (c.maxHeight >= min || !c.hasBoundedHeight) return child;
+      return FittedBox(
+        fit: BoxFit.contain,
+        alignment: Alignment.topLeft,
+        child: SizedBox(width: c.maxWidth * min / c.maxHeight.clamp(1, min), height: min, child: child),
+      );
+    },
+  );
 }

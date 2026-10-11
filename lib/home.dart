@@ -8,6 +8,7 @@ import 'app_drawer.dart';
 import 'apps.dart';
 import 'prefs.dart';
 import 'quick_actions.dart';
+import 'quick_chips.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
@@ -29,7 +30,12 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  /// Quick "landing" when the launcher comes into view (back from an app, after unlocking):
+  /// a 220 ms settle from 105% to 100% while fading up. Short on purpose — taps work at once.
+  late final AnimationController _land = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))..forward();
+  bool _wasHidden = false;
+
   /// Sheet height when resting (fraction of the screen).
   /// Where the sheet rests (fraction of the screen). The user picks the split in Settings.
   double get _rest => 1 - prefs.topShare;
@@ -168,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_rebuild);
     _sheet.dispose();
+    _land.dispose();
     _query.dispose();
     _focus.dispose();
     _expanded.dispose();
@@ -180,6 +187,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused) _wasHidden = true;
+    if (state == AppLifecycleState.resumed && _wasHidden) {
+      _wasHidden = false;
+      _land.forward(from: 0);
+    }
     if (state == AppLifecycleState.resumed) {
       _loadApps();
       _refresh.value++;
@@ -303,118 +315,150 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       },
       child: Scaffold(
         resizeToAvoidBottomInset: false,
-        body: LayoutBuilder(
-          builder: (context, c) {
-            final topHeight = c.maxHeight * (1 - _rest) + DS.rSheet;
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: topHeight,
-                  child: ValueListenableBuilder<double>(
-                    valueListenable: _expanded,
-                    builder: (context, e, child) => IgnorePointer(
-                      ignoring: e > 0.3,
-                      child: Opacity(
-                        opacity: (1 - e * 1.6).clamp(0.0, 1.0),
-                        child: Transform.translate(
-                          offset: Offset(0, -topHeight * 0.18 * e),
-                          child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
-                        ),
-                      ),
-                    ),
-                    child: RepaintBoundary(
-                      // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
-                      child: _TopArea(
-                        carousel: TopCarousel(
-                          prefs: prefs,
-                          refresh: _refresh,
-                          onTapClock: () => _openNamed(['clock']),
-                          onTapDate: () => _openNamed(['calendar', 'google calendar']),
-                          onBlank: (b) => _topBlank.value = b,
-                        ),
-                        blank: _topBlank,
-                        onCustomise: () {
-                          HapticFeedback.mediumImpact();
-                          showCustomiseTop(context, prefs: prefs);
-                        },
-                        padding: prefs.topPadding,
-                        onSwipeUp: _expand,
-                        onSwipeDown: Apps.instance.openNotifications,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ---- Bottom half: the app view sheet. ----
-                NotificationListener<ScrollEndNotification>(
-                  onNotification: (_) {
-                    if (_collapseOnRelease) {
-                      _collapseOnRelease = false;
-                      _collapse();
-                    }
-                    return false;
-                  },
-                  child: NotificationListener<DraggableScrollableNotification>(
-                    // Dragging the whole sheet down while searching also ends the search.
-                    onNotification: (n) {
-                      if (_showResults && n.extent < 0.97) _dismissSearch();
-                      return false;
-                    },
-                    child: _sheetWidget,
-                  ),
-                ),
-
-                // ---- Fade under the dock, so it reads as floating above the cards. ----
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        // Sheet colour (follows the theme), fading in under the dock.
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ---- Search dock (iOS style), floating at the bottom. ----
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: RepaintBoundary(
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: _compact,
-                      builder: (context, compact, _) => SearchDock(
-                        compact: compact,
-                        active: _searching,
-                        controller: _query,
-                        focus: _focus,
-                        hint: 'Search ${_apps.length} apps',
-                        onActivate: _startSearch,
-                        onClose: _stopSearch,
-                        onChanged: _onQuery,
-                        onSubmitted: _onSubmit,
-                        onSettings: _settings,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+        body: AnimatedBuilder(
+          animation: _land,
+          builder: (context, child) {
+            // Always the same wrappers (at 100% when idle): swapping the tree would rebuild the
+            // sheet and reattach its controller.
+            final t = Curves.easeOutCubic.transform(_land.value);
+            return Opacity(
+              opacity: .35 + .65 * t,
+              child: Transform.scale(scale: 1.05 - .05 * t, child: child),
             );
           },
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final topHeight = c.maxHeight * (1 - _rest) + DS.rSheet;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: topHeight,
+                    child: ValueListenableBuilder<double>(
+                      valueListenable: _expanded,
+                      builder: (context, e, child) => IgnorePointer(
+                        ignoring: e > 0.3,
+                        child: Opacity(
+                          opacity: (1 - e * 1.6).clamp(0.0, 1.0),
+                          child: Transform.translate(
+                            offset: Offset(0, -topHeight * 0.18 * e),
+                            child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
+                          ),
+                        ),
+                      ),
+                      child: RepaintBoundary(
+                        // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
+                        child: _TopArea(
+                          carousel: TopCarousel(
+                            prefs: prefs,
+                            refresh: _refresh,
+                            onTapClock: () => _openNamed(['clock']),
+                            onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                            onBlank: (b) => _topBlank.value = b,
+                          ),
+                          blank: _topBlank,
+                          onCustomise: () {
+                            HapticFeedback.mediumImpact();
+                            showCustomiseTop(context, prefs: prefs);
+                          },
+                          padding: prefs.topPadding,
+                          onSwipeUp: _expand,
+                          onSwipeDown: Apps.instance.openNotifications,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ---- Bottom half: the app view sheet. ----
+                  NotificationListener<ScrollEndNotification>(
+                    onNotification: (_) {
+                      if (_collapseOnRelease) {
+                        _collapseOnRelease = false;
+                        _collapse();
+                      }
+                      return false;
+                    },
+                    child: NotificationListener<DraggableScrollableNotification>(
+                      // Dragging the whole sheet down while searching also ends the search.
+                      onNotification: (n) {
+                        if (_showResults && n.extent < 0.97) _dismissSearch();
+                        return false;
+                      },
+                      child: _sheetWidget,
+                    ),
+                  ),
+
+                  // ---- Quick action chips: on the wallpaper, just above the sheet's top edge. ----
+                  // They ride along with the sheet and fade out as it expands.
+                  ValueListenableBuilder<double>(
+                    valueListenable: _expanded,
+                    builder: (context, e, child) {
+                      final sheetTop = c.maxHeight * (1 - (_rest + e * (1 - _rest)));
+                      return Positioned(
+                        left: 0,
+                        right: 0,
+                        top: sheetTop - QuickChipsRow.height - QuickChipsRow.gap,
+                        height: QuickChipsRow.height,
+                        child: IgnorePointer(
+                          ignoring: e > .2,
+                          child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
+                        ),
+                      );
+                    },
+                    child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                  ),
+
+                  // ---- Fade under the dock, so it reads as floating above the cards. ----
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          // Sheet colour (follows the theme), fading in under the dock.
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // ---- Search dock (iOS style), floating at the bottom. ----
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: RepaintBoundary(
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _compact,
+                        builder: (context, compact, _) => SearchDock(
+                          compact: compact,
+                          active: _searching,
+                          controller: _query,
+                          focus: _focus,
+                          hint: 'Search ${_apps.length} apps',
+                          onActivate: _startSearch,
+                          onClose: _stopSearch,
+                          onChanged: _onQuery,
+                          onSubmitted: _onSubmit,
+                          onSettings: _settings,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -476,7 +520,13 @@ class _TopArea extends StatelessWidget {
             child: AnimatedPadding(
               duration: Motion.snapDuration,
               curve: Motion.settle,
-              padding: EdgeInsets.fromLTRB(DS.s8 + padding, DS.s4 + padding * .5, DS.s8 + padding, DS.rSheet + DS.s4 + padding * .5),
+              padding: EdgeInsets.fromLTRB(
+                DS.s8 + padding,
+                DS.s4 + padding * .5,
+                DS.s8 + padding,
+                // room for the sheet's rounded top + the quick chips row above it
+                DS.rSheet + QuickChipsRow.height + QuickChipsRow.gap + DS.s4 + padding * .5,
+              ),
               child: carousel,
             ),
           ),

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 
 import 'quick_actions.dart';
@@ -114,7 +114,25 @@ class Apps {
     });
   }
 
-  Future<void> launch(String package) => _call('launch', {'package': package});
+  /// Where the tapped icon is (screen pixels: left, top, width, height), so the app opens
+  /// growing out of it. Set by [markLaunchFrom] just before launching; used once.
+  List<int>? _launchFrom;
+
+  /// Remember the tapped widget's on-screen box for the next launch's open animation.
+  void markLaunchFrom(BuildContext context) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final r = box.localToGlobal(Offset.zero) & box.size;
+    _launchFrom = [(r.left * dpr).round(), (r.top * dpr).round(), (r.width * dpr).round(), (r.height * dpr).round()];
+  }
+
+  Future<void> launch(String package) {
+    final from = _launchFrom;
+    _launchFrom = null;
+    return _call('launch', {'package': package, 'from': ?from});
+  }
+
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
   Future<void> openNotifications() => _call('openNotifications');

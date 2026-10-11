@@ -77,31 +77,44 @@ class _Page extends StatelessWidget {
         label: semantics,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: DS.s8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: 32,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: GestureDetector(
-                    onTap: onTapLabel,
-                    child: Text(label, style: DS.wallpaperDate, maxLines: 1, overflow: TextOverflow.ellipsis),
+          // Short top area (small split + chips row): tighter label, and the detail line only
+          // when there's room — the big figure always keeps at least half the height.
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final tight = c.maxHeight < 120;
+              final showDetail = detail != null && c.maxHeight >= 96;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: tight ? 22 : 32,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onTap: onTapLabel,
+                        child: Text(
+                          label,
+                          style: tight ? DS.wallpaperDate.copyWith(fontSize: 14) : DS.wallpaperDate,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: Text(big, style: HeaderFontScope.of(context)),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.contain,
+                        child: Text(big, style: HeaderFontScope.of(context)),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: DS.s8), // breathing room under the big figure
-              if (detail != null) ...[detail!, const SizedBox(height: DS.s4)],
-            ],
+                  SizedBox(height: tight ? DS.s4 : DS.s8), // breathing room under the big figure
+                  if (showDetail) ...[detail!, const SizedBox(height: DS.s4)],
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -511,13 +524,16 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) => _build(context, c.maxHeight));
+
+  /// [h]: height available — extras drop out on short top areas so nothing overflows.
+  Widget _build(BuildContext context, double h) {
     final m = Apps.instance.media.value ?? const {};
     final label = DS.wallpaperDate;
     final sub = DS.wallpaperDate.copyWith(fontSize: 14, color: DS.clockInk, fontWeight: FontWeight.w400);
 
     Widget header(String text) => SizedBox(
-      height: 32,
+      height: 24,
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(text, style: label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -532,8 +548,10 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
           children: [
             header('Now playing'),
             const Spacer(),
-            Text('See what’s playing and control it from here.', style: sub),
-            const SizedBox(height: DS.s8),
+            if (h >= 110) ...[
+              Text('See what’s playing and control it from here.', style: sub, maxLines: 2, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: DS.s8),
+            ],
             GlassPill(
               onTap: Apps.instance.openNotificationAccess,
               child: Row(
@@ -568,9 +586,11 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
             const Spacer(),
             Row(
               children: [
-                _art(null, 56),
+                _art(null, (h - 32).clamp(32.0, 56.0)),
                 const SizedBox(width: DS.s16),
-                Expanded(child: Text('Nothing playing.\nStart something in your music app.', style: sub)),
+                Expanded(
+                  child: Text('Nothing playing.\nStart something in your music app.', style: sub, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
               ],
             ),
             const Spacer(),
@@ -593,7 +613,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          header('Now playing · ${m['app'] ?? ''}'),
+          if (h >= 72) header('Now playing · ${m['app'] ?? ''}'),
           Expanded(
             child: LayoutBuilder(
               builder: (context, c) {
@@ -638,7 +658,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
               },
             ),
           ),
-          if (duration > 0) ...[
+          if (duration > 0 && h >= 84) ...[
             const SizedBox(height: DS.s8),
             // Thin glass track, filled as the song plays.
             Container(

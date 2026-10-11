@@ -210,7 +210,7 @@ void main() {
     await tester.pumpAndSettle();
     final after = tester.getTopLeft(find.text('WhatsApp').first).dy;
     expect(after, greaterThan(before + 100), reason: 'sheet moved down ($before → $after)');
-    expect(after, closeTo(screenH * .5 + 138, 30), reason: 'rests at half the screen (label sits ~138pt below the sheet edge: chips row + card)');
+    expect(after, closeTo(screenH * .5 + 86, 30), reason: 'rests at half the screen (label sits ~86pt below the sheet edge)');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/7_split_50.png'));
   });
 }

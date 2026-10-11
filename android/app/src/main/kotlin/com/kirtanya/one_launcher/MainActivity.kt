@@ -104,7 +104,7 @@ class MainActivity : FlutterActivity() {
                         main.post { result.success(bytes) }
                     }
                 }
-                "launch" -> result.success(launch(call.argument<String>("package")!!))
+                "launch" -> result.success(launch(call.argument<String>("package")!!, call.argument<List<Number>>("from")))
                 "appInfo" -> result.success(appInfo(call.argument<String>("package")!!))
                 "uninstall" -> {
                     val (pkg, user) = resolve(call.argument<String>("package")!!)
@@ -267,7 +267,8 @@ class MainActivity : FlutterActivity() {
         null
     }
 
-    private fun launch(id: String): Boolean {
+    /** [from] = the tapped icon's [left, top, width, height] in screen pixels (for the open animation). */
+    private fun launch(id: String, from: List<Number>? = null): Boolean {
         val (info, user) = activityFor(id)
         info ?: return false
         // Work apps paused → ask Android to turn them back on (it shows its own prompt).
@@ -276,7 +277,13 @@ class MainActivity : FlutterActivity() {
             return false
         }
         return try {
-            launcherApps.startMainActivity(info.componentName, user, null, null)
+            // The app's window grows out of the icon that was tapped (system animation, no delay).
+            val bounds = from?.takeIf { it.size == 4 }?.map { it.toInt() }
+            val rect = bounds?.let { android.graphics.Rect(it[0], it[1], it[0] + it[2], it[1] + it[3]) }
+            val opts = bounds?.let {
+                android.app.ActivityOptions.makeScaleUpAnimation(window.decorView, it[0], it[1], it[2], it[3]).toBundle()
+            }
+            launcherApps.startMainActivity(info.componentName, user, rect, opts)
             true
         } catch (e: SecurityException) {
             // Apps without a real launcher screen are listed via Android's "app details"

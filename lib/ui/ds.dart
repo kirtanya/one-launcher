@@ -32,6 +32,7 @@ class DS {
   static const clockInk = Color(0xE6FFFFFF); // 90%, the clock lets the wallpaper breathe through
   static const glass = Color(0x2EFFFFFF); // frosted circle button fill (18%)
   static const glassLine = Color(0x40FFFFFF); // its hairline (25%)
+  static const chipOnWallpaper = Color(0x66141414); // dark frosted pill: readable on any wallpaper (40%)
   static const wallpaperShadow = [Shadow(color: Color(0x59000000), blurRadius: 18)];
 
   static const alert = Color(0xFFE0624A);

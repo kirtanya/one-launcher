@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
-import 'app_drawer.dart';
+import 'quick_chips.dart';
 import 'prefs.dart';
 import 'quick_actions.dart';
 import 'top/header_fonts.dart';
