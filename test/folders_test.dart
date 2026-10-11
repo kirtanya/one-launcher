@@ -185,4 +185,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(haptics, containsAllInOrder(['HapticFeedbackType.selectionClick', 'HapticFeedbackType.lightImpact']), reason: 'folder closed + snap');
   });
+
+  testWidgets('folder cards scale 60→100% at the list edges', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'getApps') {
+        return [
+          for (final n in ['WhatsApp', 'Slack', 'Paytm', 'Spotify', 'Swiggy', 'Maps', 'Kindle', 'Chess', 'Fitbit', 'Settings', 'Zzz'])
+            {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': n == 'Settings', 'category': -1, 'installed': 0},
+        ];
+      }
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
+    await tester.pumpAndSettle();
+    await tester.fling(find.text('Social'), const Offset(0, -300), 1500); // full screen
+    await tester.pumpAndSettle();
+
+    double scaleOf(String folder) {
+      final r = tester.renderObject<RenderEdgeScale>(find.ancestor(of: find.text(folder), matching: find.byType(EdgeScale)).first);
+      return r.minScale + (1 - r.minScale) * Curves.easeOut.transform(r.visibleFraction);
+    }
+
+    final names = ['Social', 'Work', 'Money', 'Watch & Listen', 'Shop & Services', 'Travel', 'News & Reading', 'Games', 'Health & Home', 'Tools', 'Everything else'];
+    final scales = [for (final n in names) if (tester.any(find.text(n))) scaleOf(n)];
+    final partly = scales.where((s) => s < .999).toList();
+    expect(scales.where((s) => s >= .999), isNotEmpty, reason: 'folders fully in view are 100%');
+    expect(partly, isNotEmpty, reason: 'a folder near the bottom edge is part-scaled');
+    expect(partly.every((s) => s >= .6), isTrue, reason: 'never below 60%');
+  });
 }

@@ -118,18 +118,34 @@ class PopIn extends StatelessWidget {
 /// items grow 0→100% as they scroll into view and shrink back as they leave (both axes).
 /// Done at paint time (no rebuilds), so it costs almost nothing while scrolling.
 class EdgeScale extends SingleChildRenderObjectWidget {
-  const EdgeScale({super.key, required Widget super.child});
+  const EdgeScale({super.key, required Widget super.child, this.minScale = 0, this.startInset = 0, this.endInset = 0});
+
+  /// Smallest scale at the very edge (0 for app icons; cards use more so they don't vanish).
+  final double minScale;
+
+  /// Parts of the viewport that count as out of view (e.g. under a pinned header or a
+  /// floating search bar), in logical pixels from the start / end edge.
+  final double startInset, endInset;
 
   @override
-  RenderObject createRenderObject(BuildContext context) => RenderEdgeScale(Scrollable.maybeOf(context)?.position);
+  RenderObject createRenderObject(BuildContext context) => RenderEdgeScale(Scrollable.maybeOf(context)?.position)
+    ..minScale = minScale
+    ..startInset = startInset
+    ..endInset = endInset;
 
   @override
-  void updateRenderObject(BuildContext context, RenderEdgeScale renderObject) => renderObject.position = Scrollable.maybeOf(context)?.position;
+  void updateRenderObject(BuildContext context, RenderEdgeScale renderObject) => renderObject
+    ..position = Scrollable.maybeOf(context)?.position
+    ..minScale = minScale
+    ..startInset = startInset
+    ..endInset = endInset;
 }
 
 /// Render side of [EdgeScale].
 class RenderEdgeScale extends RenderProxyBox {
   RenderEdgeScale(this._position);
+
+  double minScale = 0, startInset = 0, endInset = 0;
 
   ScrollPosition? _position;
   set position(ScrollPosition? p) {
@@ -165,12 +181,14 @@ class RenderEdgeScale extends RenderProxyBox {
     final extent = horizontal ? (vp as RenderBox).size.width : (vp as RenderBox).size.height;
     final len = end - start;
     if (len <= 0) return 1;
-    return ((end.clamp(0, extent) - start.clamp(0, extent)) / len).clamp(0.0, 1.0);
+    final lo = startInset, hi = extent - endInset;
+    if (hi <= lo) return 1;
+    return ((end.clamp(lo, hi) - start.clamp(lo, hi)) / len).clamp(0.0, 1.0);
   }
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final v = Curves.easeOut.transform(_visible());
+    final v = minScale + (1 - minScale) * Curves.easeOut.transform(_visible());
     if (v >= .999) return super.paint(context, offset);
     if (v <= .001 || child == null) return;
     final c = offset + size.center(Offset.zero);

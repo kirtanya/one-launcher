@@ -244,6 +244,14 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     );
 
     final gutter = const EdgeInsets.symmetric(horizontal: DS.gutter);
+    // Cards in the main list scale 60→100% at its edges; the pinned top strip and the area
+    // behind the floating search bar count as out of view.
+    Widget edge(Widget child) => EdgeScale(
+      minScale: .6,
+      startInset: DS.gutter + statusBar * widget.expanded.value,
+      endInset: mq.padding.bottom + SearchDock.height + DS.s12,
+      child: child,
+    );
     Widget box(Widget child) => SliverPadding(
       padding: gutter,
       sliver: SliverToBoxAdapter(child: child),
@@ -288,7 +296,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       ];
     } else {
       content = [
-        box(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero)),
+        box(edge(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero))),
         for (final (i, (folder, list)) in groups.indexed) ...[
           // Gap above the folder; its key marks where the folder starts.
           SliverToBoxAdapter(
@@ -304,7 +312,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 if (_openId == folder.id)
                   PinnedHeaderSliver(child: folderHeader(i, folder, list))
                 else
-                  SliverToBoxAdapter(child: folderHeader(i, folder, list)),
+                  SliverToBoxAdapter(child: edge(folderHeader(i, folder, list))), // closed folders scale at the edges
                 SliverToBoxAdapter(
                   child: RepaintBoundary(
                     child: _FolderBody(
