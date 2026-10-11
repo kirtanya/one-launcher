@@ -10,7 +10,7 @@ import 'package:one_launcher/ui/palette.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _fonts() async {
-  for (final (fam, file) in [('InstrumentSans', 'InstrumentSans-500'), ('Antonio', 'Antonio-300')]) {
+  for (final (fam, file) in [('InstrumentSans', 'InstrumentSans-500'), ('RobotoFlex', 'RobotoFlex-Clock')]) {
     await (FontLoader(fam)..addFont(Future.value(ByteData.view(File('assets/fonts/$file.ttf').readAsBytesSync().buffer)))).load();
   }
   final icons = File('/opt/homebrew/share/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');

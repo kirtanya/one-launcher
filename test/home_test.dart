@@ -8,16 +8,7 @@ import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
-  await (FontLoader('Antonio')..addFont(Future.value(ByteData.view(File('assets/fonts/Antonio-300.ttf').readAsBytesSync().buffer)))).load();
-  for (final (fam, file) in [
-    ('BebasNeue', 'BebasNeue-400'),
-    ('InstrumentSerif', 'InstrumentSerif-400'),
-    ('Nunito', 'Nunito-200'),
-    ('SpaceMono', 'SpaceMono-400'),
-    ('Outfit', 'Outfit-200'),
-  ]) {
-    await (FontLoader(fam)..addFont(Future.value(ByteData.view(File('assets/fonts/$file.ttf').readAsBytesSync().buffer)))).load();
-  }
+  await (FontLoader('RobotoFlex')..addFont(Future.value(ByteData.view(File('assets/fonts/RobotoFlex-Clock.ttf').readAsBytesSync().buffer)))).load();
   final loader = FontLoader('InstrumentSans');
   for (final w in [400, 500, 600]) {
     loader.addFont(Future.value(ByteData.view(File('assets/fonts/InstrumentSans-$w.ttf').readAsBytesSync().buffer)));
@@ -123,17 +114,27 @@ void main() {
     await tester.tap(find.byType(Switch).at(2));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c_customise_top.png'));
-    // Font: pick Serif → big figures switch typeface.
-    expect(find.text('Font'), findsOneWidget);
-    await tester.tap(find.text('Serif'));
+    // Clock style: pick the Bold preset, then nudge the weight slider.
+    expect(find.text('Clock style'), findsOneWidget);
+    await tester.ensureVisible(find.text('Bold'));
+    await tester.tap(find.text('Bold'));
     await tester.pumpAndSettle();
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_font_serif.png'));
+    await tester.ensureVisible(find.text('Weight'));
+    await tester.drag(find.byType(Slider).first, const Offset(-60, 0));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_clock_style.png'));
     Navigator.of(tester.element(find.text('Top widgets'))).pop();
     await tester.pumpAndSettle();
     await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
     await tester.pumpAndSettle();
     expect(find.text('64%'), findsOneWidget, reason: 'battery page added after screen time');
-    expect(tester.widget<Text>(find.text('64%')).style?.fontFamily, 'InstrumentSerif', reason: 'chosen font applies');
+    final big = tester.widget<Text>(find.text('64%')).style!;
+    expect(big.fontFamily, 'RobotoFlex');
+    final wght = big.fontVariations!.firstWhere((v) => v.axis == 'wght').value;
+    expect(wght, isNot(800), reason: 'the weight slider moved it off the Bold preset');
+    final prefs2 = (tester.widget(find.byType(OneLauncher)) as OneLauncher).prefs;
+    expect(wght, prefs2.clockWeight, reason: 'big figures use the live slider value');
+    expect(big.fontVariations!.firstWhere((v) => v.axis == 'wdth').value, 50, reason: 'width from the Bold preset');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1d_battery.png'));
 
     // Swipe the sheet up to full screen.

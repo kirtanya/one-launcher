@@ -1,30 +1,33 @@
 import 'package:flutter/widgets.dart';
 
+import '../prefs.dart';
 import '../ui/ds.dart';
 
-/// Typefaces for the big figures in the top half (clock, screen time, battery %, event time).
-/// Each keeps the DS.clock colour/shadow; only the face and its spacing change.
-class HeaderFont {
-  const HeaderFont(this.id, this.name, this.family, this.weight, {this.letterSpacing = -2});
-  final String id, name, family;
-  final FontWeight weight;
-  final double letterSpacing;
-
-  TextStyle get style => DS.clock.copyWith(fontFamily: family, fontWeight: weight, letterSpacing: letterSpacing);
+/// The big figures (clock, screen time, battery %, event time) use one variable font,
+/// Roboto Flex, whose weight / width / slant the user tunes — like the Pixel or iOS lock screen.
+TextStyle clockStyle({required double weight, required double width, required double slant}) {
+  // Narrow digits sit closer together; wide ones need less squeezing.
+  final spacing = -6 + (width - 25) / 126 * 4;
+  return DS.clock.copyWith(
+    fontFamily: DS.clockFont,
+    fontWeight: FontWeight.values[((weight / 100).round() - 1).clamp(0, 8)], // no faux bold
+    letterSpacing: spacing,
+    fontVariations: [FontVariation('wght', weight), FontVariation('wdth', width), FontVariation('slnt', slant)],
+  );
 }
 
-const headerFonts = <HeaderFont>[
-  HeaderFont('condensed', 'Condensed', 'Antonio', FontWeight.w300, letterSpacing: -4),
-  HeaderFont('bold', 'Bold', 'BebasNeue', FontWeight.w400, letterSpacing: 0),
-  HeaderFont('serif', 'Serif', 'InstrumentSerif', FontWeight.w400, letterSpacing: -3),
-  HeaderFont('rounded', 'Rounded', 'Nunito', FontWeight.w200, letterSpacing: -4),
-  HeaderFont('mono', 'Mono', 'SpaceMono', FontWeight.w400, letterSpacing: -8),
-  HeaderFont('thin', 'Thin', 'Outfit', FontWeight.w200, letterSpacing: -4),
+TextStyle clockStyleOf(Prefs p) => clockStyle(weight: p.clockWeight, width: p.clockWidth, slant: p.clockSlant);
+
+/// Quick starting points (the sliders fine-tune from there).
+const clockPresets = <(String, double, double, double)>[
+  ('Classic', 300, 25, 0), // tall & light — the original look
+  ('Bold', 800, 50, 0),
+  ('Wide', 250, 151, 0),
+  ('Italic', 500, 70, -10),
+  ('Hairline', 100, 40, 0),
 ];
 
-HeaderFont headerFontById(String id) => headerFonts.firstWhere((f) => f.id == id, orElse: () => headerFonts.first);
-
-/// Hands the chosen big-figure style down to every page of the carousel.
+/// Hands the clock style down to every page of the carousel.
 class HeaderFontScope extends InheritedWidget {
   const HeaderFontScope({super.key, required this.style, required super.child});
   final TextStyle style;

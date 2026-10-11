@@ -66,7 +66,7 @@ class DS {
   static TextStyle get iconLabel => TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2);
 
   /// The big clock: tall condensed digits that fill the width (scaled with FittedBox).
-  static const clockFont = 'Antonio';
+  static const clockFont = 'RobotoFlex'; // variable: weight / width / slant (see top/header_fonts.dart)
   static const clock = TextStyle(
     fontFamily: clockFont,
     fontSize: 200,

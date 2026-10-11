@@ -50,7 +50,7 @@ class _TopCarouselState extends State<TopCarousel> {
       children: [
         Expanded(
           child: HeaderFontScope(
-            style: headerFontById(widget.prefs.headerFont).style,
+            style: clockStyleOf(widget.prefs),
             child: PageView.builder(
               controller: _pages,
               itemCount: ids.length,

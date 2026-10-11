@@ -32,7 +32,7 @@ void main() {
     await prefs.setTheme(source: 'basic', seed: 0xFF9C27B0, style: 'vibrant');
     await prefs.setTopShare(0.4);
     await prefs.setTopPadding(24);
-    await prefs.setHeaderFont('serif');
+    await prefs.setClockStyle(weight: 800, width: 60, slant: -10);
     await prefs.setTopEnabled('battery', true);
     await prefs.addWidgetPage(7, 'Calendar · Month'); // a widget on this phone
 
@@ -55,7 +55,7 @@ void main() {
     await prefs.renameFolder('money', null);
     await prefs.setTheme(source: 'original');
     await prefs.setTopShare(0.2);
-    await prefs.setHeaderFont('mono');
+    await prefs.setClockStyle(weight: 300, width: 25, slant: 0);
     await tester.pumpAndSettle();
 
     // Restore (confirm in the dialog).
@@ -71,7 +71,7 @@ void main() {
     expect((prefs.themeSource, prefs.themeSeed, prefs.themeStyle), ('basic', 0xFF9C27B0, 'vibrant'));
     expect(prefs.topShare, 0.4);
     expect(prefs.topPadding, 24);
-    expect(prefs.headerFont, 'serif');
+    expect((prefs.clockWeight, prefs.clockWidth, prefs.clockSlant), (800.0, 60.0, -10.0), reason: 'clock style restored');
     expect(prefs.topPages, containsAllInOrder(['clock', 'screen_time', 'battery', 'widget:7', 'blank']), reason: 'pages back + this phone\'s widget kept');
 
     // A random file is refused.

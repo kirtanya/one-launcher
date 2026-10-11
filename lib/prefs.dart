@@ -141,10 +141,14 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Typeface for the big figures in the top half (see top/header_fonts.dart).
-  String get headerFont => _sp.getString('headerFont') ?? 'condensed';
-  Future<void> setHeaderFont(String id) async {
-    await _sp.setString('headerFont', id);
+  /// Clock style (variable font axes): weight 100–1000, width 25–151, slant −10…0.
+  double get clockWeight => _sp.getDouble('clockWeight') ?? 300;
+  double get clockWidth => _sp.getDouble('clockWidth') ?? 25;
+  double get clockSlant => _sp.getDouble('clockSlant') ?? 0;
+  Future<void> setClockStyle({double? weight, double? width, double? slant}) async {
+    if (weight != null) await _sp.setDouble('clockWeight', weight.clamp(100, 1000));
+    if (width != null) await _sp.setDouble('clockWidth', width.clamp(25, 151));
+    if (slant != null) await _sp.setDouble('clockSlant', slant.clamp(-10, 0));
     notifyListeners();
   }
 

@@ -357,9 +357,9 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
             const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s4), child: CardDivider()),
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s12),
-              child: Text('Font', style: DS.rowTitle),
+              child: Text('Clock style', style: DS.rowTitle),
             ),
-            _FontPicker(prefs: prefs),
+            _ClockStyleEditor(prefs: prefs),
             const SizedBox(height: DS.s8),
           ],
         );
@@ -1175,65 +1175,100 @@ class _SplitSlider extends StatelessWidget {
   }
 }
 
-/// Live previews of each big-figure font; tap to choose.
-class _FontPicker extends StatelessWidget {
-  const _FontPicker({required this.prefs});
+/// Clock style like the Pixel / iOS lock screen: one variable font, tuned with sliders
+/// (weight, width, slant) plus quick presets. Changes show live behind the sheet too.
+class _ClockStyleEditor extends StatelessWidget {
+  const _ClockStyleEditor({required this.prefs});
   final Prefs prefs;
 
   @override
   Widget build(BuildContext context) {
     final now = TimeOfDay.now();
     final sample = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    return SizedBox(
-      height: 112,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: DS.s24),
-        itemCount: headerFonts.length,
-        separatorBuilder: (_, _) => const SizedBox(width: DS.s12),
-        itemBuilder: (context, i) {
-          final f = headerFonts[i];
-          final selected = prefs.headerFont == f.id;
-          return Pressable(
-            scale: .94,
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.selectionClick();
-                prefs.setHeaderFont(f.id);
-              },
-              child: Semantics(
-                selected: selected,
-                button: true,
-                label: '${f.name} font',
-                child: Column(
-                  children: [
-                    AnimatedContainer(
-                      duration: Motion.snapDuration,
-                      curve: Motion.settle,
-                      width: 96,
-                      height: 72,
-                      padding: const EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
-                      decoration: BoxDecoration(
-                        color: DS.canvas,
-                        borderRadius: BorderRadius.circular(DS.rMedia),
-                        border: Border.all(color: selected ? DS.hero : DS.canvas, width: 3),
-                      ),
-                      child: FittedBox(
-                        child: Text(
-                          sample,
-                          style: f.style.copyWith(shadows: const [], color: DS.onWallpaper),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(f.name, style: DS.iconLabel.copyWith(fontWeight: selected ? FontWeight.w600 : FontWeight.w500)),
-                  ],
+    final w = prefs.clockWeight, wd = prefs.clockWidth, sl = prefs.clockSlant;
+
+    Widget slider(String label, String low, String high, double value, double min, double max, int steps, void Function(double) set) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
+            Row(
+              children: [
+                SizedBox(width: 56, child: Text(low, style: DS.rowSub.copyWith(fontSize: 12))),
+                Expanded(
+                  child: Slider(
+                    value: value.clamp(min, max),
+                    min: min,
+                    max: max,
+                    divisions: steps,
+                    activeColor: DS.ink,
+                    inactiveColor: DS.cardMuted,
+                    thumbColor: DS.ink,
+                    onChanged: (x) {
+                      if ((x - value).abs() > .01) HapticFeedback.selectionClick();
+                      set(x);
+                    },
+                  ),
                 ),
+                SizedBox(
+                  width: 48,
+                  child: Text(high, style: DS.rowSub.copyWith(fontSize: 12), textAlign: TextAlign.end),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Live preview.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+          child: Container(
+            height: 112,
+            padding: const EdgeInsets.symmetric(horizontal: DS.s20, vertical: DS.s8),
+            decoration: BoxDecoration(color: DS.canvas, borderRadius: BorderRadius.circular(DS.rMedia)),
+            child: FittedBox(
+              child: Text(
+                sample,
+                style: clockStyle(weight: w, width: wd, slant: sl).copyWith(shadows: const [], color: DS.onWallpaper),
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        const SizedBox(height: DS.s12),
+        // Presets.
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+            itemCount: clockPresets.length,
+            separatorBuilder: (_, _) => const SizedBox(width: DS.s8),
+            itemBuilder: (context, i) {
+              final (name, pw, pwd, psl) = clockPresets[i];
+              return _Chip(
+                label: name,
+                selected: (w - pw).abs() < 1 && (wd - pwd).abs() < 1 && (sl - psl).abs() < .1,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  prefs.setClockStyle(weight: pw, width: pwd, slant: psl);
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: DS.s8),
+        slider('Weight', 'Thin', 'Heavy', w, 100, 1000, 18, (x) => prefs.setClockStyle(weight: x)),
+        slider('Width', 'Narrow', 'Wide', wd, 25, 151, 21, (x) => prefs.setClockStyle(width: x)),
+        // Slant runs 0 → −10; the slider shows it upright → italic.
+        slider('Slant', 'Upright', 'Italic', -sl, 0, 10, 10, (x) => prefs.setClockStyle(slant: -x)),
+      ],
     );
   }
 }
