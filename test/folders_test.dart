@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/search_dock.dart';
+import 'package:one_launcher/ui/motion.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -133,5 +134,55 @@ void main() {
     await tester.drag(find.text('Money'), const Offset(0, 200));
     await tester.pumpAndSettle();
     expect(compact(), isFalse, reason: 'user scrolled down');
+  });
+
+  testWidgets('icons scale in/out at the folder edge; sheet and folders snap with haptics', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    final haptics = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') haptics.add(call.arguments as String);
+      return null;
+    });
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'getApps') {
+        return [
+          for (final n in ['WhatsApp', 'Settings'])
+            {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': n == 'Settings', 'category': -1, 'installed': 0},
+          for (var i = 1; i <= 80; i++) {'package': 'com.game$i', 'label': 'Game ${i.toString().padLeft(2, '0')}', 'system': false, 'category': 0, 'installed': 0},
+        ];
+      }
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
+    await tester.pumpAndSettle();
+
+    // Snap the sheet to full screen → a tick.
+    haptics.clear();
+    await tester.fling(find.text('Social'), const Offset(0, -300), 1500);
+    await tester.pumpAndSettle();
+    expect(haptics, contains('HapticFeedbackType.lightImpact'), reason: 'sheet snapped full');
+
+    // Open Games → press tap + settle tick.
+    haptics.clear();
+    await tester.tap(find.text('Games'));
+    await tester.pumpAndSettle();
+    expect(haptics, containsAllInOrder(['HapticFeedbackType.selectionClick', 'HapticFeedbackType.lightImpact']), reason: 'folder tap + snap');
+
+    // Icons at the grid's edge are part-scaled, the rest are full size.
+    List<double> fractions() => [for (final r in tester.renderObjectList<RenderEdgeScale>(find.byType(EdgeScale))) r.visibleFraction];
+    final before = fractions();
+    expect(before.where((f) => f >= .999), isNotEmpty, reason: 'icons fully in view are 100%');
+    expect(before.where((f) => f > .01 && f < .99), isNotEmpty, reason: 'icons cut by the edge are part-scaled');
+    await tester.drag(find.text('Game 05'), const Offset(0, -130));
+    await tester.pumpAndSettle();
+    expect(fractions(), isNot(equals(before)), reason: 'scaling follows the scroll');
+
+    // Close Games → tap + settle tick.
+    haptics.clear();
+    await tester.tap(find.text('Games'));
+    await tester.pumpAndSettle();
+    expect(haptics, containsAllInOrder(['HapticFeedbackType.selectionClick', 'HapticFeedbackType.lightImpact']), reason: 'folder closed + snap');
   });
 }

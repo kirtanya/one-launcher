@@ -38,6 +38,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _sheet = DraggableScrollableController();
   final _expanded = ValueNotifier<double>(0); // 0 = resting, 1 = full screen
   final _drawerKey = GlobalKey<AppDrawerState>();
+  String _sheetAt = 'rest'; // rest / moving / full — for the snap haptic
 
   // Search lives in the bottom dock.
   final _query = TextEditingController();
@@ -119,7 +120,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     Apps.instance.onAppsChanged = _loadApps;
     Apps.instance.onHomePressed = _goHome;
     Apps.instance.onPermissionsChanged = () => _refresh.value++;
-    _sheet.addListener(() => _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0));
+    _sheet.addListener(() {
+      _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0);
+      // A tick when the sheet snaps home: full screen, or back to rest.
+      final at = _sheet.size >= .999 ? 'full' : (_sheet.size <= _rest + .002 ? 'rest' : 'moving');
+      if (at != _sheetAt) {
+        if (at != 'moving' && _sheetAt == 'moving') HapticFeedback.lightImpact();
+        _sheetAt = at;
+      }
+    });
     _loadApps();
     WidgetsBinding.instance.addPostFrameCallback((_) => _firstLaunch());
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/physics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 /// Snapping motion for One Launcher: everything settles on a spring, not a plain ease.
@@ -110,5 +111,73 @@ class PopIn extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Scales its child with how much of it is inside the nearest scroll view's visible area:
+/// items grow 0→100% as they scroll into view and shrink back as they leave (both axes).
+/// Done at paint time (no rebuilds), so it costs almost nothing while scrolling.
+class EdgeScale extends SingleChildRenderObjectWidget {
+  const EdgeScale({super.key, required Widget super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderEdgeScale(Scrollable.maybeOf(context)?.position);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderEdgeScale renderObject) => renderObject.position = Scrollable.maybeOf(context)?.position;
+}
+
+/// Render side of [EdgeScale].
+class RenderEdgeScale extends RenderProxyBox {
+  RenderEdgeScale(this._position);
+
+  ScrollPosition? _position;
+  set position(ScrollPosition? p) {
+    if (p == _position) return;
+    if (attached) _position?.removeListener(markNeedsPaint);
+    _position = p;
+    if (attached) _position?.addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _position?.addListener(markNeedsPaint); // repaint as the scroll view moves
+  }
+
+  @override
+  void detach() {
+    _position?.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  /// 0…1: share of this item (along the scroll axis) that's inside the viewport.
+  double get visibleFraction => _visible();
+
+  double _visible() {
+    final pos = _position;
+    final vp = RenderAbstractViewport.maybeOf(this);
+    if (pos == null || vp is! RenderBox || !hasSize || !(vp as RenderBox).hasSize) return 1;
+    final rect = MatrixUtils.transformRect(getTransformTo(vp as RenderObject), Offset.zero & size);
+    final horizontal = pos.axis == Axis.horizontal;
+    final start = horizontal ? rect.left : rect.top, end = horizontal ? rect.right : rect.bottom;
+    final extent = horizontal ? (vp as RenderBox).size.width : (vp as RenderBox).size.height;
+    final len = end - start;
+    if (len <= 0) return 1;
+    return ((end.clamp(0, extent) - start.clamp(0, extent)) / len).clamp(0.0, 1.0);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final v = Curves.easeOut.transform(_visible());
+    if (v >= .999) return super.paint(context, offset);
+    if (v <= .001 || child == null) return;
+    final c = offset + size.center(Offset.zero);
+    final m = Matrix4.identity()
+      ..translateByDouble(c.dx, c.dy, 0, 1)
+      ..scaleByDouble(v, v, 1, 1)
+      ..translateByDouble(-c.dx, -c.dy, 0, 1);
+    layer = context.pushTransform(needsCompositing, Offset.zero, m, (ctx, o) => ctx.paintChild(child!, offset + o), oldLayer: layer as TransformLayer?);
   }
 }

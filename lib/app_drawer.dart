@@ -152,6 +152,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     HapticFeedback.selectionClick();
     final opening = _openId != id;
     setState(() => _openId = opening ? id : null);
+    // A second, firmer tick when the folder settles open / shut.
+    Future.delayed(Motion.snapDuration, () {
+      if (mounted && (_openId == id) == opening) HapticFeedback.lightImpact();
+    });
     if (!opening || !widget.scroll.hasClients) return;
     // An open folder gets the room: the search bar shrinks to its circle until the user
     // scrolls the list themselves.
@@ -538,21 +542,34 @@ class _HeroCardState extends State<_HeroCard> {
     super.dispose();
   }
 
-  Widget _grid(List<AppEntry> apps, double cellW, int offset) => Wrap(
+  Widget _grid(List<AppEntry> apps, double cellW, int offset, {bool edge = false}) => Wrap(
     children: [
       for (final (i, a) in apps.indexed)
         SizedBox(
           width: cellW,
-          child: PopIn(
-            delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-            child: _GridApp(
-              app: a,
-              labelColor: DS.heroInk,
-              pinned: widget.pinned.contains(a.package),
-              onTap: () => widget.onLaunch(a),
-              onLongPress: () => widget.onLongPress(a),
-            ),
-          ),
+          child: edge
+              ? EdgeScale(
+                  child: PopIn(
+                    delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                    child: _GridApp(
+                      app: a,
+                      labelColor: DS.heroInk,
+                      pinned: widget.pinned.contains(a.package),
+                      onTap: () => widget.onLaunch(a),
+                      onLongPress: () => widget.onLongPress(a),
+                    ),
+                  ),
+                )
+              : PopIn(
+                  delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+                  child: _GridApp(
+                    app: a,
+                    labelColor: DS.heroInk,
+                    pinned: widget.pinned.contains(a.package),
+                    onTap: () => widget.onLaunch(a),
+                    onLongPress: () => widget.onLongPress(a),
+                  ),
+                ),
         ),
     ],
   );
@@ -590,7 +607,7 @@ class _HeroCardState extends State<_HeroCard> {
                       HapticFeedback.selectionClick();
                       setState(() => _page = i);
                     },
-                    itemBuilder: (context, i) => Align(alignment: Alignment.topLeft, child: _grid(pages[i], w, i * per)),
+                    itemBuilder: (context, i) => Align(alignment: Alignment.topLeft, child: _grid(pages[i], w, i * per, edge: true)),
                   ),
                 );
               },
@@ -852,10 +869,12 @@ class _FolderBodyState extends State<_FolderBody> {
                                     for (final (i, a) in apps.indexed)
                                       SizedBox(
                                         width: w,
-                                        // Icons pop in row by row.
-                                        child: PopIn(
-                                          delay: ((i ~/ 4) * 0.06 + (i % 4) * 0.02).clamp(0, .6),
-                                          child: _GridApp(app: a, onTap: () => widget.onLaunch(a), onLongPress: () => widget.onLongPress(a)),
+                                        // Icons pop in row by row, and grow in / shrink out at the scroll edges.
+                                        child: EdgeScale(
+                                          child: PopIn(
+                                            delay: ((i ~/ 4) * 0.06 + (i % 4) * 0.02).clamp(0, .6),
+                                            child: _GridApp(app: a, onTap: () => widget.onLaunch(a), onLongPress: () => widget.onLongPress(a)),
+                                          ),
                                         ),
                                       ),
                                   ],
