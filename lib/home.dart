@@ -332,6 +332,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
               return Stack(
                 fit: StackFit.expand,
                 children: [
+                  // ---- Wallpaper dim (Settings → Wallpaper dim): black over the wallpaper so
+                  // everything on it reads better; off on the "Just wallpaper" page. ----
+                  IgnorePointer(
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _topBlank,
+                      builder: (context, blank, _) => AnimatedContainer(
+                        duration: Motion.snapDuration,
+                        curve: Motion.settle,
+                        color: Colors.black.withValues(alpha: blank ? 0 : prefs.wallpaperDim),
+                      ),
+                    ),
+                  ),
+
                   // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
                   Positioned(
                     top: 0,
@@ -494,27 +507,6 @@ class _TopArea extends StatelessWidget {
       onLongPress: onCustomise, // long-press the top half → choose its pages
       child: Stack(
         children: [
-          // Gentle dark wash at the top so the status bar reads on bright wallpapers —
-          // faded out on the "Just wallpaper" page so nothing covers the wallpaper.
-          Positioned.fill(
-            child: ValueListenableBuilder<bool>(
-              valueListenable: blank,
-              builder: (context, b, _) => AnimatedOpacity(
-                duration: Motion.snapDuration,
-                opacity: b ? 0 : 1,
-                child: const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0x40000000), Color(0x00000000)],
-                      stops: [0, .45],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
           SafeArea(
             bottom: false,
             child: AnimatedPadding(

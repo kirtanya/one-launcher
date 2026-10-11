@@ -152,6 +152,13 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Black over the wallpaper (0 = off … 0.6), for legibility of everything on it.
+  double get wallpaperDim => (_sp.getDouble('wallpaperDim') ?? 0.2).clamp(0, .6);
+  Future<void> setWallpaperDim(double v) async {
+    await _sp.setDouble('wallpaperDim', v.clamp(0, .6));
+    notifyListeners();
+  }
+
   /// Extra breathing room around the top widgets (pt).
   static const topPaddingMax = 40.0;
   double get topPadding => (_sp.getDouble('topPadding') ?? 16).clamp(0, topPaddingMax);

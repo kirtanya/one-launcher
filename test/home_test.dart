@@ -202,10 +202,20 @@ void main() {
     expect(find.text('50% · apps 50%'), findsOneWidget);
     // Padding slider: more room around the top widgets → the big figure moves inward.
     final figureX = tester.getTopLeft(find.byType(FittedBox).first).dx;
-    await tester.drag(find.byType(Slider).last, const Offset(400, 0));
+    await tester.drag(find.byType(Slider).at(1), const Offset(400, 0)); // padding
     await tester.pumpAndSettle();
     expect(find.text('40 pt'), findsOneWidget);
     expect(tester.getTopLeft(find.byType(FittedBox).first).dx, greaterThan(figureX + 15), reason: 'padding applied live');
+    // Wallpaper dim: drag to the max (60%) → the black layer over the wallpaper follows.
+    expect(find.text('Wallpaper dim'), findsOneWidget);
+    await tester.drag(find.byType(Slider).at(2), const Offset(400, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('60%'), findsOneWidget);
+    final dim = tester.widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
+        .map((c) => (c.decoration as BoxDecoration?)?.color)
+        .whereType<Color>()
+        .where((c) => c.r == 0 && c.g == 0 && c.b == 0 && (c.a - .6).abs() < .01);
+    expect(dim, isNotEmpty, reason: 'wallpaper dimmed to 60%');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
     Navigator.of(tester.element(find.text('Top widgets size'))).pop();
     await tester.pumpAndSettle();

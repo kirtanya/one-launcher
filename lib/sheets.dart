@@ -1077,6 +1077,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _SplitSlider(prefs: prefs),
             _PaddingSlider(prefs: prefs),
+            _DimSlider(prefs: prefs),
             _Row(Icons.settings_backup_restore_rounded, 'Backup & restore', () {
               Navigator.pop(ctx);
               showBackupSheet(context, prefs: prefs);
@@ -1313,6 +1314,55 @@ class _PaddingSlider extends StatelessWidget {
                 ),
               ),
               Icon(Icons.fullscreen_exit_rounded, size: 18, color: DS.inkMuted),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Settings → Wallpaper dim: black over the wallpaper, 0–60%. Updates live.
+class _DimSlider extends StatelessWidget {
+  const _DimSlider({required this.prefs});
+  final Prefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = prefs.wallpaperDim;
+    final pct = (v * 100).round();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('Wallpaper dim', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+              ),
+              Text(pct == 0 ? 'Off' : '$pct%', style: DS.rowSub),
+            ],
+          ),
+          Row(
+            children: [
+              Icon(Icons.light_mode_outlined, size: 18, color: DS.inkMuted),
+              Expanded(
+                child: Slider(
+                  value: v,
+                  max: .6,
+                  divisions: 12, // 5% steps
+                  label: '$pct%',
+                  activeColor: DS.ink,
+                  inactiveColor: DS.cardMuted,
+                  thumbColor: DS.ink,
+                  onChanged: (x) {
+                    if ((x - v).abs() > .01) HapticFeedback.selectionClick();
+                    prefs.setWallpaperDim(x);
+                  },
+                ),
+              ),
+              Icon(Icons.dark_mode_outlined, size: 18, color: DS.inkMuted),
             ],
           ),
         ],

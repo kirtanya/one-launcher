@@ -33,7 +33,8 @@ class DS {
   static const glass = Color(0x2EFFFFFF); // frosted circle button fill (18%)
   static const glassLine = Color(0x40FFFFFF); // its hairline (25%)
   static const chipOnWallpaper = Color(0x66141414); // dark frosted pill: readable on any wallpaper (40%)
-  static const wallpaperShadow = [Shadow(color: Color(0x59000000), blurRadius: 18)];
+  // No shadows on wallpaper text: legibility comes from the user's wallpaper dim instead.
+  static const wallpaperShadow = <Shadow>[];
 
   static const alert = Color(0xFFE0624A);
   static const dot = Color(0xFFEF7389);
