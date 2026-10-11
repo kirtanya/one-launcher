@@ -2,6 +2,8 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'perf.dart';
+
 /// Snapping motion for One Launcher: everything settles on a spring, not a plain ease.
 class Motion {
   /// Page swipe spring: stiff and slightly under-damped, so it lands with a crisp snap.
@@ -98,6 +100,7 @@ class PopIn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (Perf.lite.value) return child; // lighter effects: no pop-in
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Motion.popDuration,
@@ -187,6 +190,7 @@ class RenderEdgeScale extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    if (Perf.lite.value) return super.paint(context, offset); // lighter effects: no edge scaling
     final v = minScale + (1 - minScale) * Curves.easeOut.transform(_visible());
     if (v >= .999) return super.paint(context, offset);
     if (v <= .001 || child == null) return;

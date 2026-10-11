@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'ui/ds.dart';
+import 'ui/perf.dart';
 import 'ui/motion.dart';
 
 /// iOS-style search at the bottom of the screen. One white pill that morphs between:
@@ -125,7 +126,7 @@ class _DockCircle extends StatelessWidget {
     return Pressable(
       scale: .88,
       child: DecoratedBox(
-        decoration: const BoxDecoration(shape: BoxShape.circle, boxShadow: SearchDock.shadow),
+        decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: Perf.lite.value ? null : SearchDock.shadow),
         child: Tooltip(
           message: tooltip,
           child: Material(
@@ -168,7 +169,7 @@ class _Pill extends StatelessWidget {
       enabled: !active,
       scale: .95,
       child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: SearchDock.shadow),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
         child: Material(
           color: DS.card,
           borderRadius: BorderRadius.circular(99),

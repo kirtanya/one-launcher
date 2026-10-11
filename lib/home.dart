@@ -17,6 +17,7 @@ import 'photo_wallpaper.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
+import 'ui/perf.dart';
 
 /// The whole launcher is one screen:
 /// top half = big clock over the wallpaper + launcher options,
@@ -321,10 +322,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
           builder: (context, child) {
             // Always the same wrappers (at 100% when idle): swapping the tree would rebuild the
             // sheet and reattach its controller.
-            final t = Curves.easeOutCubic.transform(_land.value);
-            return Opacity(
-              opacity: .35 + .65 * t,
-              child: Transform.scale(scale: 1.05 - .05 * t, child: child),
+            final t = Perf.lite.value ? 1.0 : Curves.easeOutCubic.transform(_land.value); // lighter effects: no landing
+            // A dark veil that clears, not a fade of the whole screen: fading everything is an
+            // offscreen layer the size of the screen, too heavy for slower phones right at the
+            // moment they're busiest (coming back home).
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                Transform.scale(scale: 1.04 - .04 * t, child: child),
+                if (t < 1)
+                  IgnorePointer(
+                    child: ColoredBox(color: Colors.black.withValues(alpha: .45 * (1 - t))),
+                  ),
+              ],
             );
           },
           child: LayoutBuilder(
@@ -359,7 +369,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
                       builder: (context, e, child) => IgnorePointer(
                         ignoring: e > 0.3,
                         child: Opacity(
-                          opacity: (1 - e * 1.6).clamp(0.0, 1.0),
+                          // Lighter effects: no fade (an offscreen layer every frame) — the sheet covers it.
+                          opacity: Perf.lite.value ? (e > .95 ? 0 : 1) : (1 - e * 1.6).clamp(0.0, 1.0),
                           child: Transform.translate(
                             offset: Offset(0, -topHeight * 0.18 * e),
                             child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),

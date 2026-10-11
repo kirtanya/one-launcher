@@ -231,7 +231,7 @@ class Prefs extends ChangeNotifier {
   String exportBackup() {
     final out = <String, Object>{};
     for (final k in _sp.getKeys()) {
-      if (k == 'widgetLabels' || k == 'installId' || k == 'wallpaperPhoto') continue; // phone-specific
+      if (k == 'widgetLabels' || k == 'installId' || k == 'wallpaperPhoto' || k == 'slowFrames') continue; // phone-specific
       final v = _sp.get(k);
       out[k] = switch (v) {
         final String s => {'t': 's', 'v': s},
@@ -407,6 +407,17 @@ class Prefs extends ChangeNotifier {
     list.contains(pkg) ? list.remove(pkg) : list.add(pkg);
     return _setList('hidden', list);
   }
+
+  /// Lighter effects: 'auto' (on for budget phones / when frames drop), 'lite' or 'full'.
+  String get effects => _sp.getString('effects') ?? 'auto';
+  Future<void> setEffects(String v) async {
+    await _sp.setString('effects', v);
+    notifyListeners();
+  }
+
+  /// This phone was seen dropping frames (remembered, so auto mode starts light next time).
+  bool get slowFrames => _sp.getBool('slowFrames') ?? false;
+  Future<void> setSlowFrames(bool v) => _sp.setBool('slowFrames', v);
 
   /// Scroll-to-open: the folder that settles in the middle of the app list opens by itself
   /// (and the one before closes). Off by default.

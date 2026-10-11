@@ -120,6 +120,19 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "openNotifications" -> result.success(expandNotifications())
+                // How capable this phone is (Flutter picks lighter effects on budget phones).
+                "deviceClass" -> {
+                    val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+                    val mem = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+                    result.success(
+                        mapOf(
+                            "lowRam" to am.isLowRamDevice,
+                            "ramGb" to mem.totalMem / 1_000_000_000.0,
+                            "cores" to Runtime.getRuntime().availableProcessors(),
+                            "memClass" to am.memoryClass,
+                        ),
+                    )
+                }
                 // ---- Top carousel widgets ----
                 "getScreenTime" -> worker.execute {
                     val data = screenTime()

@@ -48,9 +48,11 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 60));
-    final mid = tester.widgetList<Opacity>(find.byType(Opacity)).first.opacity;
-    expect(mid, lessThan(1), reason: 'landing is playing');
+    // The landing is a dark veil clearing over the home (cheap: no full-screen fade layer).
+    Iterable<ColoredBox> veils() => tester.widgetList<ColoredBox>(find.byType(ColoredBox)).where((b) => b.color.r == 0 && b.color.g == 0 && b.color.b == 0 && b.color.a > .05 && b.color.a < .46);
+    expect(veils(), isNotEmpty, reason: 'landing is playing');
+    expect(tester.widgetList<Opacity>(find.byType(Opacity)).where((o) => o.opacity < 1 && o.opacity > 0 && o.opacity != .5), isEmpty, reason: 'no full-screen fade layer');
     await tester.pump(const Duration(milliseconds: 200));
-    expect(tester.widgetList<Opacity>(find.byType(Opacity)).where((o) => o.opacity < 1 && o.opacity > .3), isEmpty, reason: 'finished by ~260 ms');
+    expect(veils(), isEmpty, reason: 'finished by ~260 ms');
   });
 }

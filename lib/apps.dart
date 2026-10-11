@@ -212,6 +212,16 @@ class Apps {
     return _ch.invokeMethod<String>('pickPhoto');
   }
 
+  /// Phone capability: lowRam (Android's own flag), ramGb, cores. Empty in the web demo.
+  Future<Map<String, dynamic>> deviceClass() async {
+    if (isDemo) return const {};
+    try {
+      return await _ch.invokeMapMethod<String, dynamic>('deviceClass') ?? const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// True on the very first launch of this install (also after a reinstall).
   Future<bool> isFirstRun() async {
     if (isDemo) return false;

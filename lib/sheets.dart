@@ -16,6 +16,7 @@ import 'top/top_widgets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
+import 'ui/perf.dart';
 import 'widgets.dart';
 
 /// Long-press an app in the app view.
@@ -1302,6 +1303,17 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
               ),
             ]),
             _Group('Launcher', [
+              _SwitchRow(
+                Icons.speed_rounded,
+                'Lighter effects',
+                switch (prefs.effects) {
+                  'lite' => 'On · smoothest on any phone',
+                  'full' => 'Off · all animations',
+                  _ => Perf.autoSlow ? 'On for this phone (automatic)' : 'Automatic · turns on if this phone is slow',
+                },
+                Perf.lite.value,
+                (v) => prefs.setEffects(v ? 'lite' : 'full'),
+              ),
               _NavRow(
                 Icons.settings_backup_restore_rounded,
                 'Backup & restore',

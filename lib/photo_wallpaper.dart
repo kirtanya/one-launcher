@@ -83,7 +83,10 @@ class _PhotoWallpaperState extends State<PhotoWallpaper> {
       final file = path == null ? null : photoFile(path);
       if (file != null) {
         final px = MediaQuery.sizeOf(context).height * MediaQuery.devicePixelRatioOf(context);
-        _stream = ResizeImage(file, height: (px * 1.5).round(), policy: ResizeImagePolicy.fit).resolve(createLocalImageConfiguration(context));
+        // At most 2048 px on the long side: plenty for the top window even zoomed, and a texture
+        // budget phones handle (a full 1.5× screen decode was ~40 MB of GPU memory).
+        final cap = math.min(2048, (px * 1.2).round());
+        _stream = ResizeImage(file, width: cap, height: cap, policy: ResizeImagePolicy.fit).resolve(createLocalImageConfiguration(context));
         _listener = ImageStreamListener((info, _) {
           if (!mounted) return;
           setState(() => _sharp = info.image);

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../prefs.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
+import '../ui/perf.dart';
 import 'header_fonts.dart';
 import 'pages.dart';
 
@@ -64,7 +65,7 @@ class _TopCarouselState extends State<TopCarousel> {
                 child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
                 builder: (context, child) {
                   final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
-                  final d = (page - i).abs().clamp(0.0, 1.0);
+                  final d = Perf.lite.value ? 0.0 : (page - i).abs().clamp(0.0, 1.0); // lighter effects: no page fade
                   return Opacity(
                     opacity: 1 - d * .6,
                     child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
