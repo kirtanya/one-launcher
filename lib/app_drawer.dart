@@ -124,8 +124,8 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   /// always stays visible (once it's centred). Longer folders scroll their grid inside.
   static const _peek = 56.0;
 
-  double _maxBodyHeight(MediaQueryData mq) {
-    final visible = mq.size.height - (DS.gutter + mq.padding.top) - (mq.padding.bottom + SearchDock.height + DS.s24);
+  double _maxBodyHeight(Size size, EdgeInsets padding) {
+    final visible = size.height - (DS.gutter + padding.top) - (padding.bottom + SearchDock.height + DS.s24);
     return math.max(160, visible - 2 * (_peek + DS.stack) - _headerExtent);
   }
 
@@ -171,12 +171,12 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final body = _bodyKeys[id]?.currentContext?.findRenderObject() as RenderBox?;
     if (marker == null || body == null || !marker.attached || !widget.scroll.hasClients) return null;
     final pos = widget.scroll.position;
-    final mq = MediaQuery.of(context);
+    final pad = MediaQuery.paddingOf(context);
     // Aim at the layout the sheet is heading to (full screen), not the current one: the sheet
     // expands during the same motion, and a moving target would make the folder overshoot.
-    final inset = DS.gutter + mq.padding.top; // pinned top spacer at full screen
-    final dock = mq.padding.bottom + SearchDock.height + DS.s24; // floating search dock
-    final visible = mq.size.height - inset - dock;
+    final inset = DS.gutter + pad.top; // pinned top spacer at full screen
+    final dock = pad.bottom + SearchDock.height + DS.s24; // floating search dock
+    final visible = MediaQuery.sizeOf(context).height - inset - dock;
     // The marker is the gap just above the folder, so the folder starts DS.stack below it.
     final top = RenderAbstractViewport.of(marker).getOffsetToReveal(marker, 0).offset + DS.stack;
     final cardH = _headerExtent + body.size.height;
@@ -226,10 +226,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    // Room for the floating search dock (and the keyboard while searching).
-    final bottom = mq.viewInsets.bottom + mq.padding.bottom + SearchDock.height + DS.s32;
-    final statusBar = mq.padding.top;
+    // Granular lookups: the full MediaQuery would rebuild the whole list on every frame of the
+    // keyboard sliding in; only the bottom spacer below listens to the keyboard.
+    final padding = MediaQuery.paddingOf(context);
+    final statusBar = padding.top;
     final prefs = widget.prefs;
     final (apps, groups, top) = _derived();
     final pinned = prefs.favourites.toSet();
@@ -246,12 +246,8 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final gutter = const EdgeInsets.symmetric(horizontal: DS.gutter);
     // Cards in the main list scale 60→100% at its edges; the pinned top strip and the area
     // behind the floating search bar count as out of view.
-    Widget edge(Widget child) => EdgeScale(
-      minScale: .6,
-      startInset: DS.gutter + statusBar * widget.expanded.value,
-      endInset: mq.padding.bottom + SearchDock.height + DS.s12,
-      child: child,
-    );
+    Widget edge(Widget child) =>
+        EdgeScale(minScale: .6, startInset: DS.gutter + statusBar * widget.expanded.value, endInset: padding.bottom + SearchDock.height + DS.s12, child: child);
     Widget box(Widget child) => SliverPadding(
       padding: gutter,
       sliver: SliverToBoxAdapter(child: child),
@@ -320,7 +316,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                       apps: list,
                       open: _openId == folder.id,
                       tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-                      maxHeight: _maxBodyHeight(mq),
+                      maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
                       outer: widget.scroll,
                       onHandoff: (on) => _handoff = on,
                       onLaunch: widget.onLaunch,
@@ -361,7 +357,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 ),
               ),
               ...content,
-              SliverToBoxAdapter(child: SizedBox(height: bottom)),
+              // Room for the floating search dock (and the keyboard while searching).
+              SliverToBoxAdapter(
+                child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + SearchDock.height + DS.s32)),
+              ),
             ],
           ),
         ),
@@ -704,16 +703,31 @@ class _FolderBodyState extends State<_FolderBody> {
                             final top = p != null && p.extentBefore > 0, bottom = p != null && p.extentAfter > 0;
                             // Always the same widgets (only the gradient changes): swapping the tree
                             // would rebuild the scroller and throw away its scroll position.
-                            return ShaderMask(
-                              blendMode: BlendMode.dstIn,
-                              shaderCallback: (r) => LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [top ? Colors.transparent : Colors.black, Colors.black, Colors.black, bottom ? Colors.transparent : Colors.black],
-                                stops: const [0, .08, .9, 1],
-                              ).createShader(r),
-                              child: child,
+                            // Card-coloured gradient strips, not a ShaderMask: a mask is an offscreen
+                            // layer redrawn every scroll frame, the strips are two cheap rectangles.
+                            final bg = widget.tone == CardTone.muted ? DS.cardMuted : DS.card;
+                            Widget strip(bool on, bool atTop) => Positioned(
+                              left: 0,
+                              right: 0,
+                              top: atTop ? 0 : null,
+                              bottom: atTop ? null : 0,
+                              height: DS.s24,
+                              child: IgnorePointer(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: atTop ? Alignment.topCenter : Alignment.bottomCenter,
+                                      end: atTop ? Alignment.bottomCenter : Alignment.topCenter,
+                                      colors: [
+                                        bg.withValues(alpha: on ? 1 : 0),
+                                        bg.withValues(alpha: 0),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             );
+                            return Stack(children: [child!, strip(top, true), strip(bottom, false)]);
                           },
                           child: SingleChildScrollView(
                             controller: _grid,

@@ -30,6 +30,7 @@ import android.os.UserManager
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode
+import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
@@ -81,6 +82,10 @@ class MainActivity : FlutterActivity() {
 
     // Transparent so the phone wallpaper shows behind the Flutter UI.
     override fun getBackgroundMode(): BackgroundMode = BackgroundMode.transparent
+
+    // SurfaceView (not the default TextureView that transparency picks): frames go straight to
+    // the compositor instead of through an extra GPU copy — the biggest win on slower phones.
+    override fun getRenderMode(): RenderMode = RenderMode.surface
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

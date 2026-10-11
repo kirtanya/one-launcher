@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'apps.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
   final prefs = await Prefs.load();
   final theme = OneTheme(prefs);
   await theme.refreshSystem(); // phone's Material You colours, before the first frame
+  if (const bool.fromEnvironment('PERF_LOG')) _logFrameTimes();
   runApp(OneLauncher(prefs: prefs, theme: theme));
 }
 
@@ -92,4 +94,28 @@ class _OneLauncherState extends State<OneLauncher> {
       home: HomeScreen(prefs: prefs, theme: theme),
     );
   }
+}
+
+/// Measuring builds only (`--dart-define=PERF_LOG=true`): every ~2 s, log how many frames ran
+/// and how slow the slowest were (build = Dart/UI thread, raster = GPU thread), to logcat.
+void _logFrameTimes() {
+  final build = <int>[], raster = <int>[];
+  var last = DateTime.now();
+  SchedulerBinding.instance.addTimingsCallback((timings) {
+    for (final t in timings) {
+      build.add(t.buildDuration.inMicroseconds);
+      raster.add(t.rasterDuration.inMicroseconds);
+    }
+    if (DateTime.now().difference(last).inMilliseconds < 2000 || build.isEmpty) return;
+    last = DateTime.now();
+    String stats(List<int> v) {
+      final s = [...v]..sort();
+      final p90 = s[(s.length * .9).floor().clamp(0, s.length - 1)] / 1000, p99 = s[(s.length * .99).floor().clamp(0, s.length - 1)] / 1000;
+      return 'p90=${p90.toStringAsFixed(1)}ms p99=${p99.toStringAsFixed(1)}ms max=${(s.last / 1000).toStringAsFixed(1)}ms >16ms=${s.where((x) => x > 16600).length}';
+    }
+
+    debugPrint('PERF frames=${build.length} build[${stats(build)}] raster[${stats(raster)}]');
+    build.clear();
+    raster.clear();
+  });
 }

@@ -34,7 +34,8 @@ class SearchDock extends StatelessWidget {
   final ValueChanged<String> onChanged, onSubmitted;
 
   static const height = 56.0;
-  static const shadow = [BoxShadow(color: Color(0x47000000), blurRadius: 24, offset: Offset(0, 8))];
+  // Small blur: it's redrawn every frame, and big blurs are costly on slower phones.
+  static const shadow = [BoxShadow(color: Color(0x3D000000), blurRadius: 10, offset: Offset(0, 4))];
   static const gap = 8.0;
   static const _slot = height + gap;
 

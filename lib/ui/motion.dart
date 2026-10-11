@@ -88,9 +88,9 @@ class _PressableState extends State<Pressable> with SingleTickerProviderStateMix
   }
 }
 
-/// Fades + slides a child in with a spring, `delay` (0..0.6) staggers siblings.
+/// Grows + slides a child in with a spring (no fade — see build), `delay` (0..0.6) staggers siblings.
 class PopIn extends StatelessWidget {
-  const PopIn({super.key, required this.child, this.delay = 0, this.offset = const Offset(0, 12), this.fromScale = 0.86});
+  const PopIn({super.key, required this.child, this.delay = 0, this.offset = const Offset(0, 12), this.fromScale = 0.6});
   final Widget child;
   final double delay;
   final Offset offset;
@@ -103,12 +103,11 @@ class PopIn extends StatelessWidget {
       duration: Motion.popDuration,
       curve: Interval(delay.clamp(0, .6), 1, curve: Motion.pop),
       child: child,
-      builder: (context, t, child) => Opacity(
-        opacity: t.clamp(0, 1),
-        child: Transform.translate(
-          offset: offset * (1 - t),
-          child: Transform.scale(scale: fromScale + (1 - fromScale) * t, child: child),
-        ),
+      // Scale + slide only, no fade: a fade is an offscreen layer per item, and dozens of
+      // icons popping at once made folder opening stutter on slower phones.
+      builder: (context, t, child) => Transform.translate(
+        offset: offset * (1 - t),
+        child: Transform.scale(scale: fromScale + (1 - fromScale) * t, child: child),
       ),
     );
   }
