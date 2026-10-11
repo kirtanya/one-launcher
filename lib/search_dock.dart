@@ -22,7 +22,6 @@ class SearchDock extends StatelessWidget {
     required this.onClose,
     required this.onChanged,
     required this.onSubmitted,
-    required this.onWallpaper,
     required this.onSettings,
   });
 
@@ -31,7 +30,7 @@ class SearchDock extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focus;
   final String hint;
-  final VoidCallback onActivate, onClose, onWallpaper, onSettings;
+  final VoidCallback onActivate, onClose, onSettings;
   final ValueChanged<String> onChanged, onSubmitted;
 
   static const height = 56.0;
@@ -44,7 +43,7 @@ class SearchDock extends StatelessWidget {
     final mq = MediaQuery.of(context);
     final bottom = math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12;
     final small = compact && !active;
-    // Wallpaper + settings sit right of the bar at rest; they slide out while searching
+    // Settings sits right of the bar at rest; they slide out while searching
     // or while the list is scrolled (dock shrinks to just the search circle).
     final tools = !active && !small;
 
@@ -55,8 +54,8 @@ class SearchDock extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, c) {
             final w = c.maxWidth;
-            final pillRight = active ? _slot : (small ? 0.0 : 2 * _slot);
-            final pillWidth = active ? w - _slot : (small ? height : w - 2 * _slot);
+            final pillRight = active ? _slot : (small ? 0.0 : _slot);
+            final pillWidth = active ? w - _slot : (small ? height : w - _slot);
             Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
               duration: Motion.snapDuration,
               curve: Motion.snap,
@@ -92,11 +91,6 @@ class SearchDock extends StatelessWidget {
                     onChanged: onChanged,
                     onSubmitted: onSubmitted,
                   ),
-                ),
-                slide(
-                  right: tools ? _slot : -(2 * _slot),
-                  shown: tools,
-                  child: _DockCircle(icon: Icons.wallpaper_rounded, tooltip: 'Wallpaper', onTap: onWallpaper),
                 ),
                 slide(
                   right: tools ? 0 : -_slot,

@@ -346,7 +346,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onClose: _stopSearch,
                     onChanged: _onQuery,
                     onSubmitted: _onSubmit,
-                    onWallpaper: Apps.instance.openWallpaperPicker,
                     onSettings: _settings,
                   ),
                 ),
