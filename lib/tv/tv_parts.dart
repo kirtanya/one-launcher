@@ -150,7 +150,15 @@ class TvAction {
 }
 
 /// Options slide in from the right, like the TV's own menus. Back closes.
-Future<void> showTvPanel(BuildContext context, {required String title, Widget? leading, required List<TvAction> actions}) {
+/// [refresh] + [build]: a panel that updates in place (e.g. ticking quick actions on and off).
+Future<void> showTvPanel(
+  BuildContext context, {
+  required String title,
+  Widget? leading,
+  List<TvAction> actions = const [],
+  Listenable? refresh,
+  List<TvAction> Function()? build,
+}) {
   return showGeneralDialog(
     context: context,
     barrierDismissible: true,
@@ -165,50 +173,56 @@ Future<void> showTvPanel(BuildContext context, {required String title, Widget? l
           width: 380,
           height: double.infinity,
           child: FocusTraversalGroup(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(DS.s32, 40, DS.s32, 40),
-              children: [
-                if (leading != null) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: ClipRRect(borderRadius: BorderRadius.circular(TvDS.rTile), child: leading),
-                  ),
-                  const SizedBox(height: DS.s16),
-                ],
-                Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: DS.s24),
-                for (final (i, a) in actions.indexed)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: DS.s8),
-                    child: TvFocusable(
-                      autofocus: i == 0,
-                      onSelect: () {
-                        if (!a.keepOpen) Navigator.pop(ctx);
-                        a.onSelect();
-                      },
-                      builder: (context, f) => AnimatedContainer(
-                        duration: Motion.pressIn * 2,
-                        height: 52,
-                        padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                        decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
-                        child: Row(
-                          children: [
-                            Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : DS.ink) : (a.danger ? DS.alert : TvDS.inkMuted)),
-                            const SizedBox(width: DS.s16),
-                            Expanded(
-                              child: Text(
-                                a.label,
-                                style: TvDS.panelRow.copyWith(color: f ? DS.ink : TvDS.ink),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+            child: ListenableBuilder(
+              listenable: refresh ?? const AlwaysStoppedAnimation(0),
+              builder: (ctx, _) {
+                final actions2 = build?.call() ?? actions;
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(DS.s32, 40, DS.s32, 40),
+                  children: [
+                    if (leading != null) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ClipRRect(borderRadius: BorderRadius.circular(TvDS.rTile), child: leading),
+                      ),
+                      const SizedBox(height: DS.s16),
+                    ],
+                    Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: DS.s24),
+                    for (final (i, a) in actions2.indexed)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: DS.s8),
+                        child: TvFocusable(
+                          autofocus: i == 0,
+                          onSelect: () {
+                            if (!a.keepOpen) Navigator.pop(ctx);
+                            a.onSelect();
+                          },
+                          builder: (context, f) => AnimatedContainer(
+                            duration: Motion.pressIn * 2,
+                            height: 52,
+                            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                            decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
+                            child: Row(
+                              children: [
+                                Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : DS.ink) : (a.danger ? DS.alert : TvDS.inkMuted)),
+                                const SizedBox(width: DS.s16),
+                                Expanded(
+                                  child: Text(
+                                    a.label,
+                                    style: TvDS.panelRow.copyWith(color: f ? DS.ink : TvDS.ink),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),

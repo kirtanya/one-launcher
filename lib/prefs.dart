@@ -384,6 +384,11 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// TV: the quick action chips above the rows, in order ("t:…" built-in, `a:<package>` apps).
+  static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings'];
+  List<String> get tvQuickActions => _sp.getStringList('tvQuickActions') ?? tvQuickDefault;
+  Future<void> setTvQuickActions(List<String> ids) => _setList('tvQuickActions', ids);
+
   /// TV: apps opened from the launcher, newest first ("Jump back in").
   List<String> get tvRecents => _sp.getStringList('tvRecents') ?? const [];
   Future<void> noteTvLaunch(String pkg) => _setList('tvRecents', [pkg, ...tvRecents.where((p) => p != pkg)].take(12).toList());

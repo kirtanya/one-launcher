@@ -9,13 +9,14 @@ import '../folders.dart';
 import '../prefs.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
+import 'tv_actions.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_search.dart';
 
-enum TvKind { app, resume, program }
+enum TvKind { app, resume, program, action }
 
 /// Anything on the home screen: an app, the show that's playing/paused, or a streaming
 /// app's programme (Watch Next / channels, where the TV allows it).
@@ -50,15 +51,16 @@ class TvItem {
 
 /// One row: Continue watching (wide), app rows (banners), streaming apps' rows (wide).
 class TvRow {
-  const TvRow(this.id, this.title, this.items, {this.wide = false});
+  const TvRow(this.id, this.title, this.items, {this.wide = false, this.chips = false});
   final String id;
   final String title;
   final List<TvItem> items;
   final bool wide;
+  final bool chips; // the quick action chips above the rows (no title, short)
 
   double get cardW => wide ? TvDS.wideW : TvDS.tileW;
   double get cardH => wide ? TvDS.wideH : TvDS.tileH;
-  double get height => TvDS.cardRowTitleH + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
+  double get height => chips ? TvDS.cardRowPad + 40 + TvDS.cardRowGap : TvDS.cardRowTitleH + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
 }
 
 /// The TV home screen, cinematic: the focused item's artwork fills the screen behind a
@@ -88,7 +90,7 @@ class _TvHomeState extends State<TvHome> {
   TvItem? _backdrop; // what the big picture shows (settles after a beat, so fast moves don't flicker)
   Timer? _backdropTimer;
 
-  static const _header = ['search', 'inputs', 'settings', 'customise'];
+  static const _header = ['search', 'customise']; // Inputs, Settings… are quick action chips now
 
   Prefs get prefs => widget.prefs;
   TvApps get tv => TvApps.instance;
@@ -188,8 +190,19 @@ class _TvHomeState extends State<TvHome> {
     }
     final recents = [for (final p in prefs.tvRecents) ?byPkg[p]].take(10).toList();
 
+    // Quick action chips: built-ins and pinned apps, then "Edit".
+    final quick = <TvItem>[
+      for (final id in prefs.tvQuickActions)
+        if (tvActions[id] case (final label, _))
+          TvItem(key: id, kind: TvKind.action, title: label, package: '')
+        else if (id.startsWith('a:') && byPkg[id.substring(2)] != null)
+          TvItem(key: id, kind: TvKind.action, title: byPkg[id.substring(2)]!.label, package: id.substring(2), app: byPkg[id.substring(2)]),
+      const TvItem(key: 'q:edit', kind: TvKind.action, title: 'Edit', package: ''),
+    ];
+
     setState(() {
       _rows = [
+        TvRow('quick', 'Quick actions', quick, chips: true),
         if (cont.isNotEmpty) TvRow('continue', 'Continue watching', cont, wide: true),
         if (fav.isNotEmpty) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
         if (recents.length > 1) TvRow('recent', 'Jump back in', [for (final a in recents) appItem(a)]),
@@ -202,7 +215,8 @@ class _TvHomeState extends State<TvHome> {
       ];
     });
     // The title block follows focus; keep it pointing at a live item.
-    if (_hero == null && _rows.isNotEmpty) _show(_rows.first.items.first, now: true);
+    final firstContent = _rows.where((r) => !r.chips).firstOrNull;
+    if (_hero == null && firstContent != null) _show(firstContent.items.first, now: true);
   }
 
   /// A row's apps in the user's order (Hold OK → Move); new apps keep their place after.
@@ -256,11 +270,14 @@ class _TvHomeState extends State<TvHome> {
   /// Landing, Home and Back all start on Search (the quickest way to anything).
   void _focusSearch() {
     _focus(-1, 0);
-    if (_rows.isNotEmpty) {
-      _col.remove(_rows.first.id);
-      _h[_rows.first.id]?.jumpTo(0);
-      _show(_rows.first.items.first, now: _backdrop == null);
+    // Every row back to its start; the title block shows the first show / app (not a chip).
+    for (final r in _rows) {
+      _col.remove(r.id);
+      final h = _h[r.id];
+      if (h != null && h.hasClients) h.jumpTo(0);
     }
+    final first = _rows.where((r) => !r.chips).firstOrNull;
+    if (first != null) _show(first.items.first, now: _backdrop == null);
   }
 
   // ---- Focus ---------------------------------------------------------------
@@ -279,7 +296,8 @@ class _TvHomeState extends State<TvHome> {
     if (_moving != null) {
       // Moving an app: ← → slide it along its row; ↑ ↓ do nothing until OK / Back.
       if (d == AxisDirection.left && i > 0) _shift(r, i, -1);
-      if (d == AxisDirection.right && i < _len(r) - 1) _shift(r, i, 1);
+      final last = r >= 0 && _rows[r].chips ? _len(r) - 2 : _len(r) - 1; // "Edit" stays at the end
+      if (d == AxisDirection.right && i < last) _shift(r, i, 1);
       return true;
     }
     switch (d) {
@@ -319,7 +337,14 @@ class _TvHomeState extends State<TvHome> {
     final list = [for (final it in row.items) it.package];
     list.insert(i + by, list.removeAt(i));
     HapticFeedback.selectionClick();
-    if (row.id == 'fav') {
+    if (row.chips) {
+      final keys = [
+        for (final it in row.items)
+          if (it.key != 'q:edit') it.key,
+      ];
+      keys.insert(i + by, keys.removeAt(i));
+      await prefs.setTvQuickActions(keys);
+    } else if (row.id == 'fav') {
       await prefs.setFavourites(list); // "Your apps" is the favourites list itself
     } else {
       await prefs.setTvRowOrder(row.id, list);
@@ -361,7 +386,11 @@ class _TvHomeState extends State<TvHome> {
     }
     // Horizontal: one card peeks on the left so you can tell there's more.
     final h = r < 0 ? null : _h[_rowId(r)];
-    if (h != null && h.hasClients) {
+    if (h != null && h.hasClients && _rows[r].chips) {
+      // Chips vary in width: just keep the focused one comfortably in view.
+      final ro = _node(r, i).context?.findRenderObject();
+      if (ro != null) h.position.ensureVisible(ro, alignment: .2, duration: dur, curve: curve);
+    } else if (h != null && h.hasClients) {
       final row = _rows[r];
       final x = ((i - 1) * (row.cardW + TvDS.gap)).clamp(0.0, h.position.maxScrollExtent);
       h.animateTo(x, duration: dur, curve: curve);
@@ -372,7 +401,7 @@ class _TvHomeState extends State<TvHome> {
   TvItem _withContent(TvItem item) {
     final m = tv.media.value;
     if (item.kind != TvKind.app || m == null || m['active'] != true || m['package'] != item.package || m['title'] == null) return item;
-    final now = _rows.firstOrNull?.id == 'continue' ? _rows.first.items.where((x) => x.kind == TvKind.resume).firstOrNull : null;
+    final now = _rows.where((r) => r.id == 'continue').firstOrNull?.items.where((x) => x.kind == TvKind.resume).firstOrNull;
     if (now == null) return item;
     return TvItem(
       key: 'app-now:${item.package}',
@@ -389,6 +418,7 @@ class _TvHomeState extends State<TvHome> {
   /// Title block switches at once; the big picture waits until focus rests a moment.
   void _show(TvItem item, {bool now = false}) {
     setState(() => _hero = item);
+    if (item.kind == TvKind.action) return; // chips keep the picture behind them
     _backdropTimer?.cancel();
     if (now) {
       _backdrop = item;
@@ -411,11 +441,37 @@ class _TvHomeState extends State<TvHome> {
         tv.mediaOpen();
       case TvKind.program:
         tv.openProgram(item.intent, item.package);
+      case TvKind.action:
+        if (item.key == 'q:edit') {
+          _editQuick();
+        } else if (item.app != null) {
+          tv.launch(item.package);
+        } else {
+          tv.openAction(item.key);
+        }
     }
   }
 
   void _options(TvRow row, int i) {
     final item = row.items[i];
+    if (row.chips) {
+      if (item.key == 'q:edit') return _editQuick();
+      showTvPanel(
+        context,
+        title: item.title,
+        actions: [
+          TvAction(Icons.open_in_new_rounded, 'Open', () => _open(item)),
+          if (row.items.length > 2) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
+          TvAction(
+            Icons.remove_circle_outline_rounded,
+            'Remove from quick actions',
+            () => prefs.setTvQuickActions([...prefs.tvQuickActions]..remove(item.key)),
+          ),
+          TvAction(Icons.edit_outlined, 'Edit quick actions', _editQuick),
+        ],
+      );
+      return;
+    }
     final a = item.app;
     if (a == null) {
       showTvPanel(
@@ -452,6 +508,10 @@ class _TvHomeState extends State<TvHome> {
             }
             await prefs.toggleFavourite(a.package);
           }),
+        if (prefs.tvQuickActions.contains('a:${a.package}'))
+          TvAction(Icons.bolt_rounded, 'Remove from quick actions', () => prefs.setTvQuickActions([...prefs.tvQuickActions]..remove('a:${a.package}')))
+        else
+          TvAction(Icons.bolt_rounded, 'Add to quick actions', () => prefs.setTvQuickActions([...prefs.tvQuickActions, 'a:${a.package}'])),
         TvAction(Icons.visibility_off_outlined, 'Hide', () => prefs.toggleHidden(a.package)),
         TvAction(Icons.info_outline_rounded, 'App info', () => tv.appInfo(a.package)),
         if (!a.system) TvAction(Icons.delete_outline_rounded, 'Uninstall', () => tv.uninstall(a.package), danger: true),
@@ -471,10 +531,29 @@ class _TvHomeState extends State<TvHome> {
         ),
       ),
     ),
-    'inputs' => tv.openInputs(),
-    'settings' => tv.openSettings(),
     _ => _customise(),
   };
+
+  /// Tick quick actions on and off (the chips update behind the panel). Order: Hold OK → Move.
+  void _editQuick() {
+    showTvPanel(
+      context,
+      title: 'Quick actions',
+      refresh: prefs,
+      build: () {
+        final on = prefs.tvQuickActions;
+        void toggle(String id) => prefs.setTvQuickActions(on.contains(id) ? ([...on]..remove(id)) : [...on, id]);
+        return [
+          for (final MapEntry(key: id, value: (label, _)) in tvActions.entries)
+            TvAction(on.contains(id) ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded, label, () => toggle(id), keepOpen: true),
+          for (final id in on.where((x) => x.startsWith('a:')))
+            if (_apps.where((a) => a.package == id.substring(2)).firstOrNull case final app?)
+              TvAction(Icons.check_circle_rounded, app.label, () => toggle(id), keepOpen: true),
+          TvAction(Icons.restart_alt_rounded, 'Reset to default', () => prefs.setTvQuickActions(Prefs.tvQuickDefault), keepOpen: true),
+        ];
+      },
+    );
+  }
 
   void _customise() {
     final hidden = [
@@ -488,6 +567,7 @@ class _TvHomeState extends State<TvHome> {
       actions: [
         if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
         for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
+        TvAction(Icons.bolt_rounded, 'Quick actions', _editQuick),
         TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
       ],
     );
@@ -584,6 +664,40 @@ class _TvHomeState extends State<TvHome> {
   Widget _buildRow(int r, TvRow row) {
     final h = _h.putIfAbsent(row.id, ScrollController.new);
     final focusedRow = _row == r;
+    if (row.chips) {
+      return SizedBox(
+        height: row.height,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: TvDS.cardRowPad),
+            child: SingleChildScrollView(
+              controller: h,
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              padding: EdgeInsets.symmetric(horizontal: TvDS.safe.left),
+              child: Row(
+                children: [
+                  for (final (i, item) in row.items.indexed) ...[
+                    if (i > 0) const SizedBox(width: DS.s8),
+                    _QuickChip(
+                      key: ValueKey(_key(r, i)),
+                      item: item,
+                      focusNode: _node(r, i),
+                      moving: _moving == _key(r, i),
+                      onSelect: () => _moving != null ? _endMove() : _open(item),
+                      onOptions: () => _options(row, i),
+                      onMove: (d) => _move(r, i, d),
+                      onFocus: () => _onFocus(r, i),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return SizedBox(
       height: row.height,
       child: Column(
@@ -728,11 +842,12 @@ class _HeroInfo extends StatelessWidget {
       TvKind.resume => 'CONTINUE WATCHING${it.appName != null ? ' · ${it.appName!.toUpperCase()}' : ''}',
       TvKind.program => (it.appName ?? '').toUpperCase(),
       TvKind.app => (rowTitle ?? 'App').toUpperCase(),
+      TvKind.action => it.app != null ? 'QUICK ACTION · APP' : 'QUICK ACTION',
     };
     final action = switch (it.kind) {
       TvKind.resume => 'Resume',
       TvKind.program => (it.progress ?? 0) > 0 ? 'Resume' : 'Watch',
-      TvKind.app => 'Open',
+      TvKind.app || TvKind.action => it.key == 'q:edit' ? 'Edit' : 'Open',
     };
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -859,8 +974,6 @@ class _TopButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, label) = switch (id) {
       'search' => (Icons.search_rounded, 'Search'),
-      'inputs' => (Icons.input_rounded, 'Inputs'),
-      'settings' => (Icons.settings_outlined, 'Settings'),
       _ => (Icons.tune_rounded, 'Customise'),
     };
     final pill = id == 'search';
@@ -1117,4 +1230,73 @@ class _ProgramArt extends StatelessWidget {
       ),
     ),
   );
+}
+
+// ---- Quick action chips ----------------------------------------------------------
+
+/// A quick action above the rows: icon (or the app's picture) + label, white when focused.
+class _QuickChip extends StatelessWidget {
+  const _QuickChip({
+    super.key,
+    required this.item,
+    required this.focusNode,
+    required this.onSelect,
+    required this.onOptions,
+    this.onMove,
+    this.onFocus,
+    this.moving = false,
+  });
+  final TvItem item;
+  final FocusNode focusNode;
+  final VoidCallback onSelect, onOptions;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+  final bool moving;
+
+  @override
+  Widget build(BuildContext context) {
+    final edit = item.key == 'q:edit';
+    final icon = edit ? Icons.add_rounded : tvActions[item.key]?.$2;
+    return Semantics(
+      button: true,
+      label: edit ? 'Edit quick actions' : item.title,
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onLongSelect: onOptions,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => AnimatedScale(
+          scale: moving ? 1.14 : (f ? TvDS.focusScaleCard : 1),
+          duration: Motion.popDuration,
+          curve: Motion.pop,
+          child: AnimatedContainer(
+            duration: Motion.pressIn * 2,
+            height: 40,
+            padding: EdgeInsets.symmetric(horizontal: edit ? DS.s12 : DS.s16),
+            decoration: BoxDecoration(
+              color: f ? TvDS.surfaceFocused : const Color(0x33000000),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: f ? Colors.transparent : TvDS.line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (moving) Icon(Icons.chevron_left_rounded, size: 18, color: f ? DS.ink : TvDS.ink),
+                if (item.app != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: SizedBox(width: 32, height: 18, child: TvAppArt(app: item.app!, width: 32)),
+                  )
+                else if (icon != null)
+                  Icon(icon, size: 20, color: f ? DS.ink : TvDS.ink),
+                if (!edit) ...[const SizedBox(width: DS.s8), Text(item.title, style: TvDS.hint.copyWith(fontSize: 14, color: f ? DS.ink : TvDS.ink))],
+                if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? DS.ink : TvDS.ink),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

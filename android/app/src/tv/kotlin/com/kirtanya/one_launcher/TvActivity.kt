@@ -119,6 +119,7 @@ class TvActivity : FlutterActivity() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
+                "openAction" -> result.success(openAction(call.argument<String>("id")!!))
                 "openSettings" -> result.success(open(Intent(Settings.ACTION_SETTINGS)))
                 "openHomeSettings" -> result.success(open(Intent(Settings.ACTION_HOME_SETTINGS)) || open(Intent(Settings.ACTION_SETTINGS)))
                 "openInputs" -> result.success(open(Intent("com.android.tv.action.VIEW_INPUTS")) || open(Intent(Settings.ACTION_SETTINGS)))
@@ -253,6 +254,27 @@ class TvActivity : FlutterActivity() {
     private fun launch(pkg: String): Boolean {
         val i = packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg) ?: return false
         return open(i)
+    }
+
+    /** Quick actions: each tries the TV's own screen first, then a general one, then Settings. */
+    private fun openAction(id: String): Boolean {
+        fun c(cls: String) = Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.$cls")
+        val candidates = when (id) {
+            "t:inputs" -> listOf(Intent("com.android.tv.action.VIEW_INPUTS"))
+            "t:assistant" -> listOf(Intent(Intent.ACTION_ASSIST), Intent("android.search.action.GLOBAL_SEARCH"))
+            "t:wifi" -> listOf(Intent(Settings.ACTION_WIFI_SETTINGS))
+            "t:bluetooth" -> listOf(c("accessories.AddAccessoryActivity"), Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+            "t:sound" -> listOf(Intent(Settings.ACTION_SOUND_SETTINGS), c("device.displaysound.DisplaySoundActivity"))
+            "t:energy" -> listOf(c("device.eco.EnergyModesActivity"))
+            "t:captions" -> listOf(Intent(Settings.ACTION_CAPTIONING_SETTINGS))
+            "t:language" -> listOf(Intent(Settings.ACTION_LOCALE_SETTINGS))
+            "t:storage" -> listOf(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+            "t:datetime" -> listOf(Intent(Settings.ACTION_DATE_SETTINGS))
+            "t:accessibility" -> listOf(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            "t:playstore" -> listOfNotNull(packageManager.getLeanbackLaunchIntentForPackage("com.android.vending"))
+            else -> emptyList()
+        }
+        return candidates.any { open(it) } || open(Intent(Settings.ACTION_SETTINGS))
     }
 
     private fun open(i: Intent): Boolean = try {

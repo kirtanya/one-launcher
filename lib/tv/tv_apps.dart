@@ -141,6 +141,7 @@ class TvApps {
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
+  Future<void> openAction(String id) => _call('openAction', {'id': id});
   Future<void> openSettings() => _call('openSettings');
   Future<void> openInputs() => _call('openInputs');
   Future<void> openHomeSettings() => _call('openHomeSettings');

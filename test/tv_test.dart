@@ -23,6 +23,16 @@ Future<void> _loadFonts() async {
 
 String? _focused() => FocusManager.instance.primaryFocus?.debugLabel;
 
+/// Puts focus back on a node by its label (after a panel closes, focus returns to the chip).
+void _focusLabel(String label) {
+  void visit(FocusNode n) {
+    if (n.debugLabel == label) n.requestFocus();
+    n.children.forEach(visit);
+  }
+
+  visit(FocusManager.instance.rootScope);
+}
+
 Future<void> _press(WidgetTester t, LogicalKeyboardKey k) async {
   await t.sendKeyEvent(k);
   await t.pumpAndSettle();
@@ -44,6 +54,32 @@ void main() {
     expect(find.text('Your apps'), findsOneWidget);
     // Lands on Search; the title block already shows what you were watching.
     expect(_focused(), 'h:search');
+    // Quick action chips sit above the rows.
+    expect(find.text('Inputs'), findsOneWidget);
+    expect(find.text('Network'), findsOneWidget);
+    expect(find.text('Settings'), findsWidgets); // chip + the Settings app tile
+    await _press(tester, LogicalKeyboardKey.arrowDown);
+    expect(_focused(), 'quick:t:inputs');
+    expect(find.text('QUICK ACTION'), findsOneWidget);
+    // Hold OK on a chip → its options → Edit quick actions → tick Captions → a new chip.
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    expect(find.text('Remove from quick actions'), findsOneWidget);
+    await tester.tap(find.text('Edit quick actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Captions'));
+    await tester.pumpAndSettle();
+    expect(prefs.tvQuickActions, contains('t:captions'));
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_7_quick_edit.png'));
+    await tester.tapAt(const Offset(40, 270)); // close the panel
+    await tester.pumpAndSettle();
+    expect(find.text('Captions'), findsOneWidget, reason: 'new chip in the row');
+    _focusLabel('quick:t:inputs');
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_0_quick.png'));
     await _press(tester, LogicalKeyboardKey.arrowDown);
     final first = _focused()!;
     expect(first, startsWith('continue:now:'));
@@ -67,9 +103,12 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), third, reason: 'row remembers the last tile');
 
-    // ↑ from the first row reaches the top buttons.
+    // ↑ goes through the chips to the top bar, ↓ comes back to the same card.
+    await _press(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(), startsWith('quick:'));
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), startsWith('h:'));
+    await _press(tester, LogicalKeyboardKey.arrowDown);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), third);
 
