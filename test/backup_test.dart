@@ -42,6 +42,8 @@ void main() {
     // Settings → Backup & restore → Save.
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Backup & restore')); // last group: may sit below the fold
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Backup & restore'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save backup to a file'));

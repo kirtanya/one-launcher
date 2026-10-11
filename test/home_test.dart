@@ -196,7 +196,15 @@ void main() {
     final before = tester.getTopLeft(find.text('WhatsApp').first).dy;
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
+    // Grouped settings page; the sliders live one level down.
+    for (final g in ['Look', 'Home screen', 'Apps & search', 'Launcher']) {
+      expect(find.text(g), findsOneWidget);
+    }
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6a_settings.png'));
+    await tester.tap(find.text('Layout'));
+    await tester.pumpAndSettle();
     expect(find.text('Top widgets size'), findsOneWidget);
+    expect(find.byTooltip('Back'), findsOneWidget);
     await tester.drag(find.byType(Slider).first, const Offset(400, 0));
     await tester.pumpAndSettle();
     expect(find.text('50% · apps 50%'), findsOneWidget);
@@ -206,9 +214,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('40 pt'), findsOneWidget);
     expect(tester.getTopLeft(find.byType(FittedBox).first).dx, greaterThan(figureX + 15), reason: 'padding applied live');
+    // Back → Settings again, then Wallpaper → dim.
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Top 50% · padding 40 pt'), findsOneWidget, reason: 'summary shows the new values');
+    await tester.tap(find.text('Wallpaper'));
+    await tester.pumpAndSettle();
     // Wallpaper dim: drag to the max (60%) → the black layer over the wallpaper follows.
     expect(find.text('Wallpaper dim'), findsOneWidget);
-    await tester.drag(find.byType(Slider).at(2), const Offset(400, 0));
+    await tester.drag(find.byType(Slider).first, const Offset(400, 0));
     await tester.pumpAndSettle();
     expect(find.text('60%'), findsOneWidget);
     final dim = tester.widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
@@ -216,8 +231,7 @@ void main() {
         .whereType<Color>()
         .where((c) => c.r == 0 && c.g == 0 && c.b == 0 && (c.a - .6).abs() < .01);
     expect(dim, isNotEmpty, reason: 'wallpaper dimmed to 60%');
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
-    Navigator.of(tester.element(find.text('Top widgets size'))).pop();
+    Navigator.of(tester.element(find.text('Wallpaper dim'))).pop();
     await tester.pumpAndSettle();
     final after = tester.getTopLeft(find.text('WhatsApp').first).dy;
     expect(after, greaterThan(before + 100), reason: 'sheet moved down ($before → $after)');

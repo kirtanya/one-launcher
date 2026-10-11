@@ -206,6 +206,12 @@ class Apps {
     return _ch.invokeMethod<String>('openBackup', {'downloads': inDownloads});
   }
 
+  /// Android's photo picker; the picked image copied into app storage (its path), or null.
+  Future<String?> pickPhoto() async {
+    if (isDemo) return null;
+    return _ch.invokeMethod<String>('pickPhoto');
+  }
+
   /// True on the very first launch of this install (also after a reinstall).
   Future<bool> isFirstRun() async {
     if (isDemo) return false;

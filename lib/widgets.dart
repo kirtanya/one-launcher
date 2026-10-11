@@ -80,46 +80,74 @@ Future<void> showOneSheet(BuildContext context, {Widget? header, required List<S
   );
 }
 
+/// Result of a 2nd-level sheet closed with its back arrow (or system back): the caller
+/// reopens the sheet it came from.
+const sheetBack = 'back';
+
 /// [scrollable]: the content scrolls when taller than ~90% of the screen. Pass false for
 /// sheets that already scroll a list of their own (Flexible + ListView inside).
-Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder builder, bool scrollable = true}) {
-  return showModalBottomSheet(
+/// [back]: a 2nd-level sheet — shows a back arrow, and back / tapping outside return
+/// [sheetBack] so the caller can reopen the level above. Swiping it down closes everything.
+Future<Object?> showOneSheetWith(BuildContext context, {required WidgetBuilder builder, bool scrollable = true, bool back = false}) {
+  return showModalBottomSheet<Object?>(
     context: context,
     // The sheet paints its own background and handle (below) so they follow live theme
     // changes — the route's own colour is fixed when it opens.
     backgroundColor: Colors.transparent,
     elevation: 0,
     isScrollControlled: true,
-    builder: (ctx) => ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
-      // A Material (not a plain box) so rows keep their tap ripples.
-      child: Material(
-        color: DS.card,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: DS.s12),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Drag handle.
-                Center(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: DS.s16),
-                    width: 32,
-                    height: 4,
-                    decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+    builder: (ctx) => PopScope(
+      canPop: !back,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(ctx, sheetBack);
+      },
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
+        // A Material (not a plain box) so rows keep their tap ripples.
+        child: Material(
+          color: DS.card,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: DS.s12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Drag handle (+ back arrow on a 2nd-level sheet).
+                  SizedBox(
+                    height: back ? 52 : 36,
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 32,
+                            height: 4,
+                            decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                          ),
+                        ),
+                        if (back)
+                          Positioned(
+                            left: DS.s12,
+                            top: DS.s4,
+                            child: IconButton(
+                              tooltip: 'Back',
+                              icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                              onPressed: () => Navigator.pop(ctx, sheetBack),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                Flexible(
-                  child: scrollable
-                      ? ConstrainedBox(
-                          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
-                          child: SingleChildScrollView(child: builder(ctx)),
-                        )
-                      : builder(ctx),
-                ),
-              ],
+                  Flexible(
+                    child: scrollable
+                        ? ConstrainedBox(
+                            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
+                            child: SingleChildScrollView(child: builder(ctx)),
+                          )
+                        : builder(ctx),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

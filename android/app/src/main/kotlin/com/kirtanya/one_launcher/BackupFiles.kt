@@ -2,7 +2,12 @@ package com.kirtanya.one_launcher
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
 import android.os.Build
 import android.provider.DocumentsContract
 import java.io.File
@@ -17,6 +22,7 @@ class BackupFiles(private val activity: Activity) {
     companion object {
         const val REQ_SAVE = 51
         const val REQ_OPEN = 52
+        const val REQ_PHOTO = 53
         const val DOWNLOADS = "content://com.android.externalstorage.documents/document/primary%3ADownload"
     }
 
@@ -50,6 +56,17 @@ class BackupFiles(private val activity: Activity) {
                 }
                 activity.startActivityForResult(intent, REQ_OPEN)
             }
+            // Launcher background photo: Android's photo picker (no permission needed).
+            "pickPhoto" -> {
+                pending?.success(null)
+                pending = result
+                val intent = if (Build.VERSION.SDK_INT >= 33) {
+                    Intent(MediaStore.ACTION_PICK_IMAGES)
+                } else {
+                    Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*")
+                }
+                activity.startActivityForResult(intent, REQ_PHOTO)
+            }
             "installState" -> result.success(installState())
             else -> return false
         }
@@ -68,8 +85,45 @@ class BackupFiles(private val activity: Activity) {
         return mapOf("firstRun" to first)
     }
 
+    /**
+     * Copies the picked photo into app storage, scaled down to at most 2560 px on its long side
+     * (a phone screen needs no more; keeps memory and drawing cheap). A new file name each time
+     * so Flutter doesn't show a cached old image. Returns the file path.
+     */
+    private fun copyPhoto(uri: Uri, result: MethodChannel.Result) {
+        val main = Handler(Looper.getMainLooper())
+        Thread {
+            try {
+                val bmp: Bitmap = if (Build.VERSION.SDK_INT >= 28) {
+                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(activity.contentResolver, uri)) { d, info, _ ->
+                        val long = maxOf(info.size.width, info.size.height)
+                        if (long > 2560) d.setTargetSampleSize(Math.ceil(long / 2560.0).toInt())
+                        d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Images.Media.getBitmap(activity.contentResolver, uri)
+                }
+                val dir = File(activity.filesDir, "wallpaper").apply { mkdirs() }
+                dir.listFiles()?.forEach { it.delete() }
+                val out = File(dir, "photo-${System.currentTimeMillis()}.jpg")
+                out.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+                main.post { result.success(out.absolutePath) }
+            } catch (e: Exception) {
+                main.post { result.error("photo", e.message, null) }
+            }
+        }.start()
+    }
+
     /** Save → true/false; open → file text or null. */
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode == REQ_PHOTO) {
+            val result = pending ?: return true
+            pending = null
+            val uri = data?.data
+            if (resultCode != Activity.RESULT_OK || uri == null) result.success(null) else copyPhoto(uri, result)
+            return true
+        }
         if (requestCode != REQ_SAVE && requestCode != REQ_OPEN) return false
         val result = pending ?: return true
         pending = null

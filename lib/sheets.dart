@@ -7,6 +7,7 @@ import 'apps.dart';
 import 'folders.dart';
 import 'quick_chips.dart';
 import 'prefs.dart';
+import 'photo_wallpaper.dart';
 import 'quick_actions.dart';
 import 'top/header_fonts.dart';
 import 'ui/palette.dart';
@@ -268,9 +269,10 @@ Future<void> showChooseApps(BuildContext context, {required Prefs prefs, require
 }
 
 /// Choose and order the pages of the swipeable top half.
-Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
+Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bool back = false}) {
   return showOneSheetWith(
     context,
+    back: back,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -369,10 +371,11 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
 }
 
 /// Choose, order and remove the quick-action chips. Built-in actions and apps' own shortcuts.
-Future<void> showCustomiseChips(BuildContext context, {required Prefs prefs}) {
+Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, bool back = false}) {
   final shortcuts = Apps.instance.shortcuts(); // load once while the sheet is open
   return showOneSheetWith(
     context,
+    back: back,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -735,11 +738,12 @@ Future<void> showWelcomeRestore(BuildContext context, {required Prefs prefs, req
 }
 
 /// Save all settings to a file, or bring them back from one.
-Future<void> showBackupSheet(BuildContext context, {required Prefs prefs}) {
+Future<Object?> showBackupSheet(BuildContext context, {required Prefs prefs, bool back = false}) {
   String? message;
   var busy = false;
   return showOneSheetWith(
     context,
+    back: back,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) {
         Future<void> save() async {
@@ -819,10 +823,11 @@ Future<void> showBackupSheet(BuildContext context, {required Prefs prefs}) {
 }
 
 /// Colours & style — modelled on Pixel's "Wallpaper & style".
-Future<void> showColoursSheet(BuildContext context, {required Prefs prefs, required OneTheme theme}) {
+Future<Object?> showColoursSheet(BuildContext context, {required Prefs prefs, required OneTheme theme, bool back = false}) {
   var tab = prefs.themeSource;
   return showOneSheetWith(
     context,
+    back: back,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setTab) => ListenableBuilder(
         listenable: Listenable.merge([prefs, theme]),
@@ -1055,74 +1060,372 @@ class _SwatchPainter extends CustomPainter {
 }
 
 /// Long-press empty space on the home screen, or the settings button in the app view.
+/// Settings: a short page of grouped rows. Each row opens its detail as a 2nd-level sheet
+/// with a back arrow; back returns here. Sliders live in their own small sheets so the
+/// home screen stays visible behind them while you drag.
 Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps, required OneTheme theme}) {
+  // Close Settings, show the detail sheet; its back arrow brings Settings back.
+  void go(BuildContext ctx, Future<Object?> Function() open) async {
+    Navigator.pop(ctx);
+    final r = await open();
+    if (r == sheetBack && context.mounted) showSettingsSheet(context, prefs: prefs, apps: apps, theme: theme);
+  }
+
+  // Leaves the launcher (system screens): just close.
+  void leave(BuildContext ctx, VoidCallback open) {
+    Navigator.pop(ctx);
+    open();
+  }
+
   return showOneSheetWith(
     context,
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
-        final hidden = apps.where((a) => prefs.hidden.contains(a.package)).toList();
+        final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
+        final source = const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours';
+        final style = OneTheme.styles[prefs.themeStyle]?.$1 ?? 'Tonal';
+        final cards = const {'light': 'light cards', 'dark': 'dark cards', 'auto': 'auto cards'}[prefs.cardStyle] ?? 'light cards';
+        final top = prefs.topPages.map((id) => topWidgetFor(id, prefs.widgetLabels).name).join(', ');
+        final dim = (prefs.wallpaperDim * 100).round();
+        final chips = prefs.quickChips.length;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'One Launcher', subtitle: 'Settings for your launcher'),
+              child: SheetHeader(title: 'Settings', subtitle: 'One Launcher'),
             ),
-            _Toggle('Open app when search finds only one', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: DS.s8),
-              child: CardDivider(),
-            ),
-            _SplitSlider(prefs: prefs),
-            _PaddingSlider(prefs: prefs),
-            _DimSlider(prefs: prefs),
-            _Row(Icons.settings_backup_restore_rounded, 'Backup & restore', () {
-              Navigator.pop(ctx);
-              showBackupSheet(context, prefs: prefs);
-            }),
-            _Row(Icons.palette_outlined, 'Colours & style', () {
-              Navigator.pop(ctx);
-              showColoursSheet(context, prefs: prefs, theme: theme);
-            }),
-            _Row(Icons.view_carousel_outlined, 'Top widgets', () {
-              Navigator.pop(ctx);
-              showCustomiseTop(context, prefs: prefs);
-            }),
-            _Row(Icons.wallpaper_rounded, 'Change wallpaper', () {
-              Navigator.pop(ctx);
-              Apps.instance.openWallpaperPicker();
-            }),
-            _Row(Icons.home_outlined, 'Make One Launcher your home app', () {
-              Navigator.pop(ctx);
-              Apps.instance.openHomeSettings();
-            }),
-            if (hidden.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: DS.s8),
-                child: CardDivider(),
+            _Group('Look', [
+              _NavRow(
+                Icons.palette_outlined,
+                'Colours & style',
+                '$source · $style · $cards',
+                () => go(ctx, () => showColoursSheet(context, prefs: prefs, theme: theme, back: true)),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s4),
-                child: Text('Hidden apps', style: DS.eyebrow.copyWith(color: DS.inkMuted)),
+              _NavRow(
+                Icons.wallpaper_rounded,
+                'Wallpaper',
+                '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · ${dim == 0 ? 'dim off' : 'dim $dim%'}',
+                () => go(ctx, () => _showWallpaperSheet(context, prefs: prefs)),
               ),
-              for (final a in hidden)
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
-                  leading: AppIcon(a, size: 36),
-                  title: Text(a.label, style: DS.rowTitle),
-                  trailing: TextButton(
-                    onPressed: () => prefs.toggleHidden(a.package),
-                    child: Text('Show', style: DS.rowTitle.copyWith(fontSize: 14)),
-                  ),
-                ),
-            ],
-            const SizedBox(height: DS.s12),
+            ]),
+            _Group('Home screen', [
+              _NavRow(
+                Icons.dashboard_outlined,
+                'Layout',
+                'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
+                () => go(ctx, () => _showLayoutSheet(context, prefs: prefs)),
+              ),
+              _NavRow(
+                Icons.view_carousel_outlined,
+                'Top widgets',
+                top.isEmpty ? 'None' : top,
+                () => go(ctx, () => showCustomiseTop(context, prefs: prefs, back: true)),
+              ),
+              _NavRow(
+                Icons.bolt_rounded,
+                'Quick chips',
+                chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
+                () => go(ctx, () => showCustomiseChips(context, prefs: prefs, back: true)),
+              ),
+            ]),
+            _Group('Apps & search', [
+              _SwitchRow(
+                Icons.search_rounded,
+                'Open the only match',
+                'When search finds just one app',
+                prefs.autoOpenSingleMatch,
+                prefs.setAutoOpenSingleMatch,
+              ),
+              _NavRow(
+                Icons.visibility_off_outlined,
+                'Hidden apps',
+                hidden == 0 ? 'None' : '$hidden hidden',
+                () => go(ctx, () => _showHiddenApps(context, prefs: prefs, apps: apps)),
+              ),
+            ]),
+            _Group('Launcher', [
+              _NavRow(
+                Icons.settings_backup_restore_rounded,
+                'Backup & restore',
+                'Save all settings to a file',
+                () => go(ctx, () => showBackupSheet(context, prefs: prefs, back: true)),
+              ),
+              _NavRow(Icons.home_outlined, 'Default home app', 'Opens your phone’s settings', () => leave(ctx, Apps.instance.openHomeSettings), external: true),
+            ]),
+            const SizedBox(height: DS.s8),
           ],
         );
       },
     ),
+  );
+}
+
+/// Settings → Layout (2nd level): split + padding. Short sheet, so the home updates in view.
+Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  back: true,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+          child: SheetHeader(title: 'Layout', subtitle: 'How the screen is shared'),
+        ),
+        _SplitSlider(prefs: prefs),
+        _PaddingSlider(prefs: prefs),
+        const SizedBox(height: DS.s8),
+      ],
+    ),
+  ),
+);
+
+/// Settings → Wallpaper (2nd level): phone wallpaper or your own photo; for a photo, frame
+/// it (up/down, left/right, zoom, blur). Dim for both. Changes show live behind the sheet.
+Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  back: true,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final photo = prefs.wallpaperPhoto != null;
+      Future<void> pick() async {
+        final path = await Apps.instance.pickPhoto();
+        if (path == null) return;
+        await prefs.setWallpaperPhoto(path);
+        if (context.mounted) showPhotoEditor(context, prefs: prefs); // frame it straight away
+      }
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s12),
+            child: SheetHeader(title: 'Wallpaper', subtitle: 'What sits behind your home screen'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+            child: Wrap(
+              spacing: DS.s8,
+              runSpacing: DS.s8,
+              children: [
+                _Chip(
+                  label: 'Phone wallpaper',
+                  selected: !photo,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    prefs.setWallpaperPhoto(null);
+                  },
+                ),
+                _Chip(
+                  label: 'Your photo',
+                  selected: photo,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    if (!photo) pick();
+                  },
+                ),
+              ],
+            ),
+          ),
+          _DimSlider(prefs: prefs),
+          _Group(null, [
+            if (photo) ...[
+              _NavRow(
+                Icons.crop_rounded,
+                'Adjust photo',
+                'Zoom ${prefs.photoZoom.toStringAsFixed(1)}× · blur ${prefs.photoBlur < .5 ? 'off' : prefs.photoBlur.round()}',
+                () => showPhotoEditor(context, prefs: prefs),
+              ),
+              _NavRow(Icons.photo_library_outlined, 'Choose another photo', 'From your gallery', pick),
+            ] else
+              _NavRow(Icons.image_outlined, 'Change phone wallpaper', 'Opens your phone’s picker', () {
+                Navigator.pop(ctx);
+                Apps.instance.openWallpaperPicker();
+              }, external: true),
+          ]),
+          const SizedBox(height: DS.s8),
+        ],
+      );
+    },
+  ),
+);
+
+/// Settings → Hidden apps (2nd level).
+Future<Object?> _showHiddenApps(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) => showOneSheetWith(
+  context,
+  back: true,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final hidden = apps.where((a) => prefs.hidden.contains(a.package)).toList();
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+            child: SheetHeader(title: 'Hidden apps', subtitle: 'Long-press any app to hide it'),
+          ),
+          if (hidden.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s24),
+              child: Text('No hidden apps.', style: DS.rowSub),
+            )
+          else
+            for (final a in hidden)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                leading: AppIcon(a, size: 36),
+                title: Text(a.label, style: DS.rowTitle),
+                trailing: TextButton(
+                  onPressed: () => prefs.toggleHidden(a.package),
+                  child: Text('Show', style: DS.rowTitle.copyWith(fontSize: 14)),
+                ),
+              ),
+          const SizedBox(height: DS.s8),
+        ],
+      );
+    },
+  ),
+);
+
+/// A titled group of settings rows on one rounded tile, thin lines between rows.
+class _Group extends StatelessWidget {
+  const _Group(this.title, this.rows);
+  final String? title;
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s8),
+              child: Text(title!, style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+            ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(DS.rMedia),
+            child: Material(
+              color: DS.cardMuted,
+              child: Column(
+                children: [
+                  for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, thickness: 1, indent: 68, color: DS.hairline), r],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Icon disc + title + one-line summary of the current value; chevron (or ↗ for system screens).
+class _NavRow extends StatelessWidget {
+  const _NavRow(this.icon, this.title, this.subtitle, this.onTap, {this.external = false});
+  final IconData icon;
+  final String title, subtitle;
+  final VoidCallback onTap;
+  final bool external;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 64),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s12, DS.s12),
+          child: Row(
+            children: [
+              _IconDisc(icon),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: DS.rowSub.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: DS.s8),
+              Icon(external ? Icons.open_in_new_rounded : Icons.chevron_right_rounded, size: external ? 18 : 22, color: DS.inkFaint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow(this.icon, this.title, this.subtitle, this.value, this.onChanged);
+  final IconData icon;
+  final String title, subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 64),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s12, DS.s8),
+          child: Row(
+            children: [
+              _IconDisc(icon),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: DS.rowSub.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              Switch(
+                value: value,
+                activeThumbColor: DS.card,
+                activeTrackColor: DS.ink,
+                inactiveThumbColor: DS.inkFaint,
+                inactiveTrackColor: DS.card,
+                onChanged: onChanged,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconDisc extends StatelessWidget {
+  const _IconDisc(this.icon);
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 36,
+    height: 36,
+    decoration: BoxDecoration(color: DS.card, shape: BoxShape.circle),
+    child: Icon(icon, size: 20, color: DS.ink),
   );
 }
 
@@ -1367,27 +1670,6 @@ class _DimSlider extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _Toggle extends StatelessWidget {
-  const _Toggle(this.label, this.value, this.onChanged);
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SwitchListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
-      title: Text(label, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-      value: value,
-      activeThumbColor: DS.card,
-      activeTrackColor: DS.ink,
-      inactiveThumbColor: DS.inkFaint,
-      inactiveTrackColor: DS.cardMuted,
-      onChanged: onChanged,
     );
   }
 }

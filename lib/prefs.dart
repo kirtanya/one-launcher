@@ -152,6 +152,33 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Own photo as the launcher background (a file in app storage), or null = phone wallpaper.
+  String? get wallpaperPhoto => _sp.getString('wallpaperPhoto');
+
+  Future<void> setWallpaperPhoto(String? path) async {
+    if (path == null) {
+      await _sp.remove('wallpaperPhoto');
+    } else {
+      await _sp.setString('wallpaperPhoto', path);
+      await setPhotoFrame(zoom: 1, x: 0, y: 0); // a new photo starts centred
+    }
+    notifyListeners();
+  }
+
+  /// How the photo sits on screen: zoom 1–3, position −1…1 on each axis (which part shows
+  /// when zoomed / cropped), blur 0–24.
+  double get photoZoom => (_sp.getDouble('photoZoom') ?? 1).clamp(1, 3);
+  double get photoX => (_sp.getDouble('photoX') ?? 0).clamp(-1, 1);
+  double get photoY => (_sp.getDouble('photoY') ?? 0).clamp(-1, 1);
+  double get photoBlur => (_sp.getDouble('photoBlur') ?? 0).clamp(0, 24);
+  Future<void> setPhotoFrame({double? zoom, double? x, double? y, double? blur}) async {
+    if (zoom != null) await _sp.setDouble('photoZoom', zoom.clamp(1, 3));
+    if (x != null) await _sp.setDouble('photoX', x.clamp(-1, 1));
+    if (y != null) await _sp.setDouble('photoY', y.clamp(-1, 1));
+    if (blur != null) await _sp.setDouble('photoBlur', blur.clamp(0, 24));
+    notifyListeners();
+  }
+
   /// Black over the wallpaper (0 = off … 0.6), for legibility of everything on it.
   double get wallpaperDim => (_sp.getDouble('wallpaperDim') ?? 0.2).clamp(0, .6);
   Future<void> setWallpaperDim(double v) async {
@@ -195,7 +222,7 @@ class Prefs extends ChangeNotifier {
   String exportBackup() {
     final out = <String, Object>{};
     for (final k in _sp.getKeys()) {
-      if (k == 'widgetLabels' || k == 'installId') continue; // phone-specific
+      if (k == 'widgetLabels' || k == 'installId' || k == 'wallpaperPhoto') continue; // phone-specific
       final v = _sp.get(k);
       out[k] = switch (v) {
         final String s => {'t': 's', 'v': s},

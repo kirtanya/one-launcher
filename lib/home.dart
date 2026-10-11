@@ -13,6 +13,7 @@ import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
 import 'ui/theme.dart';
+import 'photo_wallpaper.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
@@ -332,6 +333,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
               return Stack(
                 fit: StackFit.expand,
                 children: [
+                  // ---- Own photo instead of the phone wallpaper (Settings → Wallpaper). ----
+                  IgnorePointer(child: PhotoWallpaper(prefs: prefs)),
                   // ---- Wallpaper dim (Settings → Wallpaper dim): black over the wallpaper so
                   // everything on it reads better; off on the "Just wallpaper" page. ----
                   IgnorePointer(
