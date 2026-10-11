@@ -1,26 +1,31 @@
 import 'package:flutter/material.dart';
 
+import 'palette.dart';
+
 /// Design tokens extracted from the reference (see docs/DESIGN_STYLE.md).
 class DS {
   // ---- Colour ----
-  static const canvas = Color(0xFF1F1F1F);
+  /// Active theme colours (Settings → Colours & style). The app rebuilds when it changes.
+  static OnePalette palette = OnePalette.original;
+
+  static Color get canvas => palette.canvas;
   static const onCanvas = Color(0xFFFFFFFF);
   static const onCanvasMuted = Color(0x8CFFFFFF); // 55%
   static const onCanvasLine = Color(0x26FFFFFF); // 15%
 
-  static const card = Color(0xFFFFFFFF);
-  static const cardMuted = Color(0xFFF6F5F8);
+  static Color get card => palette.card;
+  static Color get cardMuted => palette.cardMuted;
 
-  static const hero = Color(0xFFCFE9BC);
-  static const heroSoft = Color(0xFFDFF2D1);
-  static const heroInk = Color(0xFF0D1F00);
-  static const heroMuted = Color(0xFF7E956D);
-  static const heroDivider = Color(0xFFB4C99E);
+  static Color get hero => palette.hero;
+  static Color get heroSoft => palette.heroSoft;
+  static Color get heroInk => palette.heroInk;
+  static Color get heroMuted => palette.heroMuted;
+  static Color get heroDivider => palette.heroDivider;
 
-  static const ink = Color(0xFF1F1F1F);
-  static const inkMuted = Color(0xFF8F8F8F);
-  static const inkFaint = Color(0xFFB8B8B8);
-  static const hairline = Color(0xFFE6E6E6);
+  static Color get ink => palette.ink;
+  static Color get inkMuted => palette.inkMuted;
+  static Color get inkFaint => palette.inkFaint;
+  static Color get hairline => palette.hairline;
 
   // Over the wallpaper (top half). Light glyphs + a soft shadow so any wallpaper works.
   static const onWallpaper = Color(0xFFFFFFFF);
@@ -50,14 +55,14 @@ class DS {
   // ---- Type ----
   static const font = 'InstrumentSans';
   static const greeting = TextStyle(fontFamily: font, fontSize: 22, fontWeight: FontWeight.w400, height: 1.15, color: onCanvas);
-  static const display = TextStyle(fontFamily: font, fontSize: 26, fontWeight: FontWeight.w500, height: 1.2, letterSpacing: -0.5, color: heroInk);
-  static const title = TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: -0.4, color: ink);
-  static const eyebrow = TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w500, color: ink);
-  static const rowTitle = TextStyle(fontFamily: font, fontSize: 16, fontWeight: FontWeight.w600, color: ink);
-  static const rowSub = TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkMuted);
-  static const meta = TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkFaint);
+  static TextStyle get display => TextStyle(fontFamily: font, fontSize: 26, fontWeight: FontWeight.w500, height: 1.2, letterSpacing: -0.5, color: heroInk);
+  static TextStyle get title => TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: -0.4, color: ink);
+  static TextStyle get eyebrow => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w500, color: ink);
+  static TextStyle get rowTitle => TextStyle(fontFamily: font, fontSize: 16, fontWeight: FontWeight.w600, color: ink);
+  static TextStyle get rowSub => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkMuted);
+  static TextStyle get meta => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkFaint);
   static const pill = TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w600);
-  static const iconLabel = TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2);
+  static TextStyle get iconLabel => TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2);
 
   /// The big clock: tall condensed digits that fill the width (scaled with FittedBox).
   static const clockFont = 'Antonio';

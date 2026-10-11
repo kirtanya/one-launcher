@@ -33,6 +33,14 @@ The main one is a black (ink) circle, and secondary ones are soft or outlined.
 | `alert` | `#E0624A` | Small urgent pill text ("High", "2 new") |
 | `dot` | `#EF7389` | Notification dot |
 
+### Theming (Settings → Colours & style)
+
+The colours above are the **One original** palette. Users can also pick:
+- **Wallpaper colours**: the phone's Material You palette (Android 12+), in Tonal / Vibrant / Expressive / Neutral / Mono styles.
+- **Basic colours**: 8 seeds, in the same styles.
+
+Every themed token keeps its role: `hero` = primary container, `heroInk` = on-primary-container, `canvas` = dark surface (container low), `card` = light lowest surface, `cardMuted` = light container, `ink` = on-surface, `inkMuted` = on-surface-variant, `inkFaint` = outline, `hairline` = outline-variant. Wallpaper text, `alert` and `dot` never change. Code: `lib/ui/palette.dart`, `lib/ui/theme.dart`.
+
 ## 3. Type: Instrument Sans (400 / 500 / 600)
 
 | Token | Size / weight / line | Example |

@@ -5,6 +5,8 @@ import 'apps.dart';
 import 'folders.dart';
 import 'prefs.dart';
 import 'top/header_fonts.dart';
+import 'ui/palette.dart';
+import 'ui/theme.dart';
 import 'top/top_widgets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -60,7 +62,7 @@ Future<void> showFolderPicker(BuildContext context, {required Prefs prefs, requi
     prefs.setFolder(app.package, id);
   }
 
-  Widget check(bool on) => on ? const Icon(Icons.check_rounded, color: DS.ink) : const SizedBox.shrink();
+  Widget check(bool on) => on ? Icon(Icons.check_rounded, color: DS.ink) : const SizedBox.shrink();
 
   return showOneSheet(
     context,
@@ -104,7 +106,7 @@ Future<void> showCustomiseFolder(
       leading: Container(
         width: 48,
         height: 48,
-        decoration: const BoxDecoration(color: DS.ink, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: DS.ink, shape: BoxShape.circle),
         child: Icon(folder.icon, color: DS.card),
       ),
     ),
@@ -299,7 +301,7 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
                     children: [
                       ReorderableDragStartListener(
                         index: i,
-                        child: const SizedBox.square(
+                        child: SizedBox.square(
                           dimension: DS.tap,
                           child: Icon(Icons.drag_indicator_rounded, color: DS.inkFaint),
                         ),
@@ -350,8 +352,222 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
   );
 }
 
+/// Colours & style — modelled on Pixel's "Wallpaper & style".
+Future<void> showColoursSheet(BuildContext context, {required Prefs prefs, required OneTheme theme}) {
+  var tab = prefs.themeSource;
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setTab) => ListenableBuilder(
+        listenable: Listenable.merge([prefs, theme]),
+        builder: (ctx, _) {
+          final source = prefs.themeSource;
+          final style = prefs.themeStyle;
+          Widget tabChip(String id, String label) => _Chip(label: label, selected: tab == id, onTap: () => setTab(() => tab = id));
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+                child: SheetHeader(title: 'Colours & style', subtitle: 'Follows your phone, or pick your own'),
+              ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                child: Row(
+                  children: [
+                    tabChip('system', 'Wallpaper colours'),
+                    const SizedBox(width: DS.s8),
+                    tabChip('basic', 'Basic colours'),
+                    const SizedBox(width: DS.s8),
+                    tabChip('original', 'One original'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: DS.s20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                child: switch (tab) {
+                  'system' when !theme.hasSystem => Text('Wallpaper colours need Android 12 or newer.', style: DS.rowSub),
+                  // Your phone's colours in each style — Pixel's wallpaper colour options.
+                  'system' => Wrap(
+                    spacing: DS.s16,
+                    runSpacing: DS.s16,
+                    children: [
+                      for (final e in OneTheme.styles.entries)
+                        _Swatch(
+                          scheme: theme.schemeFor('system', style: e.key),
+                          label: e.value.$1,
+                          selected: source == 'system' && style == e.key,
+                          onTap: () => prefs.setTheme(source: 'system', style: e.key),
+                        ),
+                    ],
+                  ),
+                  'basic' => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: DS.s16,
+                        runSpacing: DS.s16,
+                        children: [
+                          for (final c in OneTheme.basicSeeds)
+                            _Swatch(
+                              scheme: theme.schemeFor('basic', seed: c.toARGB32(), style: style),
+                              selected: source == 'basic' && prefs.themeSeed == c.toARGB32(),
+                              onTap: () => prefs.setTheme(source: 'basic', seed: c.toARGB32()),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: DS.s20),
+                      Text('Style', style: DS.rowTitle),
+                      const SizedBox(height: DS.s8),
+                      Wrap(
+                        spacing: DS.s8,
+                        runSpacing: DS.s8,
+                        children: [
+                          for (final e in OneTheme.styles.entries)
+                            _Chip(
+                              label: e.value.$1,
+                              selected: style == e.key,
+                              onTap: () => prefs.setTheme(source: 'basic', style: e.key),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  _ => Row(
+                    children: [
+                      _Swatch(
+                        original: true,
+                        label: 'One',
+                        selected: source == 'original',
+                        onTap: () => prefs.setTheme(source: 'original'),
+                      ),
+                      const SizedBox(width: DS.s16),
+                      Expanded(child: Text('The original green and black look.', style: DS.rowSub)),
+                    ],
+                  ),
+                },
+              ),
+              const SizedBox(height: DS.s24),
+            ],
+          );
+        },
+      ),
+    ),
+  );
+}
+
+/// Pill choice chip in the One style (ink when selected).
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.selected, required this.onTap});
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      scale: .94,
+      child: Material(
+        color: selected ? DS.ink : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: selected ? DS.ink : DS.hairline)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: 10),
+              child: Text(
+                label,
+                style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: selected ? DS.card : DS.ink),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Pixel-style colour swatch: top half primary, bottom halves secondary / tertiary.
+class _Swatch extends StatelessWidget {
+  const _Swatch({this.scheme, this.original = false, this.label, required this.selected, required this.onTap});
+  final ColorScheme? scheme;
+  final bool original;
+  final String? label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final o = OnePalette.original;
+    final (a, b, c) = original || scheme == null ? (o.hero, o.card, o.canvas) : (scheme!.primary, scheme!.secondaryContainer, scheme!.tertiaryContainer);
+    return Pressable(
+      scale: .9,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: label ?? 'Colour',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedContainer(
+                duration: Motion.snapDuration,
+                curve: Motion.settle,
+                width: 60,
+                height: 60,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: selected ? DS.ink : Colors.transparent, width: 2.5),
+                ),
+                child: Stack(
+                  children: [
+                    CustomPaint(size: const Size.square(48), painter: _SwatchPainter(a, b, c)),
+                    if (selected)
+                      Center(
+                        child: Container(
+                          width: 22,
+                          height: 22,
+                          decoration: BoxDecoration(color: DS.card, shape: BoxShape.circle),
+                          child: Icon(Icons.check_rounded, size: 16, color: DS.ink),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (label != null) ...[const SizedBox(height: 4), Text(label!, style: DS.iconLabel)],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwatchPainter extends CustomPainter {
+  _SwatchPainter(this.top, this.left, this.right);
+  final Color top, left, right;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Offset.zero & size;
+    canvas.drawArc(r, 3.14159, 3.14159, true, Paint()..color = top); // top half
+    canvas.drawArc(r, 1.5708, 1.5708, true, Paint()..color = left); // bottom-left quarter
+    canvas.drawArc(r, 0, 1.5708, true, Paint()..color = right); // bottom-right quarter
+  }
+
+  @override
+  bool shouldRepaint(_SwatchPainter old) => old.top != top || old.left != left || old.right != right;
+}
+
 /// Long-press empty space on the home screen, or the settings button in the app view.
-Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) {
+Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps, required OneTheme theme}) {
   return showOneSheetWith(
     context,
     builder: (ctx) => ListenableBuilder(
@@ -373,6 +589,10 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _SplitSlider(prefs: prefs),
             _PaddingSlider(prefs: prefs),
+            _Row(Icons.palette_outlined, 'Colours & style', () {
+              Navigator.pop(ctx);
+              showColoursSheet(context, prefs: prefs, theme: theme);
+            }),
             _Row(Icons.view_carousel_outlined, 'Top widgets', () {
               Navigator.pop(ctx);
               showCustomiseTop(context, prefs: prefs);
@@ -437,7 +657,7 @@ class _SplitSlider extends StatelessWidget {
           ),
           Row(
             children: [
-              const Icon(Icons.crop_portrait_rounded, size: 18, color: DS.inkMuted),
+              Icon(Icons.crop_portrait_rounded, size: 18, color: DS.inkMuted),
               Expanded(
                 child: Slider(
                   value: v,
@@ -454,7 +674,7 @@ class _SplitSlider extends StatelessWidget {
                   },
                 ),
               ),
-              const Icon(Icons.splitscreen_rounded, size: 18, color: DS.inkMuted),
+              Icon(Icons.splitscreen_rounded, size: 18, color: DS.inkMuted),
             ],
           ),
         ],
@@ -549,7 +769,7 @@ class _PaddingSlider extends StatelessWidget {
           ),
           Row(
             children: [
-              const Icon(Icons.fullscreen_rounded, size: 18, color: DS.inkMuted),
+              Icon(Icons.fullscreen_rounded, size: 18, color: DS.inkMuted),
               Expanded(
                 child: Slider(
                   value: v,
@@ -565,7 +785,7 @@ class _PaddingSlider extends StatelessWidget {
                   },
                 ),
               ),
-              const Icon(Icons.fullscreen_exit_rounded, size: 18, color: DS.inkMuted),
+              Icon(Icons.fullscreen_exit_rounded, size: 18, color: DS.inkMuted),
             ],
           ),
         ],

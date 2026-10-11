@@ -138,14 +138,15 @@ class DatePill extends StatelessWidget {
 
 /// Icon + muted text, e.g. "📅 10 Thu" or "🌐 by HabitsJournal".
 class MetaRow extends StatelessWidget {
-  const MetaRow({super.key, required this.icon, required this.text, this.color = DS.inkFaint, this.strong});
+  const MetaRow({super.key, required this.icon, required this.text, this.color, this.strong});
   final IconData icon;
   final String text;
-  final Color color;
+  final Color? color; // defaults to DS.inkFaint
   final String? strong; // darker trailing part ("by **HabitsJournal**")
 
   @override
   Widget build(BuildContext context) {
+    final color = this.color ?? DS.inkFaint;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -165,9 +166,9 @@ class MetaRow extends StatelessWidget {
 
 /// Hairline divider in the card's tone.
 class CardDivider extends StatelessWidget {
-  const CardDivider({super.key, this.color = DS.hairline});
-  final Color color;
+  const CardDivider({super.key, this.color});
+  final Color? color; // defaults to DS.hairline
 
   @override
-  Widget build(BuildContext context) => Container(height: 1, color: color);
+  Widget build(BuildContext context) => Container(height: 1, color: color ?? DS.hairline);
 }

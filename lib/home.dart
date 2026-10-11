@@ -9,6 +9,7 @@ import 'prefs.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
+import 'ui/theme.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
@@ -18,8 +19,9 @@ import 'ui/motion.dart';
 /// bottom half = the app view as a sheet. Swipe the sheet up and the clock
 /// scales down and fades away; swipe down to bring it back.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.prefs});
+  const HomeScreen({super.key, required this.prefs, required this.theme});
   final Prefs prefs;
+  final OneTheme theme;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -132,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       _loadApps();
       _refresh.value++;
+      widget.theme.refreshSystem(); // wallpaper (and so Material You colours) may have changed
     }
   }
 
@@ -237,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _settings() {
     HapticFeedback.mediumImpact();
-    showSettingsSheet(context, prefs: prefs, apps: _apps);
+    showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme);
   }
 
   // ---- Build ---------------------------------------------------------------

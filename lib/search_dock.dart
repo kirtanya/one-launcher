@@ -183,7 +183,7 @@ class _Pill extends StatelessWidget {
             child: Stack(
               children: [
                 // The icon never moves: 16 + 24 + 16 = 56, so it sits dead centre when the pill is a circle.
-                const Positioned(left: 16, top: 16, child: Icon(Icons.search_rounded, color: DS.ink, size: 24)),
+                Positioned(left: 16, top: 16, child: Icon(Icons.search_rounded, color: DS.ink, size: 24)),
                 Positioned(
                   left: 48,
                   right: DS.s16,

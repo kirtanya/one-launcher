@@ -94,6 +94,17 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Colours & style: 'system' (Material You), 'basic' (one of 8 colours) or 'original'.
+  String get themeSource => _sp.getString('themeSource') ?? 'system';
+  int get themeSeed => _sp.getInt('themeSeed') ?? 0xFF4285F4;
+  String get themeStyle => _sp.getString('themeStyle') ?? 'tonal';
+  Future<void> setTheme({String? source, int? seed, String? style}) async {
+    if (source != null) await _sp.setString('themeSource', source);
+    if (seed != null) await _sp.setInt('themeSeed', seed);
+    if (style != null) await _sp.setString('themeStyle', style);
+    notifyListeners();
+  }
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {

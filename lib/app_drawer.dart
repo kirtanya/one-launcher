@@ -300,7 +300,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 PinnedHeaderSliver(
                   child: SizedBox(
                     height: DS.gutter + statusBar * e,
-                    child: const ColoredBox(color: DS.canvas),
+                    child: ColoredBox(color: DS.canvas),
                   ),
                 ),
                 ...content,
@@ -528,9 +528,9 @@ class _FolderBody extends StatelessWidget {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor = DS.ink, this.pinned = false});
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor, this.pinned = false});
   final AppEntry app;
-  final Color labelColor;
+  final Color? labelColor; // defaults to DS.ink (themed, so resolved at build time)
   final bool pinned;
   final VoidCallback onTap, onLongPress;
 
@@ -563,7 +563,7 @@ class _GridApp extends StatelessWidget {
                           shape: BoxShape.circle,
                           border: Border.all(color: DS.hero, width: 2),
                         ),
-                        child: const Icon(Icons.push_pin, size: 11, color: DS.card),
+                        child: Icon(Icons.push_pin, size: 11, color: DS.card),
                       ),
                     ),
                 ],
@@ -571,7 +571,7 @@ class _GridApp extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 app.label,
-                style: DS.iconLabel.copyWith(color: labelColor),
+                style: DS.iconLabel.copyWith(color: labelColor ?? DS.ink),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
@@ -631,7 +631,7 @@ class _ResultsCard extends StatelessWidget {
                           children: [
                             Text('Open', style: DS.pill.copyWith(color: DS.card)),
                             const SizedBox(width: 2),
-                            const Icon(Icons.north_east_rounded, size: 14, color: DS.card),
+                            Icon(Icons.north_east_rounded, size: 14, color: DS.card),
                           ],
                         ),
                       ),
