@@ -73,6 +73,13 @@ class TvActivity : FlutterActivity() {
                         main.post { result.success(art) }
                     }
                 }
+                "getBackdrop" -> {
+                    val pkg = call.argument<String>("package")!!
+                    images.execute {
+                        val bytes = loadBackdrop(pkg)
+                        main.post { result.success(bytes) }
+                    }
+                }
                 "launch" -> result.success(launch(call.argument<String>("package")!!))
                 "appInfo" -> {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
@@ -169,6 +176,52 @@ class TvActivity : FlutterActivity() {
         ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     } catch (e: Exception) {
         null
+    }
+
+    /**
+     * The app's banner as a soft, out-of-focus wash for the home backdrop: shrunk to 128×72 and
+     * blurred here once, so the TV only has to stretch a smooth picture (no live blur per frame).
+     */
+    private fun loadBackdrop(pkg: String): ByteArray? = try {
+        val pm = packageManager
+        val ri = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER).setPackage(pkg), 0).firstOrNull()
+        val d = ri?.activityInfo?.loadBanner(pm) ?: pm.getApplicationInfo(pkg, 0).loadBanner(pm)
+        d?.let {
+            val w = 128
+            val h = 72
+            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            it.setBounds(0, 0, w, h)
+            it.draw(Canvas(bmp))
+            repeat(3) { boxBlur(bmp, 5) } // three box blurs ≈ a gaussian
+            ByteArrayOutputStream().also { o -> bmp.compress(Bitmap.CompressFormat.PNG, 100, o) }.toByteArray()
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun boxBlur(bmp: Bitmap, r: Int) {
+        val w = bmp.width
+        val h = bmp.height
+        val src = IntArray(w * h).also { bmp.getPixels(it, 0, w, 0, 0, w, h) }
+        val tmp = IntArray(w * h)
+        fun pass(from: IntArray, to: IntArray, horizontal: Boolean) {
+            val (len, lines) = if (horizontal) w to h else h to w
+            for (line in 0 until lines) {
+                for (i in 0 until len) {
+                    var a = 0; var rr = 0; var g = 0; var b = 0; var n = 0
+                    for (k in -r..r) {
+                        val j = (i + k).coerceIn(0, len - 1)
+                        val p = if (horizontal) from[line * w + j] else from[j * w + line]
+                        a += p ushr 24; rr += (p shr 16) and 0xFF; g += (p shr 8) and 0xFF; b += p and 0xFF; n++
+                    }
+                    val out = ((a / n) shl 24) or ((rr / n) shl 16) or ((g / n) shl 8) or (b / n)
+                    if (horizontal) to[line * w + i] = out else to[i * w + line] = out
+                }
+            }
+        }
+        pass(src, tmp, true)
+        pass(tmp, src, false)
+        bmp.setPixels(src, 0, w, 0, 0, w, h)
     }
 
     private fun launch(pkg: String): Boolean {

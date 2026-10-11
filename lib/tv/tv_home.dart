@@ -582,14 +582,17 @@ class _Backdrop extends StatelessWidget {
             s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true)),
       );
     }
-    final banner = TvApps.instance.artNow(it.package);
-    if (banner != null && banner.banner) {
-      return settle(
+    // Apps: their banner, pre-blurred on the TV into a soft wash.
+    if (it.kind == TvKind.app) {
+      Widget wash(MemoryImage img) => settle(
         Opacity(
-          opacity: .7,
-          child: Image(image: ResizeImage(banner.image, width: 40), fit: BoxFit.cover, filterQuality: FilterQuality.medium, gaplessPlayback: true),
+          opacity: .75,
+          child: Image(image: img, fit: BoxFit.cover, filterQuality: FilterQuality.medium, gaplessPlayback: true),
         ),
       );
+      final ready = TvApps.instance.backdropNow(it.package);
+      if (ready != null) return wash(ready);
+      return FutureBuilder<MemoryImage?>(future: TvApps.instance.backdrop(it.package), builder: (context, s) => s.data == null ? _wash(it) : wash(s.data!));
     }
     return _wash(it);
   }

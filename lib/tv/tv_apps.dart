@@ -118,6 +118,19 @@ class TvApps {
     });
   }
 
+  /// The app's banner pre-blurred on the TV side (soft backdrop wash); cached.
+  final _backdrops = <String, Future<MemoryImage?>>{};
+  final _backdropsReady = <String, MemoryImage>{};
+  MemoryImage? backdropNow(String package) => _backdropsReady[package];
+  Future<MemoryImage?> backdrop(String package) {
+    if (demo) return Future.value(null);
+    return _backdrops.putIfAbsent(package, () async {
+      final bytes = await _ch.invokeMethod<Uint8List>('getBackdrop', {'package': package});
+      if (bytes == null) return null;
+      return _backdropsReady[package] = MemoryImage(bytes);
+    });
+  }
+
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
