@@ -366,6 +366,15 @@ class Prefs extends ChangeNotifier {
   bool isFavourite(String pkg) => favourites.contains(pkg);
   bool get favouritesFull => favourites.length >= maxFavourites;
 
+  /// TV: the user's own order of apps inside a row (row id → packages; apps not listed keep
+  /// their place after the listed ones).
+  List<String> tvRowOrder(String row) => List<String>.from((_json('tvRowOrder')[row] as List?) ?? const []);
+  Future<void> setTvRowOrder(String row, List<String> packages) async {
+    final m = Map<String, dynamic>.from(_json('tvRowOrder'))..[row] = packages;
+    await _sp.setString('tvRowOrder', jsonEncode(m));
+    notifyListeners();
+  }
+
   /// TV: apps opened from the launcher, newest first ("Jump back in").
   List<String> get tvRecents => _sp.getStringList('tvRecents') ?? const [];
   Future<void> noteTvLaunch(String pkg) => _setList('tvRecents', [pkg, ...tvRecents.where((p) => p != pkg)].take(12).toList());

@@ -42,7 +42,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Continue watching'), findsOneWidget);
     expect(find.text('Your apps'), findsOneWidget);
-    // Starts on what you were watching; the title block describes it.
+    // Lands on Search; the title block already shows what you were watching.
+    expect(_focused(), 'h:search');
+    await _press(tester, LogicalKeyboardKey.arrowDown);
     final first = _focused()!;
     expect(first, startsWith('continue:now:'));
     expect(find.text('The Long Night'), findsWidgets);
@@ -58,7 +60,9 @@ void main() {
     expect(find.text('Final Over'), findsWidgets, reason: 'title block follows focus');
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), startsWith('fav:'));
-    expect(find.text('YOUR APPS'), findsOneWidget);
+    // Netflix is what you were watching: focusing the app shows that show, not just its name.
+    expect(find.textContaining('CONTINUE WATCHING · NETFLIX'), findsOneWidget);
+    expect(find.text('The Long Night'), findsWidgets);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_2_next_row.png'));
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), third, reason: 'row remembers the last tile');
@@ -89,20 +93,32 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.text('Add to Your apps').evaluate().isNotEmpty || find.text('Remove from Your apps').evaluate().isNotEmpty, isTrue);
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    // Move: Hold OK → Move → → slides the app one place right → OK done. Saved.
+    final before = [...prefs.favourites];
+    await tester.tap(find.text('Move'));
     await tester.pumpAndSettle();
-    await _press(tester, LogicalKeyboardKey.arrowUp);
+    expect(find.text('Done'), findsOneWidget, reason: 'hint says OK = done');
+    final moved = _focused()!;
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_5_move.png'));
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(find.text('Done'), findsNothing);
+    expect(_focused(), moved, reason: 'focus stays on the moved app');
+    expect(prefs.favourites.indexOf(moved.split(':').last), 1, reason: 'now second (was first): $before → ${prefs.favourites}');
 
-    // Search: header → search button → type → ↓ into results.
-    await _press(tester, LogicalKeyboardKey.arrowUp);
-    while (_focused() != 'h:search') {
-      await _press(tester, LogicalKeyboardKey.arrowLeft);
-    }
+    // Back on the home screen → straight to Search.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_focused(), 'h:search');
+
+    // Search: type → shows & films actions (everywhere / in an app) + matching apps.
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.byType(TextField), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'you');
     await tester.pumpAndSettle();
     expect(find.text('2 apps'), findsOneWidget); // YouTube, YouTube Music
+    expect(find.text('Search everywhere for “you”'), findsOneWidget);
+    expect(find.text('Search in Hotstar'), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(FocusManager.instance.primaryFocus?.context?.widget, isNot(isA<EditableText>()));
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4_search.png'));

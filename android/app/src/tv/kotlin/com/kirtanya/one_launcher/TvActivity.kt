@@ -1,5 +1,6 @@
 package com.kirtanya.one_launcher
 
+import android.app.SearchManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -79,6 +80,25 @@ class TvActivity : FlutterActivity() {
                         val bytes = loadBackdrop(pkg)
                         main.post { result.success(bytes) }
                     }
+                }
+                // Apps that take a search ("Search in JioHotstar…"); only ones with a home-screen entry.
+                "searchTargets" -> {
+                    val launchable = loadApps().map { it["package"] }.toSet()
+                    val pkgs = packageManager.queryIntentActivities(Intent(Intent.ACTION_SEARCH), 0)
+                        .map { it.activityInfo.packageName }.distinct().filter { it in launchable && it != packageName }
+                    result.success(pkgs)
+                }
+                "searchIn" -> {
+                    val q = call.argument<String>("query") ?: ""
+                    result.success(open(Intent(Intent.ACTION_SEARCH).setPackage(call.argument<String>("package")).putExtra(SearchManager.QUERY, q)))
+                }
+                // Google TV's own search: shows films & shows from every streaming app.
+                "searchEverywhere" -> {
+                    val q = call.argument<String>("query") ?: ""
+                    result.success(
+                        open(Intent("android.search.action.GLOBAL_SEARCH").putExtra(SearchManager.QUERY, q)) ||
+                            open(Intent(Intent.ACTION_ASSIST).putExtra(SearchManager.QUERY, q)),
+                    )
                 }
                 "launch" -> result.success(launch(call.argument<String>("package")!!))
                 "appInfo" -> {

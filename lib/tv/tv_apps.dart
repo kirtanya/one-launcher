@@ -131,6 +131,12 @@ class TvApps {
     });
   }
 
+  /// Installed apps that accept a search request (JioHotstar, Play Store…).
+  Future<List<String>> searchTargets() async =>
+      demo ? const ['in.startv.hotstar', 'com.android.vending'] : await _ch.invokeListMethod<String>('searchTargets') ?? const [];
+  Future<void> searchIn(String package, String query) => _call('searchIn', {'package': package, 'query': query});
+  Future<void> searchEverywhere(String query) => _call('searchEverywhere', {'query': query});
+
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});

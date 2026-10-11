@@ -126,7 +126,7 @@ class _TvHomeState extends State<TvHome> {
     await _loadContent();
     if (!_loaded) {
       _loaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _focus(_rows.isEmpty ? -1 : 0, 0));
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusSearch());
     }
   }
 
@@ -197,11 +197,23 @@ class _TvHomeState extends State<TvHome> {
             TvRow('ch:${c['id']}', '${c['name'] ?? appName(c['package'] as String? ?? '')}', [
               for (final p in (c['programs'] as List).cast<Map>()) ?_program(p, appName(c['package'] as String? ?? '')),
             ], wide: true),
-        for (final (f, list) in groups) TvRow(f.id, prefs.folderNames[f.id] ?? f.name, [for (final a in list) appItem(a)]),
+        for (final (f, list) in groups) TvRow(f.id, prefs.folderNames[f.id] ?? f.name, [for (final a in _ordered(f.id, list)) appItem(a)]),
       ];
     });
     // The title block follows focus; keep it pointing at a live item.
     if (_hero == null && _rows.isNotEmpty) _show(_rows.first.items.first, now: true);
+  }
+
+  /// A row's apps in the user's order (Hold OK → Move); new apps keep their place after.
+  List<AppEntry> _ordered(String row, List<AppEntry> apps) {
+    final order = prefs.tvRowOrder(row);
+    if (order.isEmpty) return apps;
+    int rank(AppEntry a) {
+      final i = order.indexOf(a.package);
+      return i < 0 ? order.length + apps.indexOf(a) : i;
+    }
+
+    return [...apps]..sort((a, b) => rank(a).compareTo(rank(b)));
   }
 
   TvItem? _program(Map p, String appName) {
@@ -236,7 +248,18 @@ class _TvHomeState extends State<TvHome> {
 
   void _home() {
     Navigator.of(context).popUntil((r) => r.isFirst);
-    _focus(_rows.isEmpty ? -1 : 0, 0);
+    _endMove();
+    _focusSearch();
+  }
+
+  /// Landing, Home and Back all start on Search (the quickest way to anything).
+  void _focusSearch() {
+    _focus(-1, 0);
+    if (_rows.isNotEmpty) {
+      _col.remove(_rows.first.id);
+      _h[_rows.first.id]?.jumpTo(0);
+      _show(_rows.first.items.first, now: _backdrop == null);
+    }
   }
 
   // ---- Focus ---------------------------------------------------------------
@@ -252,6 +275,12 @@ class _TvHomeState extends State<TvHome> {
   }
 
   bool _move(int r, int i, AxisDirection d) {
+    if (_moving != null) {
+      // Moving an app: ← → slide it along its row; ↑ ↓ do nothing until OK / Back.
+      if (d == AxisDirection.left && i > 0) _shift(r, i, -1);
+      if (d == AxisDirection.right && i < _len(r) - 1) _shift(r, i, 1);
+      return true;
+    }
     switch (d) {
       case AxisDirection.left when i > 0:
         _focus(r, i - 1);
@@ -267,10 +296,58 @@ class _TvHomeState extends State<TvHome> {
     return true;
   }
 
+  // ---- Reorder ---------------------------------------------------------------
+
+  String? _moving; // focus key of the app being moved
+
+  void _startMove(int r, int i) {
+    HapticFeedback.mediumImpact();
+    setState(() => _moving = _key(r, i));
+    _focus(r, i);
+  }
+
+  void _endMove() {
+    if (_moving == null) return;
+    HapticFeedback.selectionClick();
+    setState(() => _moving = null);
+  }
+
+  /// Swap the moving app with its neighbour and save the row's new order.
+  Future<void> _shift(int r, int i, int by) async {
+    final row = _rows[r];
+    final list = [for (final it in row.items) it.package];
+    list.insert(i + by, list.removeAt(i));
+    HapticFeedback.selectionClick();
+    if (row.id == 'fav') {
+      await prefs.setFavourites(list); // "Your apps" is the favourites list itself
+    } else {
+      await prefs.setTvRowOrder(row.id, list);
+    }
+    // Same focus node (keyed by app), new place: keep it in view.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onFocus(r, i + by));
+  }
+
+  /// Folder rows can trade places too (the fixed rows on top stay put).
+  void _moveRow(TvRow row, int by) {
+    final folderRows = [
+      for (final r in _rows)
+        if (folders.any((f) => f.id == r.id) || r.id == other.id) r.id,
+    ];
+    final i = folderRows.indexOf(row.id);
+    final j = i + by;
+    if (i < 0 || j < 0 || j >= folderRows.length) return;
+    folderRows.insert(j, folderRows.removeAt(i));
+    prefs.setFolderOrder(folderRows);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final r = _rows.indexWhere((x) => x.id == row.id);
+      if (r >= 0) _focus(r, _col[row.id] ?? 0);
+    });
+  }
+
   void _onFocus(int r, int i) {
     _col[_rowId(r)] = i;
     if (_row != r) setState(() => _row = r);
-    if (r >= 0) _show(_rows[r].items[i]);
+    if (r >= 0) _show(_withContent(_rows[r].items[i]));
     const dur = Duration(milliseconds: 420);
     const curve = Curves.easeOutCubic;
     // Vertical: the focused row slides to the top of the rows area; rows above slide out.
@@ -288,6 +365,24 @@ class _TvHomeState extends State<TvHome> {
       final x = ((i - 1) * (row.cardW + TvDS.gap)).clamp(0.0, h.position.maxScrollExtent);
       h.animateTo(x, duration: dur, curve: curve);
     }
+  }
+
+  /// An app you were just watching shows that show (title, time left, artwork) when focused.
+  TvItem _withContent(TvItem item) {
+    final m = tv.media.value;
+    if (item.kind != TvKind.app || m == null || m['active'] != true || m['package'] != item.package || m['title'] == null) return item;
+    final now = _rows.firstOrNull?.id == 'continue' ? _rows.first.items.where((x) => x.kind == TvKind.resume).firstOrNull : null;
+    if (now == null) return item;
+    return TvItem(
+      key: 'app-now:${item.package}',
+      kind: TvKind.resume,
+      title: now.title,
+      package: item.package,
+      appName: item.appName,
+      meta: now.meta,
+      art: now.art,
+      progress: now.progress,
+    );
   }
 
   /// Title block switches at once; the big picture waits until focus rests a moment.
@@ -334,16 +429,6 @@ class _TvHomeState extends State<TvHome> {
       return;
     }
     final fav = prefs.favourites.contains(a.package);
-    void move(int by) {
-      final list = [...prefs.favourites];
-      final from = list.indexOf(a.package);
-      final to = (from + by).clamp(0, list.length - 1);
-      if (from < 0 || to == from) return;
-      list.insert(to, list.removeAt(from));
-      prefs.setFavourites(list);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _focus(_rows.indexWhere((r) => r.id == 'fav'), to));
-    }
-
     final favRow = _rows.where((r) => r.id == 'fav').firstOrNull;
     showTvPanel(
       context,
@@ -351,9 +436,12 @@ class _TvHomeState extends State<TvHome> {
       leading: TvAppArt(app: a, width: 128),
       actions: [
         TvAction(Icons.open_in_new_rounded, 'Open', () => _open(item)),
+        if (row.id != 'recent' && row.items.length > 1) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
+        if (folders.any((f) => f.id == row.id) || row.id == other.id) ...[
+          TvAction(Icons.keyboard_arrow_up_rounded, 'Move “${row.title}” row up', () => _moveRow(row, -1)),
+          TvAction(Icons.keyboard_arrow_down_rounded, 'Move “${row.title}” row down', () => _moveRow(row, 1)),
+        ],
         if (fav) ...[
-          if (row.id == 'fav' && i > 0) TvAction(Icons.arrow_back_rounded, 'Move left', () => move(-1)),
-          if (row.id == 'fav' && i < row.items.length - 1) TvAction(Icons.arrow_forward_rounded, 'Move right', () => move(1)),
           TvAction(Icons.star_outline_rounded, 'Remove from Your apps', () => prefs.toggleFavourite(a.package)),
         ] else if (!prefs.favouritesFull)
           TvAction(Icons.star_rounded, 'Add to Your apps', () async {
@@ -411,7 +499,9 @@ class _TvHomeState extends State<TvHome> {
     return PopScope(
       canPop: false, // it's the home screen: Back jumps to the first card instead
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _focus(_rows.isEmpty ? -1 : 0, 0);
+        if (didPop) return;
+        if (_moving != null) return _endMove(); // Back while moving an app = done
+        _focusSearch();
       },
       child: Scaffold(
         backgroundColor: TvDS.canvas,
@@ -437,7 +527,7 @@ class _TvHomeState extends State<TvHome> {
                   top: TvDS.heroTop,
                   width: TvDS.heroW,
                   height: rowsTop - TvDS.heroTop - DS.s12,
-                  child: _HeroInfo(item: _hero, rowTitle: _row >= 0 && _row < _rows.length ? _rows[_row].title : null),
+                  child: _HeroInfo(item: _hero, rowTitle: _row >= 0 && _row < _rows.length ? _rows[_row].title : null, moving: _moving != null),
                 ),
 
                 // ---- Rows ----
@@ -528,7 +618,8 @@ class _TvHomeState extends State<TvHome> {
                       width: row.cardW,
                       height: row.cardH,
                       focusNode: _node(r, i),
-                      onSelect: () => _open(item),
+                      moving: _moving == _key(r, i),
+                      onSelect: () => _moving != null ? _endMove() : _open(item),
                       onOptions: () => _options(row, i),
                       onMove: (d) => _move(r, i, d),
                       onFocus: () => _onFocus(r, i),
@@ -644,9 +735,10 @@ class _Scrims extends StatelessWidget {
 // ---- Title block ---------------------------------------------------------------
 
 class _HeroInfo extends StatelessWidget {
-  const _HeroInfo({required this.item, required this.rowTitle});
+  const _HeroInfo({required this.item, required this.rowTitle, this.moving = false});
   final TvItem? item;
   final String? rowTitle;
+  final bool moving;
 
   @override
   Widget build(BuildContext context) {
@@ -662,7 +754,7 @@ class _HeroInfo extends StatelessWidget {
           child: child,
         ),
       ),
-      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey(it.key), child: _content(it)),
+      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey('${it.key}$moving'), child: _content(it)),
     );
   }
 
@@ -690,17 +782,30 @@ class _HeroInfo extends StatelessWidget {
           Text(it.description!, style: TvDS.heroBody, maxLines: 2, overflow: TextOverflow.ellipsis),
         ],
         const SizedBox(height: DS.s16),
-        Row(
-          children: [
-            _Keycap('OK'),
-            const SizedBox(width: DS.s8),
-            Text(action, style: TvDS.heroMeta.copyWith(fontSize: 13)),
-            const SizedBox(width: DS.s20),
-            _Keycap('Hold OK'),
-            const SizedBox(width: DS.s8),
-            Text('More', style: TvDS.heroMeta.copyWith(fontSize: 13)),
-          ],
-        ),
+        if (moving)
+          Row(
+            children: [
+              const _Keycap('', icons: [Icons.arrow_left_rounded, Icons.arrow_right_rounded]),
+              const SizedBox(width: DS.s8),
+              Text('Move', style: TvDS.heroMeta.copyWith(fontSize: 13)),
+              const SizedBox(width: DS.s20),
+              _Keycap('OK'),
+              const SizedBox(width: DS.s8),
+              Text('Done', style: TvDS.heroMeta.copyWith(fontSize: 13)),
+            ],
+          )
+        else
+          Row(
+            children: [
+              _Keycap('OK'),
+              const SizedBox(width: DS.s8),
+              Text(action, style: TvDS.heroMeta.copyWith(fontSize: 13)),
+              const SizedBox(width: DS.s20),
+              _Keycap('Hold OK'),
+              const SizedBox(width: DS.s8),
+              Text('More', style: TvDS.heroMeta.copyWith(fontSize: 13)),
+            ],
+          ),
       ],
     );
   }
@@ -708,8 +813,9 @@ class _HeroInfo extends StatelessWidget {
 
 /// A remote button drawn as a little key, for the hints under the title.
 class _Keycap extends StatelessWidget {
-  const _Keycap(this.label);
+  const _Keycap(this.label, {this.icons = const []});
   final String label;
+  final List<IconData> icons; // drawn keys (the font has no arrow glyphs)
 
   @override
   Widget build(BuildContext context) => Container(
@@ -718,7 +824,12 @@ class _Keycap extends StatelessWidget {
       borderRadius: BorderRadius.circular(6),
       border: Border.all(color: TvDS.inkMuted),
     ),
-    child: Text(label, style: TvDS.keycap),
+    child: icons.isEmpty
+        ? Text(label, style: TvDS.keycap)
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [for (final i in icons) Icon(i, size: 15, color: TvDS.ink)],
+          ),
   );
 }
 
@@ -910,7 +1021,9 @@ class _Card extends StatelessWidget {
     required this.onOptions,
     this.onMove,
     this.onFocus,
+    this.moving = false,
   });
+  final bool moving; // being reordered: shows ‹ › and lifts a little higher
   final TvItem item;
   final double width, height;
   final FocusNode focusNode;
@@ -930,7 +1043,7 @@ class _Card extends StatelessWidget {
         onMove: onMove,
         onFocus: onFocus,
         builder: (context, f) => AnimatedScale(
-          scale: f ? TvDS.focusScaleCard : 1,
+          scale: moving ? TvDS.focusScaleCard + .06 : (f ? TvDS.focusScaleCard : 1),
           duration: Motion.popDuration,
           curve: Motion.pop,
           child: AnimatedContainer(
@@ -948,7 +1061,24 @@ class _Card extends StatelessWidget {
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(TvDS.rTile),
-              child: item.app != null ? TvAppArt(app: item.app!, width: width) : _ProgramArt(item: item, width: width, height: height),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  item.app != null ? TvAppArt(app: item.app!, width: width) : _ProgramArt(item: item, width: width, height: height),
+                  // Moving: arrows on both sides say "← → to slide me".
+                  if (moving)
+                    const ColoredBox(
+                      color: Color(0x66000000),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Icon(Icons.chevron_left_rounded, size: 36, color: TvDS.ink),
+                          Icon(Icons.chevron_right_rounded, size: 36, color: TvDS.ink),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
