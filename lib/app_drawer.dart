@@ -194,19 +194,10 @@ class AppDrawerState extends State<AppDrawer> {
               separatorBuilder: (_, i) => SizedBox(height: i == 0 ? 0 : DS.stack),
               itemBuilder: (context, i) {
                 if (i == 0) {
-                  // Grab handle. As the sheet reaches full screen it also makes room for the status bar.
+                  // Top spacing (no handle). As the sheet reaches full screen it also makes room for the status bar.
                   return ValueListenableBuilder<double>(
                     valueListenable: widget.expanded,
-                    builder: (context, e, _) => Padding(
-                      padding: EdgeInsets.only(top: DS.s12 + statusBar * e, bottom: DS.s12),
-                      child: Center(
-                        child: Container(
-                          width: 40,
-                          height: 5,
-                          decoration: BoxDecoration(color: DS.onCanvasLine, borderRadius: BorderRadius.circular(3)),
-                        ),
-                      ),
-                    ),
+                    builder: (context, e, _) => SizedBox(height: DS.gutter + statusBar * e),
                   );
                 }
                 // Cards pop in one after another the first time they appear.
@@ -516,7 +507,7 @@ class _ResultsCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(a.label, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          Text(prefs.folderName(folderFor(a, prefs.folderOverrides)), style: DS.rowSub),
+                          Text('${a.work ? 'Work · ' : ''}${prefs.folderName(folderFor(a, prefs.folderOverrides))}', style: DS.rowSub),
                         ],
                       ),
                     ),

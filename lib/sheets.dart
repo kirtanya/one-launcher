@@ -21,7 +21,11 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
 
   return showOneSheet(
     context,
-    header: SheetHeader(title: app.label, subtitle: 'In ${prefs.folderName(folder)}', leading: AppIcon(app, size: 48)),
+    header: SheetHeader(
+      title: app.label,
+      subtitle: '${app.work ? 'Work profile · ' : ''}In ${prefs.folderName(folder)}${app.paused ? ' · paused' : ''}',
+      leading: AppIcon(app, size: 48),
+    ),
     actions: [
       SheetAction(
         fav ? Icons.push_pin : Icons.push_pin_outlined,

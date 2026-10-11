@@ -15,6 +15,16 @@ class AppIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final icon = _icon();
+    // Paused work apps look switched off, like on the system launcher.
+    if (!app.paused) return icon;
+    return Opacity(
+      opacity: .5,
+      child: ColorFiltered(colorFilter: const ColorFilter.matrix([.33, .33, .33, 0, 0, .33, .33, .33, 0, 0, .33, .33, .33, 0, 0, 0, 0, 0, 1, 0]), child: icon),
+    );
+  }
+
+  Widget _icon() {
     return SizedBox.square(
       dimension: size,
       child: FutureBuilder<Uint8List?>(

@@ -2,12 +2,22 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class AppEntry {
-  const AppEntry({required this.package, required this.label, this.system = false, this.category = -1, this.installed = 0});
+  const AppEntry({
+    required this.package,
+    required this.label,
+    this.system = false,
+    this.category = -1,
+    this.installed = 0,
+    this.work = false,
+    this.paused = false,
+  });
   final String package;
   final String label;
   final bool system;
   final int category; // Android ApplicationInfo.category, -1 = none
   final int installed; // first install time, ms since epoch
+  final bool work; // from the work profile (package is then "pkg@profile")
+  final bool paused; // work apps are paused (tapping asks to turn them on)
 }
 
 /// Talks to Android (MainActivity.kt). On web it serves demo apps so the
@@ -48,6 +58,8 @@ class Apps {
                 system: m['system'] as bool? ?? false,
                 category: m['category'] as int? ?? -1,
                 installed: m['installed'] as int? ?? 0,
+                work: m['work'] as bool? ?? false,
+                paused: m['paused'] as bool? ?? false,
               ),
             )
             .toList()
