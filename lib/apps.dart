@@ -54,6 +54,11 @@ class Apps {
   VoidCallback? onAppsChanged;
   VoidCallback? onPermissionsChanged;
 
+  /// What's playing (pushed by Android whenever the track or play state changes).
+  /// Keys: granted, active, app, title, artist, art (png), playing, position, duration (ms),
+  /// speed, canPrev, canNext, plus 'at' = when we received it (to move the progress bar).
+  final media = ValueNotifier<Map?>(null);
+
   void init() {
     if (isDemo) return;
     _ch.setMethodCallHandler((call) async {
@@ -66,6 +71,8 @@ class Apps {
           onAppsChanged?.call();
         case 'permissionsChanged':
           onPermissionsChanged?.call();
+        case 'mediaChanged':
+          media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }
     });
   }
@@ -187,6 +194,36 @@ class Apps {
     final l = await _ch.invokeListMethod<int>('boundWidgetIds');
     return l;
   }
+
+  // ---- Now playing ----
+
+  Future<void> refreshMedia() async {
+    if (isDemo) {
+      media.value = {
+        'granted': true,
+        'active': true,
+        'app': 'Spotify',
+        'title': 'Midnight City',
+        'artist': 'M83',
+        'playing': true,
+        'position': 64000,
+        'duration': 243000,
+        'speed': 1.0,
+        'canPrev': true,
+        'canNext': true,
+        'at': DateTime.now().millisecondsSinceEpoch,
+      };
+      return;
+    }
+    final m = await _ch.invokeMapMethod('mediaState');
+    if (m != null) media.value = {...m, 'at': DateTime.now().millisecondsSinceEpoch};
+  }
+
+  Future<void> mediaPlayPause() => _call('mediaPlayPause');
+  Future<void> mediaNext() => _call('mediaNext');
+  Future<void> mediaPrev() => _call('mediaPrev');
+  Future<void> mediaOpen() => _call('mediaOpen');
+  Future<void> openNotificationAccess() => _call('openNotificationAccess');
 
   Future<void> openUsageAccess() => _call('openUsageAccess');
   Future<void> openScreenTime() => _call('openScreenTime');

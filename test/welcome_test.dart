@@ -75,6 +75,7 @@ void main() {
         'topEnabled': ['clock', 'widget:7', 'widget:9'],
         'installId': 'x',
         'blankAdded': true,
+        'nowPlayingAdded': true,
       },
       firstRun: false,
       bound: [7],

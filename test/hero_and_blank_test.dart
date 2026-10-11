@@ -34,9 +34,9 @@ void main() {
     expect(find.text('App 01').hitTestable(), findsNothing);
 
     // Top carousel: Clock → Screen time → Just wallpaper (on by default).
-    expect(prefs.topPages, ['clock', 'screen_time', 'blank']);
+    expect(prefs.topPages, ['clock', 'screen_time', 'now_playing', 'blank']);
     final carousel = find.byType(PageView).first;
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < 3; i++) {
       await tester.fling(carousel, const Offset(-250, 0), 1200);
       await tester.pumpAndSettle();
     }

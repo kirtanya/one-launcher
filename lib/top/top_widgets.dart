@@ -16,5 +16,6 @@ const topWidgets = <String, TopWidget>{
   'screen_time': TopWidget('screen_time', 'Screen time', 'Today’s total and your top apps', Icons.hourglass_bottom_rounded),
   'battery': TopWidget('battery', 'Battery', 'Charge level and time to full', Icons.battery_charging_full_rounded),
   'up_next': TopWidget('up_next', 'Up next', 'Your next calendar event', Icons.event_rounded),
+  'now_playing': TopWidget('now_playing', 'Now playing', 'Music controls for what’s playing', Icons.music_note_rounded),
   'blank': TopWidget('blank', 'Just wallpaper', 'Nothing on top, only your wallpaper', Icons.wallpaper_rounded),
 };

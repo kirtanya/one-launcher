@@ -18,6 +18,17 @@ class Prefs extends ChangeNotifier {
       if (on != null && !on.contains('blank')) await sp.setStringList('topEnabled', [...on, 'blank']);
       await sp.setBool('blankAdded', true);
     }
+    // One-time: switch "Now playing" on (just before "Just wallpaper") for existing setups.
+    if (!sp.containsKey('nowPlayingAdded')) {
+      final on = sp.getStringList('topEnabled');
+      if (on != null && !on.contains('now_playing')) await sp.setStringList('topEnabled', [...on, 'now_playing']);
+      final order = sp.getStringList('topOrder');
+      if (order != null && !order.contains('now_playing')) {
+        final b = order.indexOf('blank');
+        await sp.setStringList('topOrder', [...order]..insert(b < 0 ? order.length : b, 'now_playing'));
+      }
+      await sp.setBool('nowPlayingAdded', true);
+    }
     return Prefs._(sp);
   }
 
@@ -75,14 +86,14 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Top carousel pages, in order, and which are switched on.
-  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'blank'];
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'blank'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
     bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));
     return [...saved.where(known), ...topDefaultOrder.where((id) => !saved.contains(id))];
   }
 
-  Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time', 'blank']).toSet();
+  Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time', 'now_playing', 'blank']).toSet();
   List<String> get topPages => [
     for (final id in topOrder)
       if (topEnabled.contains(id)) id,
@@ -247,7 +258,7 @@ class Prefs extends ChangeNotifier {
   // ---- First launch ---------------------------------------------------------------
 
   /// Nothing set yet (a brand-new install with no restored settings).
-  bool get isFresh => _sp.getKeys().difference({'blankAdded'}).isEmpty;
+  bool get isFresh => _sp.getKeys().difference({'blankAdded', 'nowPlayingAdded'}).isEmpty;
 
   /// Random id saved with the settings. If settings carry one on a first launch, Android
   /// restored them from the phone's Google backup.

@@ -49,6 +49,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private val widgets by lazy { WidgetHost(this) }
     private val backups by lazy { BackupFiles(this) }
+    private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
 
@@ -88,6 +89,7 @@ class MainActivity : FlutterActivity() {
         channel.setMethodCallHandler { call, result ->
             if (widgets.handle(call, result)) return@setMethodCallHandler
             if (backups.handle(call, result)) return@setMethodCallHandler
+            if (media.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getApps" -> worker.execute {
                     val apps = loadApps()
@@ -174,10 +176,12 @@ class MainActivity : FlutterActivity() {
     override fun onStart() {
         super.onStart()
         widgets.start() // widgets update only while we listen
+        media.start() // now playing, only while on screen
     }
 
     override fun onStop() {
         widgets.stop()
+        media.stop()
         super.onStop()
     }
 

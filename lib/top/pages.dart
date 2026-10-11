@@ -217,7 +217,14 @@ class _ScreenTimePageState extends State<ScreenTimePage> {
             children: [
               const Icon(Icons.lock_open_rounded, size: 18, color: DS.onWallpaper),
               const SizedBox(width: 6),
-              Text('Allow usage access', style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const [])),
+              Flexible(
+                child: Text(
+                  'Allow usage access',
+                  style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const []),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
@@ -382,7 +389,14 @@ class _UpNextPageState extends State<UpNextPage> with Ticking {
             children: [
               const Icon(Icons.event_available_rounded, size: 18, color: DS.onWallpaper),
               const SizedBox(width: 6),
-              Text('Show my calendar', style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const [])),
+              Flexible(
+                child: Text(
+                  'Show my calendar',
+                  style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const []),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
@@ -455,6 +469,252 @@ class AppWidgetPage extends StatelessWidget {
         viewType: 'one_launcher/appwidget',
         creationParams: {'id': widgetId},
         creationParamsCodec: const StandardMessageCodec(),
+      ),
+    );
+  }
+}
+
+// ---- Now playing -------------------------------------------------------------------
+
+/// What's playing in any music app, with ⏮ ⏯ ⏭. Needs Notification access (Android only shares
+/// media sessions with apps that have it); the notifications themselves are ignored.
+class NowPlayingPage extends StatefulWidget {
+  const NowPlayingPage({super.key});
+
+  @override
+  State<NowPlayingPage> createState() => _NowPlayingPageState();
+}
+
+class _NowPlayingPageState extends State<NowPlayingPage> {
+  ForegroundTimer? _tick; // moves the progress bar while playing
+  bool? _playingOverride; // instant feedback after tapping play/pause
+
+  @override
+  void initState() {
+    super.initState();
+    Apps.instance.refreshMedia();
+    Apps.instance.media.addListener(_changed);
+    _tick = ForegroundTimer(const Duration(seconds: 1), () {
+      if (mounted && (Apps.instance.media.value?['playing'] == true)) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    Apps.instance.media.removeListener(_changed);
+    _tick?.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() => _playingOverride = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = Apps.instance.media.value ?? const {};
+    final label = DS.wallpaperDate;
+    final sub = DS.wallpaperDate.copyWith(fontSize: 14, color: DS.clockInk, fontWeight: FontWeight.w400);
+
+    Widget header(String text) => SizedBox(
+      height: 32,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text, style: label, maxLines: 1, overflow: TextOverflow.ellipsis),
+      ),
+    );
+
+    if (m['granted'] == false) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header('Now playing'),
+            const Spacer(),
+            Text('See what’s playing and control it from here.', style: sub),
+            const SizedBox(height: DS.s8),
+            GlassPill(
+              onTap: Apps.instance.openNotificationAccess,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.music_note_rounded, size: 18, color: DS.onWallpaper),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Allow notification access',
+                      style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const []),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Spacer(),
+          ],
+        ),
+      );
+    }
+
+    if (m['active'] != true) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header('Now playing'),
+            const Spacer(),
+            Row(
+              children: [
+                _art(null, 56),
+                const SizedBox(width: DS.s16),
+                Expanded(child: Text('Nothing playing.\nStart something in your music app.', style: sub)),
+              ],
+            ),
+            const Spacer(),
+          ],
+        ),
+      );
+    }
+
+    final playing = _playingOverride ?? (m['playing'] == true);
+    final duration = (m['duration'] as num?)?.toInt() ?? 0;
+    var position = (m['position'] as num?)?.toInt() ?? 0;
+    if (m['playing'] == true) {
+      final since = DateTime.now().millisecondsSinceEpoch - ((m['at'] as num?)?.toInt() ?? 0);
+      position += (since * ((m['speed'] as num?)?.toDouble() ?? 1)).round();
+    }
+    final progress = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header('Now playing · ${m['app'] ?? ''}'),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final artSize = c.maxHeight.clamp(40.0, 72.0);
+                return Row(
+                  children: [
+                    Semantics(
+                      button: true,
+                      label: 'Open ${m['app']}',
+                      child: GestureDetector(onTap: Apps.instance.mediaOpen, child: _art(m['art'] as Uint8List?, artSize)),
+                    ),
+                    const SizedBox(width: DS.s12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${m['title'] ?? ''}',
+                            style: label.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if ((m['artist'] as String?)?.isNotEmpty ?? false) Text('${m['artist']}', style: sub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                    _Control(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
+                    _Control(
+                      icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      label: playing ? 'Pause' : 'Play',
+                      primary: true,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _playingOverride = !playing);
+                        Apps.instance.mediaPlayPause();
+                      },
+                    ),
+                    _Control(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
+                  ],
+                );
+              },
+            ),
+          ),
+          if (duration > 0) ...[
+            const SizedBox(height: DS.s8),
+            // Thin glass track, filled as the song plays.
+            Container(
+              height: 4,
+              decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(2)),
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: progress,
+                child: Container(
+                  decoration: BoxDecoration(color: DS.onWallpaper, borderRadius: BorderRadius.circular(2)),
+                ),
+              ),
+            ),
+            const SizedBox(height: DS.s4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _art(Uint8List? bytes, double size) => ClipRRect(
+    borderRadius: BorderRadius.circular(size * .22),
+    child: SizedBox.square(
+      dimension: size,
+      child: bytes == null
+          ? DecoratedBox(
+              decoration: BoxDecoration(
+                color: DS.glass,
+                border: Border.all(color: DS.glassLine),
+                borderRadius: BorderRadius.circular(size * .22),
+              ),
+              child: Icon(Icons.music_note_rounded, color: DS.onWallpaper, size: size * .45),
+            )
+          : Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true),
+    ),
+  );
+}
+
+/// Round control over the wallpaper: glass, or solid white for play/pause.
+class _Control extends StatelessWidget {
+  const _Control({required this.icon, required this.label, required this.onTap, this.primary = false, this.enabled = true});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary, enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = primary ? 48.0 : 40.0;
+    return Semantics(
+      button: true,
+      label: label,
+      child: SizedBox.square(
+        dimension: DS.tap,
+        child: Center(
+          child: Pressable(
+            scale: .88,
+            enabled: enabled,
+            child: Material(
+              color: primary ? DS.onWallpaper : DS.glass,
+              shape: CircleBorder(side: primary ? BorderSide.none : const BorderSide(color: DS.glassLine)),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: enabled ? onTap : null,
+                child: SizedBox.square(
+                  dimension: size,
+                  child: Icon(
+                    icon,
+                    size: size * .55,
+                    color: primary ? const Color(0xFF1F1F1F) : DS.onWallpaper.withValues(alpha: enabled ? 1 : .4),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

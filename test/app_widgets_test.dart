@@ -67,7 +67,7 @@ void main() {
     // Close the sheet and swipe to the widget page (placeholder off-device).
     Navigator.of(tester.element(find.text('Top widgets'))).pop();
     await tester.pumpAndSettle();
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < 3; i++) { // clock → screen time → now playing → widget
       await tester.fling(find.byType(PageView), const Offset(-250, 0), 1200);
       await tester.pumpAndSettle();
     }
