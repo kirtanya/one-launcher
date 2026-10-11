@@ -80,7 +80,9 @@ Future<void> showOneSheet(BuildContext context, {Widget? header, required List<S
   );
 }
 
-Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder builder}) {
+/// [scrollable]: the content scrolls when taller than ~90% of the screen. Pass false for
+/// sheets that already scroll a list of their own (Flexible + ListView inside).
+Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder builder, bool scrollable = true}) {
   return showModalBottomSheet(
     context: context,
     backgroundColor: DS.card,
@@ -90,7 +92,12 @@ Future<void> showOneSheetWith(BuildContext context, {required WidgetBuilder buil
     builder: (ctx) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.only(bottom: DS.s12),
-        child: builder(ctx),
+        child: scrollable
+            ? ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .9),
+                child: SingleChildScrollView(child: builder(ctx)),
+              )
+            : builder(ctx),
       ),
     ),
   );

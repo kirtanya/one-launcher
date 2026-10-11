@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -54,6 +55,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Pinged when the launcher comes back to the front or a permission changes, so the
   /// top pages (screen time, battery, calendar) reload.
   final _refresh = ValueNotifier<int>(0);
+
+  /// The "Just wallpaper" top page is showing: hide the top tint too.
+  final _topBlank = ValueNotifier<bool>(false);
 
   @override
   void setState(VoidCallback fn) {
@@ -129,6 +133,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _rev.dispose();
     _compact.dispose();
     _refresh.dispose();
+    _topBlank.dispose();
     super.dispose();
   }
 
@@ -288,7 +293,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           refresh: _refresh,
                           onTapClock: () => _openNamed(['clock']),
                           onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                          onBlank: (b) => _topBlank.value = b,
                         ),
+                        blank: _topBlank,
                         onCustomise: () {
                           HapticFeedback.mediumImpact();
                           showCustomiseTop(context, prefs: prefs);
@@ -326,10 +333,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   right: 0,
                   bottom: 0,
                   height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
-                  child: const IgnorePointer(
+                  child: IgnorePointer(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x001F1F1F), Color(0xE61F1F1F)]),
+                        // Sheet colour (follows the theme), fading in under the dock.
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                        ),
                       ),
                     ),
                   ),
@@ -370,9 +382,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 // ---- Top area ---------------------------------------------------------------
 
 class _TopArea extends StatelessWidget {
-  const _TopArea({required this.carousel, required this.padding, required this.onSwipeUp, required this.onSwipeDown, required this.onCustomise});
+  const _TopArea({
+    required this.carousel,
+    required this.blank,
+    required this.padding,
+    required this.onSwipeUp,
+    required this.onSwipeDown,
+    required this.onCustomise,
+  });
 
   final Widget carousel;
+  final ValueListenable<bool> blank;
   final double padding; // user-set breathing room (Settings → Top widgets padding)
   final VoidCallback onSwipeUp, onSwipeDown, onCustomise;
 
@@ -386,20 +406,39 @@ class _TopArea extends StatelessWidget {
         if (v > 200) onSwipeDown();
       },
       onLongPress: onCustomise, // long-press the top half → choose its pages
-      child: DecoratedBox(
-        // Gentle dark wash at the top so the status bar reads on bright wallpapers.
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x40000000), Color(0x00000000)], stops: [0, .45]),
-        ),
-        child: SafeArea(
-          bottom: false,
-          child: AnimatedPadding(
-            duration: Motion.snapDuration,
-            curve: Motion.settle,
-            padding: EdgeInsets.fromLTRB(DS.s8 + padding, DS.s4 + padding * .5, DS.s8 + padding, DS.rSheet + DS.s4 + padding * .5),
-            child: carousel,
+      child: Stack(
+        children: [
+          // Gentle dark wash at the top so the status bar reads on bright wallpapers —
+          // faded out on the "Just wallpaper" page so nothing covers the wallpaper.
+          Positioned.fill(
+            child: ValueListenableBuilder<bool>(
+              valueListenable: blank,
+              builder: (context, b, _) => AnimatedOpacity(
+                duration: Motion.snapDuration,
+                opacity: b ? 0 : 1,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x40000000), Color(0x00000000)],
+                      stops: [0, .45],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
+          SafeArea(
+            bottom: false,
+            child: AnimatedPadding(
+              duration: Motion.snapDuration,
+              curve: Motion.settle,
+              padding: EdgeInsets.fromLTRB(DS.s8 + padding, DS.s4 + padding * .5, DS.s8 + padding, DS.rSheet + DS.s4 + padding * .5),
+              child: carousel,
+            ),
+          ),
+        ],
       ),
     );
   }

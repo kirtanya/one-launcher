@@ -10,9 +10,18 @@ class Prefs extends ChangeNotifier {
   Prefs._(this._sp);
   final SharedPreferences _sp;
 
-  static Future<Prefs> load() async => Prefs._(await SharedPreferences.getInstance());
+  static Future<Prefs> load() async {
+    final sp = await SharedPreferences.getInstance();
+    // One-time: switch the new "Just wallpaper" page on for people who already chose pages.
+    if (!sp.containsKey('blankAdded')) {
+      final on = sp.getStringList('topEnabled');
+      if (on != null && !on.contains('blank')) await sp.setStringList('topEnabled', [...on, 'blank']);
+      await sp.setBool('blankAdded', true);
+    }
+    return Prefs._(sp);
+  }
 
-  static const maxFavourites = 8; // pinned apps lead the green card (it shows 8 apps)
+  static const maxFavourites = 16; // pinned apps lead the green card (2 pages × 8)
 
   // ---- Speed: JSON settings are parsed once and kept until something changes ----
   final _parsed = <String, Map>{};
@@ -66,14 +75,14 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Top carousel pages, in order, and which are switched on.
-  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next'];
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'blank'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
     bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));
     return [...saved.where(known), ...topDefaultOrder.where((id) => !saved.contains(id))];
   }
 
-  Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time']).toSet();
+  Set<String> get topEnabled => (_sp.getStringList('topEnabled') ?? const ['clock', 'screen_time', 'blank']).toSet();
   List<String> get topPages => [
     for (final id in topOrder)
       if (topEnabled.contains(id)) id,
@@ -84,12 +93,16 @@ class Prefs extends ChangeNotifier {
   /// App widget pages (`widget:<id>`) and their names.
   Map<String, String> get widgetLabels => Map<String, String>.from(_json('widgetLabels'));
 
-  /// Adds an app widget as a page, right after the current pages, and switches it on.
+  /// Adds an app widget as a page (before "Just wallpaper") and switches it on.
   Future<void> addWidgetPage(int id, String label) async {
     final key = 'widget:$id';
     await _sp.setString('widgetLabels', jsonEncode(widgetLabels..[key] = label));
     _parsed.remove('widgetLabels');
-    await _sp.setStringList('topOrder', [...topOrder.where((x) => x != key), key]);
+    // Keep "Just wallpaper" as the last page: new widgets go just before it.
+    final order = topOrder.where((x) => x != key).toList();
+    final blank = order.indexOf('blank');
+    blank < 0 ? order.add(key) : order.insert(blank, key);
+    await _sp.setStringList('topOrder', order);
     await _sp.setStringList('topEnabled', {...topEnabled, key}.toList());
     notifyListeners();
   }

@@ -51,7 +51,7 @@ class AppDrawer extends StatefulWidget {
 }
 
 class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
-  static const _mostUsedCount = 8;
+  static const _mostUsedCount = 16; // green card: 2 pages × 8
   String? _openId; // the one open folder (Most used is the hero card, always open)
 
   /// Back to the resting state (Home pressed / after launching an app).
@@ -338,7 +338,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
 // ---- Cards ------------------------------------------------------------------
 
 /// The green card: pinned apps first, then the most used. No header; a small menu sits at the bottom.
-class _HeroCard extends StatelessWidget {
+/// The green card: pinned apps first, then the most used — up to 2 pages of 8 that you swipe
+/// left/right. No header; page dots and a small menu sit along the bottom.
+class _HeroCard extends StatefulWidget {
   const _HeroCard({required this.apps, required this.pinned, required this.onCustomise, required this.onLaunch, required this.onLongPress});
 
   final List<AppEntry> apps;
@@ -346,8 +348,49 @@ class _HeroCard extends StatelessWidget {
   final VoidCallback onCustomise;
   final ValueChanged<AppEntry> onLaunch, onLongPress;
 
+  static const perPage = 8;
+
+  @override
+  State<_HeroCard> createState() => _HeroCardState();
+}
+
+class _HeroCardState extends State<_HeroCard> {
+  final _pages = PageController();
+  int _page = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  Widget _grid(List<AppEntry> apps, double cellW, int offset) => Wrap(
+    children: [
+      for (final (i, a) in apps.indexed)
+        SizedBox(
+          width: cellW,
+          child: PopIn(
+            delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
+            child: _GridApp(
+              app: a,
+              labelColor: DS.heroInk,
+              pinned: widget.pinned.contains(a.package),
+              onTap: () => widget.onLaunch(a),
+              onLongPress: () => widget.onLongPress(a),
+            ),
+          ),
+        ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
+    final apps = widget.apps;
+    const per = _HeroCard.perPage;
+    final pages = [for (var p = 0; p < apps.length && p < 2 * per; p += per) apps.sublist(p, (p + per).clamp(0, apps.length))];
+    // One grid cell: padding 8+8, icon 48, gap 6, one line of 12pt label.
+    final cellH = 16 + DS.appIcon + 6 + MediaQuery.textScalerOf(context).scale(12) * 1.2 + 2;
+    final rows = pages.isEmpty ? 0 : (pages.first.length / 4).ceil(); // height follows page 1
     return OneCard(
       tone: CardTone.hero,
       padding: const EdgeInsets.fromLTRB(DS.s12, DS.s16, DS.s12, 0),
@@ -363,30 +406,38 @@ class _HeroCard extends StatelessWidget {
             LayoutBuilder(
               builder: (context, c) {
                 final w = c.maxWidth / 4;
-                return Wrap(
-                  children: [
-                    for (final (i, a) in apps.indexed)
-                      SizedBox(
-                        width: w,
-                        child: PopIn(
-                          delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
-                          child: _GridApp(
-                            app: a,
-                            labelColor: DS.heroInk,
-                            pinned: pinned.contains(a.package),
-                            onTap: () => onLaunch(a),
-                            onLongPress: () => onLongPress(a),
-                          ),
-                        ),
-                      ),
-                  ],
+                if (pages.length == 1) return _grid(pages.first, w, 0);
+                return SizedBox(
+                  height: rows * cellH,
+                  child: PageView.builder(
+                    controller: _pages,
+                    itemCount: pages.length,
+                    onPageChanged: (i) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _page = i);
+                    },
+                    itemBuilder: (context, i) => Align(alignment: Alignment.topLeft, child: _grid(pages[i], w, i * per)),
+                  ),
                 );
               },
             ),
-          // Small menu, bottom-right.
-          Align(
-            alignment: Alignment.centerRight,
-            child: CircleButton(icon: Icons.more_horiz_rounded, tone: CircleTone.soft, size: 32, tooltip: 'Customise pinned & most used', onTap: onCustomise),
+          // Bottom row: page dots (when there are 2 pages) and the small menu.
+          Row(
+            children: [
+              const SizedBox(width: DS.s8),
+              if (pages.length > 1)
+                for (var i = 0; i < pages.length; i++)
+                  AnimatedContainer(
+                    duration: Motion.snapDuration,
+                    curve: Motion.settle,
+                    width: i == _page ? 16 : 6,
+                    height: 6,
+                    margin: const EdgeInsets.only(right: 4),
+                    decoration: BoxDecoration(color: i == _page ? DS.heroInk : DS.heroDivider, borderRadius: BorderRadius.circular(3)),
+                  ),
+              const Spacer(),
+              CircleButton(icon: Icons.more_horiz_rounded, tone: CircleTone.soft, size: 32, tooltip: 'Customise pinned & most used', onTap: widget.onCustomise),
+            ],
           ),
         ],
       ),

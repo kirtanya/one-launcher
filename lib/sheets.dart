@@ -191,6 +191,7 @@ Future<void> showChooseApps(BuildContext context, {required Prefs prefs, require
 
   return showOneSheetWith(
     context,
+    scrollable: false, // scrolls its own list
     builder: (ctx) => ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .75),
       child: ListenableBuilder(
@@ -367,6 +368,7 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
 Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) {
   return showOneSheetWith(
     context,
+    scrollable: false, // scrolls its own list
     builder: (ctx) => ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .8),
       child: FutureBuilder<List<WidgetProvider>>(
