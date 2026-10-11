@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
+import 'quick_actions.dart';
+
 /// An Android app widget that can be added to the top carousel.
 class WidgetProvider {
   const WidgetProvider(this.map);
@@ -59,6 +61,9 @@ class Apps {
   /// speed, canPrev, canNext, plus 'at' = when we received it (to move the progress bar).
   final media = ValueNotifier<Map?>(null);
 
+  /// Flashlight on? (pushed by Android when it changes, from anywhere.)
+  final torchOn = ValueNotifier<bool>(false);
+
   void init() {
     if (isDemo) return;
     _ch.setMethodCallHandler((call) async {
@@ -71,6 +76,8 @@ class Apps {
           onAppsChanged?.call();
         case 'permissionsChanged':
           onPermissionsChanged?.call();
+        case 'torchChanged':
+          torchOn.value = call.arguments == true;
         case 'mediaChanged':
           media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }
@@ -194,6 +201,32 @@ class Apps {
     final l = await _ch.invokeListMethod<int>('boundWidgetIds');
     return l;
   }
+
+  // ---- Quick actions ----
+
+  /// Runs a quick action; false if nothing on this phone can do it.
+  Future<bool> quickAction(String id) async {
+    if (isDemo) return true;
+    return await _ch.invokeMethod<bool>('quickAction', {'id': id}) ?? false;
+  }
+
+  Future<void> refreshTorch() async {
+    if (isDemo) return;
+    final m = await _ch.invokeMapMethod('torchState');
+    torchOn.value = m?['on'] == true;
+  }
+
+  /// App shortcuts (null = not allowed: One Launcher isn't the default home app).
+  Future<List<AppShortcut>?> shortcuts() async {
+    if (isDemo) return const [];
+    final m = await _ch.invokeMapMethod('listShortcuts');
+    if (m == null || m['allowed'] != true) return null;
+    return [for (final s in m['shortcuts'] as List) AppShortcut(s as Map)];
+  }
+
+  final _shortcutIcons = <String, Future<Uint8List?>>{};
+  Future<Uint8List?> shortcutIcon(String id) =>
+      _shortcutIcons.putIfAbsent(id, () => isDemo ? Future.value(null) : _ch.invokeMethod<Uint8List>('shortcutIcon', {'id': id}));
 
   // ---- Now playing ----
 

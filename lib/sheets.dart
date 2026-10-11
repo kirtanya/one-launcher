@@ -5,7 +5,9 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
+import 'app_drawer.dart';
 import 'prefs.dart';
+import 'quick_actions.dart';
 import 'top/header_fonts.dart';
 import 'ui/palette.dart';
 import 'ui/theme.dart';
@@ -358,6 +360,154 @@ Future<void> showCustomiseTop(BuildContext context, {required Prefs prefs}) {
               child: Text('Font', style: DS.rowTitle),
             ),
             _FontPicker(prefs: prefs),
+            const SizedBox(height: DS.s8),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+/// Choose, order and remove the quick-action chips. Built-in actions and apps' own shortcuts.
+Future<void> showCustomiseChips(BuildContext context, {required Prefs prefs}) {
+  final shortcuts = Apps.instance.shortcuts(); // load once while the sheet is open
+  return showOneSheetWith(
+    context,
+    builder: (ctx) => ListenableBuilder(
+      listenable: prefs,
+      builder: (ctx, _) {
+        final chips = prefs.quickChips;
+        final labels = prefs.quickLabels;
+        String nameOf(String id) => builtInActions[id]?.$1 ?? labels[id]?.split('|').first ?? id;
+        Widget iconOf(String id, {double size = 22}) =>
+            builtInActions.containsKey(id) ? Icon(builtInActions[id]!.$2, color: DS.ink, size: size) : ShortcutIcon(id: id, size: size);
+        Widget section(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+          child: Text(text, style: DS.rowTitle),
+        );
+        Widget addRow(String id, String label, {String? subtitle, String? app}) {
+          final added = chips.contains(id);
+          return InkWell(
+            onTap: added ? () => prefs.removeQuickChip(id) : () => prefs.addQuickChip(id, label: id.startsWith('s:') ? label : null, app: app),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
+              child: Row(
+                children: [
+                  iconOf(id),
+                  const SizedBox(width: DS.s16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (subtitle != null) Text(subtitle, style: DS.rowSub.copyWith(fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  Icon(added ? Icons.check_circle_rounded : Icons.add_circle_outline_rounded, color: added ? DS.ink : DS.inkFaint),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+              child: SheetHeader(title: 'Quick actions', subtitle: 'Chips above your apps · drag to reorder'),
+            ),
+            // Current chips.
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: chips.length,
+              onReorderItem: (from, to) {
+                final list = [...chips];
+                list.insert(to, list.removeAt(from));
+                prefs.setQuickChips(list);
+              },
+              proxyDecorator: (child, _, _) => Material(color: DS.card, elevation: 6, borderRadius: BorderRadius.circular(DS.rMedia), child: child),
+              itemBuilder: (ctx, i) => Padding(
+                key: ValueKey(chips[i]),
+                padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, 0),
+                child: Row(
+                  children: [
+                    ReorderableDragStartListener(
+                      index: i,
+                      child: SizedBox.square(
+                        dimension: DS.tap,
+                        child: Icon(Icons.drag_indicator_rounded, color: DS.inkFaint),
+                      ),
+                    ),
+                    iconOf(chips[i]),
+                    const SizedBox(width: DS.s16),
+                    Expanded(
+                      child: Text(
+                        nameOf(chips[i]),
+                        style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove ${nameOf(chips[i])}',
+                      icon: Icon(Icons.remove_circle_outline_rounded, color: DS.inkMuted),
+                      onPressed: () => prefs.removeQuickChip(chips[i]),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (chips.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                child: Text('No quick actions yet. Add some below.', style: DS.rowSub),
+              ),
+            const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0), child: CardDivider()),
+            section('Built-in'),
+            for (final e in builtInActions.entries)
+              if (!chips.contains(e.key)) addRow(e.key, e.value.$1),
+            section('From your apps'),
+            FutureBuilder<List<AppShortcut>?>(
+              future: shortcuts,
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(DS.s24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final all = snap.data;
+                if (all == null) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+                    child: Text(
+                      'Android only shares app shortcuts (like Paytm → Scan QR) with your home app. Set One Launcher as your home app to add them.',
+                      style: DS.rowSub,
+                    ),
+                  );
+                }
+                if (all.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(DS.s24),
+                    child: Text('No app shortcuts found.', style: DS.rowSub),
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [for (final sc in all) addRow(sc.id, sc.label, subtitle: sc.work ? '${sc.app} · Work' : sc.app, app: sc.app)],
+                );
+              },
+            ),
             const SizedBox(height: DS.s8),
           ],
         );

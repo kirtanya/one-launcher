@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'app_drawer.dart';
 import 'apps.dart';
 import 'prefs.dart';
+import 'quick_actions.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
@@ -123,11 +124,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) => _firstLaunch());
   }
 
+  /// Once: put a "Scan QR" app shortcut first among the quick chips (Paytm preferred, else any
+  /// payments/scanner app's). Retries until app shortcuts are available (default home app).
+  Future<void> _seedScanChip() async {
+    if (prefs.qrSeeded) return;
+    final all = await Apps.instance.shortcuts();
+    if (all == null) return;
+    bool scan(AppShortcut s) => s.label.toLowerCase().contains('scan');
+    final pick =
+        all.where((s) => scan(s) && s.package.contains('paytm')).firstOrNull ??
+        all.where((s) => scan(s) && (s.label.toLowerCase().contains('qr') || s.label.toLowerCase().contains('pay'))).firstOrNull;
+    if (pick != null) await prefs.addQuickChip(pick.id, label: pick.label, app: pick.app, first: true);
+    await prefs.setQrSeeded();
+  }
+
   /// Once per install: offer to restore a backup, or say Android already restored one.
   /// Also drops widget pages that don't exist on this phone (restored from elsewhere).
   Future<void> _firstLaunch() async {
     final ids = await Apps.instance.boundWidgetIds();
     if (ids != null) await prefs.pruneWidgetPages(ids.toSet());
+    Apps.instance.refreshTorch();
+    await _seedScanChip();
     if (!await Apps.instance.isFirstRun() || !mounted) return;
     final fresh = prefs.isFresh;
     final restoredByAndroid = !fresh && prefs.installId != null;
@@ -158,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _loadApps();
       _refresh.value++;
       widget.theme.refreshSystem(); // wallpaper (and so Material You colours) may have changed
+      _seedScanChip(); // app shortcuts become available once we're the default home app
     }
   }
 

@@ -49,6 +49,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private val widgets by lazy { WidgetHost(this) }
     private val backups by lazy { BackupFiles(this) }
+    private val quick by lazy { QuickActions(this) { method, arg -> if (::channel.isInitialized) channel.invokeMethod(method, arg) } }
     private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -90,6 +91,7 @@ class MainActivity : FlutterActivity() {
             if (widgets.handle(call, result)) return@setMethodCallHandler
             if (backups.handle(call, result)) return@setMethodCallHandler
             if (media.handle(call, result)) return@setMethodCallHandler
+            if (quick.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getApps" -> worker.execute {
                     val apps = loadApps()
@@ -194,6 +196,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        quick.dispose()
         unregisterReceiver(packageReceiver)
         unregisterReceiver(profileReceiver)
         launcherApps.unregisterCallback(launcherCallback)

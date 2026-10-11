@@ -278,6 +278,32 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Quick action chips ---------------------------------------------------------
+
+  /// Chips above the green card, in order (built-in "b:…" or app shortcut "s:…").
+  List<String> get quickChips => _sp.getStringList('quickChips') ?? const ['b:timer', 'b:torch', 'b:camera', 'b:calculator'];
+
+  /// Names of app-shortcut chips (id → "label|app").
+  Map<String, String> get quickLabels => Map<String, String>.from(_json('quickLabels'));
+
+  Future<void> setQuickChips(List<String> ids) => _setList('quickChips', ids);
+
+  Future<void> addQuickChip(String id, {String? label, String? app, bool first = false}) async {
+    if (label != null) {
+      await _sp.setString('quickLabels', jsonEncode(quickLabels..[id] = '$label|${app ?? ''}'));
+      _parsed.remove('quickLabels');
+    }
+    final list = quickChips.where((x) => x != id).toList();
+    first ? list.insert(0, id) : list.add(id);
+    await _setList('quickChips', list);
+  }
+
+  Future<void> removeQuickChip(String id) => _setList('quickChips', quickChips.where((x) => x != id).toList());
+
+  /// The Paytm-style "Scan QR" chip is offered once (needs app shortcuts to be available).
+  bool get qrSeeded => _sp.getBool('qrSeeded') ?? false;
+  Future<void> setQrSeeded() => _sp.setBool('qrSeeded', true);
+
   Future<void> unpinAll() => _setList('favourites', []);
 
   Future<void> clearLaunches() async {
