@@ -270,107 +270,187 @@ Future<void> showChooseApps(BuildContext context, {required Prefs prefs, require
 }
 
 /// Choose and order the pages of the swipeable top half.
-Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bool back = false}) {
-  return showOneSheetWith(
+/// Long-press the top of home (or Settings → Top widgets): everything about the top area in
+/// one place — its pages and app widgets, clock style, size & spacing, wallpaper and the quick
+/// chips. Short enough that the top stays in view and every change shows live above it.
+Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bool back = false}) async {
+  final r = await showOneSheetWith(
     context,
     back: back,
-    height: back ? drawerHeight(context, prefs) : null,
+    height: drawerHeight(context, prefs),
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
         final order = prefs.topOrder;
         final on = prefs.topEnabled;
+        final w0 = prefs.clockWeight, wd0 = prefs.clockWidth, sl0 = prefs.clockSlant;
+        final preset = clockPresets.where((p) => (w0 - p.$2).abs() < 1 && (wd0 - p.$3).abs() < 1 && (sl0 - p.$4).abs() < .1).firstOrNull;
+        Widget label(String text, [String? hint]) => Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(text, style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+              ),
+              if (hint != null) Text(hint, style: DS.rowSub.copyWith(fontSize: 12)),
+            ],
+          ),
+        );
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Padding(
-              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'Top widgets', subtitle: 'Swipe the clock sideways · drag to reorder'),
+              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
+              child: SheetHeader(title: 'Top of home', subtitle: 'Changes show live above'),
             ),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              itemCount: order.length,
-              onReorderItem: (from, to) {
-                final list = [...order];
-                list.insert(to, list.removeAt(from));
-                prefs.setTopOrder(list);
-              },
-              proxyDecorator: (child, _, _) => Material(color: DS.card, elevation: 6, borderRadius: BorderRadius.circular(DS.rMedia), child: child),
-              itemBuilder: (ctx, i) {
-                final w = topWidgetFor(order[i], prefs.widgetLabels);
-                final enabled = on.contains(w.id);
-                final last = enabled && on.length == 1; // keep at least one page
-                return Padding(
-                  key: ValueKey(w.id),
-                  padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s16, 0),
-                  child: Row(
+            label('Pages', 'Drag to reorder'),
+            // Pages: one rounded group, like Settings.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(DS.rMedia),
+                child: Material(
+                  color: DS.cardMuted,
+                  child: Column(
                     children: [
-                      ReorderableDragStartListener(
-                        index: i,
-                        child: SizedBox.square(
-                          dimension: DS.tap,
-                          child: Icon(Icons.drag_indicator_rounded, color: DS.inkFaint),
-                        ),
+                      ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        itemCount: order.length,
+                        onReorderItem: (from, to) {
+                          final list = [...order];
+                          list.insert(to, list.removeAt(from));
+                          prefs.setTopOrder(list);
+                        },
+                        proxyDecorator: (child, _, _) => Material(color: DS.card, elevation: 6, borderRadius: BorderRadius.circular(DS.rMedia), child: child),
+                        itemBuilder: (ctx, i) {
+                          final w = topWidgetFor(order[i], prefs.widgetLabels);
+                          final enabled = on.contains(w.id);
+                          final last = enabled && on.length == 1; // keep at least one page
+                          return Padding(
+                            key: ValueKey(w.id),
+                            padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s16, 0),
+                            child: Row(
+                              children: [
+                                ReorderableDragStartListener(
+                                  index: i,
+                                  child: SizedBox.square(
+                                    dimension: DS.tap,
+                                    child: Icon(Icons.drag_indicator_rounded, color: DS.inkFaint),
+                                  ),
+                                ),
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(color: enabled ? DS.ink : DS.cardMuted, shape: BoxShape.circle),
+                                  child: Icon(w.icon, size: 20, color: enabled ? DS.card : DS.inkMuted),
+                                ),
+                                const SizedBox(width: DS.s16),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: DS.s12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(w.name, style: DS.rowTitle),
+                                        Text(w.description, style: DS.rowSub.copyWith(fontSize: 13)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                Switch(
+                                  value: enabled,
+                                  activeThumbColor: DS.card,
+                                  activeTrackColor: DS.ink,
+                                  inactiveThumbColor: DS.inkFaint,
+                                  inactiveTrackColor: DS.cardMuted,
+                                  onChanged: last ? null : (v) => prefs.setTopEnabled(w.id, v),
+                                ),
+                                // App widgets can be removed altogether.
+                                if (w.id.startsWith('widget:'))
+                                  IconButton(
+                                    tooltip: 'Remove ${w.name}',
+                                    icon: Icon(Icons.delete_outline_rounded, color: DS.inkMuted),
+                                    onPressed: () {
+                                      Apps.instance.removeWidget(int.parse(w.id.substring(7)));
+                                      prefs.removeWidgetPage(w.id);
+                                    },
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(color: enabled ? DS.ink : DS.cardMuted, shape: BoxShape.circle),
-                        child: Icon(w.icon, size: 20, color: enabled ? DS.card : DS.inkMuted),
-                      ),
-                      const SizedBox(width: DS.s16),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: DS.s12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(w.name, style: DS.rowTitle),
-                              Text(w.description, style: DS.rowSub.copyWith(fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: enabled,
-                        activeThumbColor: DS.card,
-                        activeTrackColor: DS.ink,
-                        inactiveThumbColor: DS.inkFaint,
-                        inactiveTrackColor: DS.cardMuted,
-                        onChanged: last ? null : (v) => prefs.setTopEnabled(w.id, v),
-                      ),
-                      // App widgets can be removed altogether.
-                      if (w.id.startsWith('widget:'))
-                        IconButton(
-                          tooltip: 'Remove ${w.name}',
-                          icon: Icon(Icons.delete_outline_rounded, color: DS.inkMuted),
-                          onPressed: () {
-                            Apps.instance.removeWidget(int.parse(w.id.substring(7)));
-                            prefs.removeWidgetPage(w.id);
-                          },
-                        ),
+                      Divider(height: 1, thickness: 1, color: DS.hairline),
+                      _NavRow(Icons.add_rounded, 'Add app widget', 'Any app’s widget becomes a page', () => showWidgetPicker(context, prefs: prefs)),
                     ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
-            _Row(Icons.add_circle_outline_rounded, 'Add app widget', () => showWidgetPicker(context, prefs: prefs)),
-            const Padding(padding: EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s4), child: CardDivider()),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s12),
-              child: Text('Clock style', style: DS.rowTitle),
-            ),
-            _ClockStyleEditor(prefs: prefs),
+            _Group('Clock', [
+              _NavRow(
+                Icons.text_fields_rounded,
+                'Clock style',
+                preset?.$1 ?? 'Custom · weight ${w0.round()}, width ${wd0.round()}',
+                () => Navigator.pop(ctx, 'clock'),
+              ),
+            ]),
+            label('Size & spacing'),
+            _SplitSlider(prefs: prefs),
+            _PaddingSlider(prefs: prefs),
+            _Group('Around it', [
+              _NavRow(
+                Icons.wallpaper_rounded,
+                'Wallpaper',
+                '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · dim ${(prefs.wallpaperDim * 100).round()}%',
+                () => Navigator.pop(ctx, 'wallpaper'),
+              ),
+              _NavRow(Icons.bolt_rounded, 'Quick actions', '${prefs.quickChips.length} chips above the apps', () => Navigator.pop(ctx, 'chips')),
+            ]),
             const SizedBox(height: DS.s8),
           ],
         );
       },
     ),
   );
+  // One level down; its back arrow comes back here.
+  if (!context.mounted) return r;
+  final Future<Object?> Function()? next = switch (r) {
+    'clock' => () => _showClockStyle(context, prefs: prefs),
+    'wallpaper' => () => _showWallpaperSheet(context, prefs: prefs),
+    'chips' => () => showCustomiseChips(context, prefs: prefs, back: true),
+    _ => null,
+  };
+  if (next == null) return r;
+  final r2 = await next();
+  if (r2 == sheetBack && context.mounted) return showCustomiseTop(context, prefs: prefs, back: back);
+  return r2;
 }
+
+/// Top of home → Clock style (2nd level): presets + weight / width / slant, live on the clock.
+Future<Object?> _showClockStyle(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  back: true,
+  height: drawerHeight(context, prefs),
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+          child: SheetHeader(title: 'Clock style', subtitle: 'One font you shape yourself'),
+        ),
+        _ClockStyleEditor(prefs: prefs),
+        const SizedBox(height: DS.s12),
+      ],
+    ),
+  ),
+);
 
 /// Choose, order and remove the quick-action chips. Built-in actions and apps' own shortcuts.
 const _toChipLook = 'chipLook';
@@ -1288,12 +1368,11 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
                 prefs.autoOpenFolders,
                 prefs.setAutoOpenFolders,
               ),
-              _SwitchRow(
+              _NavRow(
                 Icons.search_rounded,
-                'Open the only match',
-                'When search finds just one app',
-                prefs.autoOpenSingleMatch,
-                prefs.setAutoOpenSingleMatch,
+                'Search',
+                '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · pull down ${prefs.pullToSearch ? 'on' : 'off'}',
+                () => go(ctx, () => _showSearchSettings(context, prefs: prefs)),
               ),
               _NavRow(
                 Icons.visibility_off_outlined,
@@ -1423,6 +1502,62 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
         ],
       );
     },
+  ),
+);
+
+/// Settings → Search (2nd level): where the bar sits, pull-down gesture, open the only match.
+Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  back: true,
+  height: drawerHeight(context, prefs),
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
+          child: SheetHeader(title: 'Search', subtitle: 'Find apps, or search the web'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+          child: Text('Search bar', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+          child: Wrap(
+            spacing: DS.s8,
+            runSpacing: DS.s8,
+            children: [
+              for (final (id, label) in const [('bottom', 'At the bottom'), ('top', 'Top of the app drawer')])
+                _Chip(
+                  label: label,
+                  selected: prefs.searchPosition == id,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    prefs.setSearchPosition(id);
+                  },
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, 0),
+          child: Text(
+            prefs.searchPosition == 'top'
+                ? 'Sits above your pinned apps, next to the settings button.'
+                : 'Floats under your thumb; shrinks to a circle while you scroll.',
+            style: DS.rowSub.copyWith(fontSize: 13),
+          ),
+        ),
+        _Group(null, [
+          _SwitchRow(Icons.swipe_down_alt_rounded, 'Pull down to search', 'Drag the app drawer down at its top', prefs.pullToSearch, prefs.setPullToSearch),
+          _SwitchRow(Icons.bolt_rounded, 'Open the only match', 'When search finds just one app', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
+        ]),
+        const SizedBox(height: DS.s8),
+      ],
+    ),
   ),
 );
 

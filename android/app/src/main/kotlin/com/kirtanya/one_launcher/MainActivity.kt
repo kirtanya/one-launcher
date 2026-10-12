@@ -162,6 +162,12 @@ class MainActivity : FlutterActivity() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
+                // Search box → the web (Google app if installed, else the browser) / Play Store.
+                "webSearch" -> result.success(webSearch(call.argument<String>("query") ?: ""))
+                "playSearch" -> result.success(
+                    open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=" + android.net.Uri.encode(call.argument<String>("query") ?: "") + "&c=apps")))
+                        || open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?c=apps&q=" + android.net.Uri.encode(call.argument<String>("query") ?: "")))),
+                )
                 "openWallpaperPicker" -> {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
                     result.success(true)
@@ -271,6 +277,18 @@ class MainActivity : FlutterActivity() {
         val (pkg, user) = resolve(id)
         return launcherApps.getActivityList(pkg, user).firstOrNull() to user
     }
+
+    private fun open(intent: Intent): Boolean = try {
+        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Web search: the phone's search app (Google), else a Google results page in the browser. */
+    private fun webSearch(q: String): Boolean =
+        open(Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, q)) ||
+            open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(q))))
 
     // Badged = work apps get the briefcase, like the system launcher.
     private fun loadIcon(id: String): ByteArray? = try {

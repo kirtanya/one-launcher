@@ -20,7 +20,8 @@ import 'widgets.dart';
 
 /// The bottom sheet of the one-screen launcher: pastel hero card, then "Most used",
 /// then one card per folder of similar apps. Only one folder is open at a time.
-/// While searching it shows results instead (search itself lives in the bottom dock).
+/// While searching it shows results instead (search lives in the bottom dock, or at the top of
+/// this list — Settings → Search bar).
 class AppDrawer extends StatefulWidget {
   const AppDrawer({
     super.key,
@@ -34,7 +35,25 @@ class AppDrawer extends StatefulWidget {
     required this.onCompact,
     required this.onWantFull,
     required this.onDismissSearch,
+    this.searchBar,
+    required this.pull,
+    required this.onPull,
+    required this.onPullEnd,
+    required this.onWebSearch,
   });
+
+  /// The search bar when it lives inside the drawer (Settings → Search bar: Top); null when it
+  /// floats at the bottom of the screen.
+  final Widget? searchBar;
+
+  /// Pull-to-search: how far (px) the user has pulled the drawer down past its top, and the
+  /// callbacks that feed it. The home screen decides whether a pull counts.
+  final ValueListenable<double> pull;
+  final ValueChanged<double> onPull;
+  final VoidCallback onPullEnd;
+
+  /// Search results' web rows: search Google (or the Play Store) for the query.
+  final void Function(String query, {bool play}) onWebSearch;
 
   final List<AppEntry> apps;
   final Prefs prefs;
@@ -54,6 +73,11 @@ class AppDrawer extends StatefulWidget {
 class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
   static const _mostUsedCount = 16; // green card: 2 pages × 8
   String? _openId; // the one open folder (Most used is the hero card, always open)
+
+  /// Scroll the list to its very top (where the in-list search bar sits).
+  void toTop() {
+    if (widget.scroll.hasClients) widget.scroll.jumpTo(0);
+  }
 
   /// Back to the resting state (Home pressed / after launching an app).
   void reset() {
@@ -118,6 +142,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   final _headerKeys = <String, GlobalKey>{};
   GlobalKey _header(String id) => _headerKeys.putIfAbsent(id, GlobalKey.new); // keeps header state when it starts/stops pinning
 
+  /// Room the floating search dock takes at the bottom (none when the bar is in the list).
+  double get _dockRoom => widget.searchBar == null ? SearchDock.height : 0;
+
   /// Height of a folder's header row (pill 64 + padding 12 × 2).
   static const _headerExtent = 88.0;
 
@@ -126,7 +153,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   static const _peek = 56.0;
 
   double _maxBodyHeight(Size size, EdgeInsets padding) {
-    final visible = size.height - (DS.gutter + padding.top) - (padding.bottom + SearchDock.height + DS.s24);
+    final visible = size.height - (DS.gutter + padding.top) - (padding.bottom + _dockRoom + DS.s24);
     return math.max(160, visible - 2 * (_peek + DS.stack) - _headerExtent);
   }
 
@@ -184,7 +211,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     // Aim at the layout the sheet is heading to (full screen), not the current one: the sheet
     // expands during the same motion, and a moving target would make the folder overshoot.
     final inset = DS.gutter + pad.top; // pinned top spacer at full screen
-    final dock = pad.bottom + SearchDock.height + DS.s24; // floating search dock
+    final dock = pad.bottom + _dockRoom + DS.s24; // floating search dock
     final visible = MediaQuery.sizeOf(context).height - inset - dock;
     // The marker is the gap just above the folder, so the folder starts DS.stack below it.
     final top = RenderAbstractViewport.of(marker).getOffsetToReveal(marker, 0).offset + DS.stack;
@@ -228,6 +255,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   /// the middle of the list and close the other — the same glide as tapping it. Not mid-drag:
   /// folders resizing under the finger would make the list jump.
   bool _onScrollEnd(ScrollEndNotification n) {
+    if (n.depth == 0 && widget.pull.value > 0) widget.onPullEnd(); // finger lifted mid-pull
     if (n.metrics.axis != Axis.vertical || n.depth != 0 || !_userMoved) return false;
     _userMoved = false;
     if (!_startedFull) return false;
@@ -245,7 +273,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final pos = widget.scroll.position;
     final pad = MediaQuery.paddingOf(context);
     final inset = DS.gutter + pad.top; // pinned spacer at the top
-    final visible = pos.viewportDimension - inset - (pad.bottom + SearchDock.height + DS.s24); // above the dock
+    final visible = pos.viewportDimension - inset - (pad.bottom + _dockRoom + DS.s24); // above the dock
     // The focus line sits in the middle of what's visible. Near either end the list can't bring
     // a folder to the middle (the last folders never get there), so the line slides toward that
     // end instead: at the very bottom it reaches the last folder, at the very top the green card.
@@ -273,6 +301,16 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     }
   }
 
+  // ---- Pull-to-search -----------------------------------------------------------
+
+  /// Dragging down when the list can't go further up (and the sheet can't shrink further):
+  /// that pull is pull-to-search. The home screen decides whether it counts.
+  bool _onOverscroll(OverscrollNotification n) {
+    if (n.depth != 0 || n.metrics.axis != Axis.vertical || n.dragDetails == null) return false;
+    if (n.overscroll < 0) widget.onPull(-n.overscroll);
+    return false;
+  }
+
   /// A finger on the list takes over from the glide.
   bool _onScrollStart(ScrollStartNotification n) {
     if (n.depth == 0) _userMoved = false; // a new scroll: decide afresh where it started
@@ -283,6 +321,8 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   bool _onScroll(ScrollUpdateNotification n) {
     if (n.metrics.axis != Axis.vertical || n.depth != 0) return false; // the main list only
     final d = n.scrollDelta ?? 0;
+    // Mid-pull, moving the finger back up takes the pull back first.
+    if (widget.pull.value > 0 && n.dragDetails != null && d > 0) widget.onPull(-d);
     // Pulling the results down while searching = done searching.
     if (widget.searching && n.dragDetails != null && d < -2) {
       widget.onDismissSearch();
@@ -337,7 +377,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     // Cards in the main list scale 90→100% at its edges (subtle — more read as jumpy); the pinned top strip and the area
     // behind the floating search bar count as out of view.
     Widget edge(Widget child) =>
-        EdgeScale(minScale: .9, startInset: DS.gutter + statusBar * widget.expanded.value, endInset: padding.bottom + SearchDock.height + DS.s12, child: child);
+        EdgeScale(minScale: .9, startInset: DS.gutter + statusBar * widget.expanded.value, endInset: padding.bottom + _dockRoom + DS.s12, child: child);
     Widget box(Widget child) => SliverPadding(
       padding: gutter,
       sliver: SliverToBoxAdapter(child: child),
@@ -371,12 +411,14 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
         box(
           widget.query.trim().isEmpty
               ? hero // suggestions while the field is empty
-              : _ResultsCard(
+              : _SearchResults(
                   query: widget.query.trim(),
                   results: searchApps(widget.apps, widget.query),
                   prefs: prefs,
+                  google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
                   onTap: widget.onLaunch,
                   onLongPress: _longPress,
+                  onWebSearch: widget.onWebSearch,
                 ),
         ),
       ];
@@ -425,34 +467,99 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       color: DS.canvas,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
-      child: NotificationListener<ScrollStartNotification>(
-        onNotification: _onScrollStart,
-        child: NotificationListener<ScrollEndNotification>(
-          onNotification: _onScrollEnd,
-          child: NotificationListener<ScrollUpdateNotification>(
-            onNotification: _onScroll,
-            child: CustomScrollView(
-              controller: widget.scroll,
-              physics: const ClampingScrollPhysics(),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              slivers: [
-                // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
-                // reaches full screen, and pinned folder headers stop just below it. Only this
-                // spacer follows the sheet's drag, so the cards don't rebuild every frame.
-                PinnedHeaderSliver(
-                  child: ValueListenableBuilder<double>(
-                    valueListenable: widget.expanded,
-                    builder: (context, e, _) => SizedBox(
-                      height: DS.gutter + statusBar * e,
-                      child: ColoredBox(color: DS.canvas),
+      // Pull-to-search: the list slides down with the pull and a search pill grows in the gap.
+      child: ValueListenableBuilder<double>(
+        valueListenable: widget.pull,
+        builder: (context, p, list) {
+          final y = pullOffset(p);
+          final t = (p / pullToOpen).clamp(0.0, 1.0);
+          return Stack(
+            children: [
+              Transform.translate(offset: Offset(0, y), child: list),
+              if (p > 0)
+                Positioned(
+                  top: DS.s8 + math.max(0.0, (y - 44) / 2),
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(child: _PullPill(progress: t)),
+                ),
+            ],
+          );
+        },
+        child: NotificationListener<OverscrollNotification>(
+          onNotification: _onOverscroll,
+          child: NotificationListener<ScrollStartNotification>(
+            onNotification: _onScrollStart,
+            child: NotificationListener<ScrollEndNotification>(
+              onNotification: _onScrollEnd,
+              child: NotificationListener<ScrollUpdateNotification>(
+                onNotification: _onScroll,
+                child: CustomScrollView(
+                  controller: widget.scroll,
+                  physics: const ClampingScrollPhysics(),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  slivers: [
+                    // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
+                    // reaches full screen, and pinned folder headers stop just below it. Only this
+                    // spacer follows the sheet's drag, so the cards don't rebuild every frame.
+                    PinnedHeaderSliver(
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: widget.expanded,
+                        builder: (context, e, _) => SizedBox(
+                          height: DS.gutter + statusBar * e,
+                          child: ColoredBox(color: DS.canvas),
+                        ),
+                      ),
                     ),
-                  ),
+                    // The search bar, when it lives in the list (Settings → Search bar: Top).
+                    if (widget.searchBar != null) SliverToBoxAdapter(child: widget.searchBar!),
+                    ...content,
+                    // Room for the floating search dock (and the keyboard while searching).
+                    SliverToBoxAdapter(
+                      child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
+                    ),
+                  ],
                 ),
-                ...content,
-                // Room for the floating search dock (and the keyboard while searching).
-                SliverToBoxAdapter(
-                  child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + SearchDock.height + DS.s32)),
-                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How far a pull of [p] px moves the list: follows the finger, then resists (rubber band).
+double pullOffset(double p) => 140 * (1 - math.exp(-p / 140));
+
+/// Pull this far (px of finger travel) and let go to open search.
+const pullToOpen = 110.0;
+
+/// The pill that grows in the gap while pulling the drawer down: "Pull to search", then
+/// "Release to search" (filled) once far enough.
+class _PullPill extends StatelessWidget {
+  const _PullPill({required this.progress});
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = progress >= 1;
+    return Center(
+      child: Opacity(
+        opacity: progress,
+        child: Transform.scale(
+          scale: .7 + .3 * progress,
+          child: AnimatedContainer(
+            duration: Motion.pressIn,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+            decoration: BoxDecoration(color: ready ? DS.hero : DS.card, borderRadius: BorderRadius.circular(22)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.search_rounded, size: 20, color: ready ? DS.heroInk : DS.ink),
+                const SizedBox(width: DS.s8),
+                Text(ready ? 'Release to search' : 'Pull to search', style: DS.pill.copyWith(color: ready ? DS.heroInk : DS.ink)),
               ],
             ),
           ),
@@ -916,67 +1023,174 @@ class _GridApp extends StatelessWidget {
   }
 }
 
-class _ResultsCard extends StatelessWidget {
-  const _ResultsCard({required this.query, required this.results, required this.prefs, required this.onTap, required this.onLongPress});
+/// Search results: the best match as a big row (Enter opens it), the other matches as an
+/// icon grid, then "search the web" rows — Google (or the browser) and the Play Store.
+class _SearchResults extends StatelessWidget {
+  const _SearchResults({
+    required this.query,
+    required this.results,
+    required this.prefs,
+    required this.google,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onWebSearch,
+  });
   final String query;
   final List<AppEntry> results;
   final Prefs prefs;
+  final bool google; // the Google app is installed → say "Google"
   final ValueChanged<AppEntry> onTap, onLongPress;
+  final void Function(String query, {bool play}) onWebSearch;
+
+  String _where(AppEntry a) => '${a.work ? 'Work · ' : ''}${prefs.folderName(folderFor(a, prefs.folderOverrides))}';
 
   @override
   Widget build(BuildContext context) {
-    if (results.isEmpty) {
-      return OneCard(
-        tone: CardTone.muted,
-        child: Text('No app called “$query”', style: DS.rowSub),
-      );
-    }
-    return OneCard(
-      padding: const EdgeInsets.symmetric(vertical: DS.s8),
-      child: Column(
-        children: [
-          for (final (i, a) in results.indexed)
-            Builder(
-              builder: (rowContext) => InkWell(
-                onTap: () {
-                  Apps.instance.markLaunchFrom(rowContext);
-                  onTap(a);
-                },
-                onLongPress: () => onLongPress(a),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
-                  child: Row(
+    final top = results.firstOrNull;
+    final rest = results.skip(1).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (top == null)
+          OneCard(
+            tone: CardTone.muted,
+            child: Row(
+              children: [
+                Icon(Icons.search_off_rounded, color: DS.inkMuted),
+                const SizedBox(width: DS.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      AppIcon(a, size: 40),
-                      const SizedBox(width: DS.s16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(a.label, style: DS.rowTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            Text('${a.work ? 'Work · ' : ''}${prefs.folderName(folderFor(a, prefs.folderOverrides))}', style: DS.rowSub),
-                          ],
-                        ),
-                      ),
-                      if (i == 0)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: DS.ink, borderRadius: BorderRadius.circular(99)),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Open', style: DS.pill.copyWith(color: DS.card)),
-                              const SizedBox(width: 2),
-                              Icon(Icons.north_east_rounded, size: 14, color: DS.card),
-                            ],
-                          ),
-                        ),
+                      Text('No apps match “$query”', style: DS.rowTitle),
+                      Text('Try searching the web instead', style: DS.rowSub),
                     ],
                   ),
                 ),
+              ],
+            ),
+          )
+        else
+          OneCard(
+            padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s8, DS.s8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Best match: big, with "Open" (also what Enter does).
+                Builder(
+                  builder: (rowContext) => InkWell(
+                    borderRadius: BorderRadius.circular(DS.rMedia),
+                    onTap: () {
+                      Apps.instance.markLaunchFrom(rowContext);
+                      onTap(top);
+                    },
+                    onLongPress: () => onLongPress(top),
+                    child: Padding(
+                      padding: const EdgeInsets.all(DS.s8),
+                      child: Row(
+                        children: [
+                          AppIcon(top, size: 52),
+                          const SizedBox(width: DS.s16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  top.label,
+                                  style: DS.rowTitle.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(_where(top), style: DS.rowSub),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(color: DS.ink, borderRadius: BorderRadius.circular(99)),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Open', style: DS.pill.copyWith(color: DS.card)),
+                                const SizedBox(width: 2),
+                                Icon(Icons.north_east_rounded, size: 14, color: DS.card),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (rest.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
+                    child: CardDivider(),
+                  ),
+                  LayoutBuilder(
+                    builder: (context, c) => Wrap(
+                      children: [
+                        for (final a in rest)
+                          SizedBox(
+                            width: c.maxWidth / 4,
+                            child: _GridApp(app: a, onTap: () => onTap(a), onLongPress: () => onLongPress(a)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        const SizedBox(height: DS.stack),
+        // The web, like the Pixel search bar: hands the query to Google / the Play Store.
+        OneCard(
+          padding: const EdgeInsets.symmetric(vertical: DS.s4),
+          child: Column(
+            children: [
+              _WebRow(icon: Icons.travel_explore_rounded, title: google ? 'Search Google' : 'Search the web', query: query, onTap: () => onWebSearch(query)),
+              _WebRow(icon: Icons.shop_outlined, title: 'Find apps on Play Store', query: query, onTap: () => onWebSearch(query, play: true)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WebRow extends StatelessWidget {
+  const _WebRow({required this.icon, required this.title, required this.query, required this.onTap});
+  final IconData icon;
+  final String title, query;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: DS.cardMuted, shape: BoxShape.circle),
+              child: Icon(icon, size: 22, color: DS.ink),
+            ),
+            const SizedBox(width: DS.s16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                  Text('“$query”', style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
               ),
             ),
-        ],
+            Icon(Icons.north_east_rounded, size: 18, color: DS.inkFaint),
+          ],
+        ),
       ),
     );
   }

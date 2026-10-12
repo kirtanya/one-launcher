@@ -419,6 +419,21 @@ class Prefs extends ChangeNotifier {
   bool get slowFrames => _sp.getBool('slowFrames') ?? false;
   Future<void> setSlowFrames(bool v) => _sp.setBool('slowFrames', v);
 
+  /// Where the search bar lives: 'bottom' (floating dock) or 'top' (in the app drawer, above
+  /// the pinned / most-used card).
+  String get searchPosition => _sp.getString('searchPosition') ?? 'bottom';
+  Future<void> setSearchPosition(String v) async {
+    await _sp.setString('searchPosition', v);
+    notifyListeners();
+  }
+
+  /// Pull down on the app drawer (when it can't scroll further) to open search.
+  bool get pullToSearch => _sp.getBool('pullToSearch') ?? true;
+  Future<void> setPullToSearch(bool v) async {
+    await _sp.setBool('pullToSearch', v);
+    notifyListeners();
+  }
+
   /// Scroll-to-open: the folder that settles in the middle of the app list opens by itself
   /// (and the one before closes). Off by default.
   bool get autoOpenFolders => _sp.getBool('autoOpenFolders') ?? false;

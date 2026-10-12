@@ -137,6 +137,12 @@ class Apps {
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
   Future<void> openNotifications() => _call('openNotifications');
   Future<void> openWallpaperPicker() => _call('openWallpaperPicker');
+
+  /// Search the web for [query] (Google app if installed, else the browser).
+  Future<void> webSearch(String query) => _call('webSearch', {'query': query});
+
+  /// Search the Play Store's apps for [query].
+  Future<void> playSearch(String query) => _call('playSearch', {'query': query});
   Future<void> openHomeSettings() => _call('openHomeSettings');
 
   // ---- Top carousel data ----

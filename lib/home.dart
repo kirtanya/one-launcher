@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -32,7 +34,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
   /// Quick "landing" when the launcher comes into view (back from an app, after unlocking):
   /// a 220 ms settle from 105% to 100% while fading up. Short on purpose — taps work at once.
   late final AnimationController _land = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))..forward();
@@ -56,6 +58,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
   /// Dock shrunk to a circle while the list is scrolled up. A notifier (not setState) so
   /// scrolling only rebuilds the dock, never the screen or the list.
   final _compact = ValueNotifier<bool>(false);
+
+  /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
+  final _pull = ValueNotifier<double>(0);
+
+  /// Lets go of a pull: eases it back to 0 (the list settles as search opens, or snaps back).
+  late final AnimationController _pullBack = AnimationController(vsync: this, duration: Motion.snapDuration)
+    ..addListener(() => _pull.value = _pullFrom * (1 - Curves.easeOutCubic.transform(_pullBack.value)));
+  double _pullFrom = 0;
+
+  /// Search was opened from the resting sheet: closing it glides the sheet back down.
+  bool _searchFromRest = false;
 
   Prefs get prefs => widget.prefs;
 
@@ -116,8 +129,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
         onCompact: _setCompact,
         onWantFull: _expand,
         onDismissSearch: _dismissSearch,
+        searchBar: prefs.searchPosition == 'top' ? _searchBar(inline: true) : null,
+        pull: _pull,
+        onPull: _onPull,
+        onPullEnd: _onPullEnd,
+        onWebSearch: _webSearch,
       ),
     ),
+  );
+
+  /// The search bar: floating at the bottom, or inline at the top of the drawer.
+  Widget _searchBar({required bool inline, bool compact = false}) => SearchDock(
+    inline: inline,
+    compact: compact,
+    active: _searching,
+    controller: _query,
+    focus: _focus,
+    hint: 'Search ${_apps.length} apps',
+    onActivate: _startSearch,
+    onClose: _stopSearch,
+    onChanged: _onQuery,
+    onSubmitted: _onSubmit,
+    onSettings: _settings,
   );
 
   @override
@@ -177,6 +210,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
     prefs.removeListener(_rebuild);
     _sheet.dispose();
     _land.dispose();
+    _pullBack.dispose();
+    _pull.dispose();
     _query.dispose();
     _focus.dispose();
     _expanded.dispose();
@@ -225,8 +260,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
   Future<void> _startSearch() async {
     HapticFeedback.selectionClick();
     _compact.value = false;
+    _searchFromRest = _expanded.value < .5;
     setState(() => _searching = true);
     _focus.requestFocus();
+    if (prefs.searchPosition == 'top') _drawerKey.currentState?.toTop(); // the bar is at the top of the list
     if (_sheet.isAttached) await _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle);
     if (mounted && _searching) setState(() => _showResults = true);
   }
@@ -240,7 +277,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
         _searching = false;
         _showResults = false;
       });
+      // The way back: opened from the resting sheet (tap or pull) → glide back down to it.
+      if (_searchFromRest) _collapse();
     }
+    _searchFromRest = false;
+  }
+
+  // ---- Pull-to-search ------------------------------------------------------
+
+  /// Drawer pulled down past its top. Counts only while the sheet rests (pulling a full-screen
+  /// sheet down shrinks it first) and the gesture is on (Settings → Pull down to search).
+  void _onPull(double delta) {
+    if (!prefs.pullToSearch || _searching || _expanded.value > .01) return;
+    _pullBack.stop();
+    final before = _pull.value;
+    _pull.value = math.max(0, before + delta);
+    if ((before < pullToOpen) != (_pull.value < pullToOpen)) HapticFeedback.selectionClick(); // crossed the line
+  }
+
+  void _onPullEnd() {
+    // Once per release: opening search ends scrolls of its own, which report back here.
+    if (_pull.value <= 0 || _pullBack.isAnimating) return;
+    final open = _pull.value >= pullToOpen;
+    _pullFrom = _pull.value;
+    _pullBack.forward(from: 0);
+    if (open) _startSearch();
+  }
+
+  /// Search the web (or the Play Store) for what's typed, then tidy up like after an app launch.
+  Future<void> _webSearch(String q, {bool play = false}) async {
+    play ? await Apps.instance.playSearch(q) : await Apps.instance.webSearch(q);
+    Future.delayed(const Duration(milliseconds: 350), _stopSearch);
   }
 
   void _onQuery(String q) {
@@ -249,9 +316,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
     if (prefs.autoOpenSingleMatch && q.trim().isNotEmpty && r.length == 1) _launch(r.first);
   }
 
+  /// Enter on the keyboard: the top app, or — when no app matches — a web search.
   void _onSubmit(String q) {
+    if (q.trim().isEmpty) return;
     final r = searchApps(_apps, q);
-    if (r.isNotEmpty) _launch(r.first);
+    r.isNotEmpty ? _launch(r.first) : _webSearch(q.trim());
   }
 
   bool _collapseOnRelease = false;
@@ -440,48 +509,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Si
                   ),
 
                   // ---- Fade under the dock, so it reads as floating above the cards. ----
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
-                    child: IgnorePointer(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          // Sheet colour (follows the theme), fading in under the dock.
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                  if (prefs.searchPosition != 'top')
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            // Sheet colour (follows the theme), fading in under the dock.
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
 
-                  // ---- Search dock (iOS style), floating at the bottom. ----
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: RepaintBoundary(
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: _compact,
-                        builder: (context, compact, _) => SearchDock(
-                          compact: compact,
-                          active: _searching,
-                          controller: _query,
-                          focus: _focus,
-                          hint: 'Search ${_apps.length} apps',
-                          onActivate: _startSearch,
-                          onClose: _stopSearch,
-                          onChanged: _onQuery,
-                          onSubmitted: _onSubmit,
-                          onSettings: _settings,
+                  // ---- Search dock (iOS style), floating at the bottom (unless it's in the drawer). ----
+                  if (prefs.searchPosition != 'top')
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: RepaintBoundary(
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: _compact,
+                          builder: (context, compact, _) => _searchBar(inline: false, compact: compact),
                         ),
                       ),
                     ),
-                  ),
                 ],
               );
             },

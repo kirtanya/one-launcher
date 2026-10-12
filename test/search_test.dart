@@ -1,0 +1,133 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:one_launcher/main.dart';
+import 'package:one_launcher/prefs.dart';
+import 'package:one_launcher/search_dock.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  final calls = <MethodCall>[];
+  Future<Prefs> launch(WidgetTester tester, {Map<String, Object> stored = const {}}) async {
+    calls.clear();
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    addTearDown(tester.view.reset);
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      calls.add(call);
+      if (call.method == 'getApps') {
+        return [
+          for (final n in ['WhatsApp', 'Slack', 'Paytm', 'Spotify', 'Signal', 'Splitwise', 'Maps']) {'package': 'com.${n.toLowerCase()}', 'label': n, 'system': false, 'category': -1, 'installed': 0},
+        ];
+      }
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({
+      'favourites': ['com.paytm', 'com.slack'], // the green card shows them
+      ...stored,
+    });
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncher(prefs: prefs));
+    await tester.pumpAndSettle();
+    return prefs;
+  }
+
+  double sheetTop(WidgetTester t) => t.getTopLeft(find.text('Paytm').first).dy;
+
+  testWidgets('pull the drawer down → "Release to search" → search opens; closing glides back', (tester) async {
+    await launch(tester);
+    final rest = sheetTop(tester);
+    expect(find.byType(TextField), findsNothing);
+
+    final g = await tester.startGesture(tester.getCenter(find.text('Paytm').first));
+    for (var i = 0; i < 6; i++) {
+      await g.moveBy(const Offset(0, 15));
+      await tester.pump();
+    }
+    expect(find.text('Pull to search'), findsOneWidget, reason: 'a pill grows in the gap');
+    expect(sheetTop(tester), greaterThan(rest + 20), reason: 'the list follows the finger');
+    for (var i = 0; i < 8; i++) {
+      await g.moveBy(const Offset(0, 15));
+      await tester.pump();
+    }
+    expect(find.text('Release to search'), findsOneWidget);
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget, reason: 'search is open');
+    expect(find.text('Pull to search'), findsNothing);
+    expect(find.text('Release to search'), findsNothing);
+
+    // Type → results: best match, the others as a grid, then the web.
+    await tester.enterText(find.byType(TextField), 's');
+    await tester.pumpAndSettle();
+    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Search the web'), findsOneWidget, reason: 'no Google app here → "the web"');
+    expect(find.text('Find apps on Play Store'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/17_search_results.png'));
+    await tester.tap(find.text('Find apps on Play Store'));
+    await tester.pump();
+    expect(calls.last.method, 'playSearch');
+    expect(calls.last.arguments, {'query': 's'});
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+    expect(find.byType(TextField), findsNothing, reason: 'search closes after handing off');
+    expect(sheetTop(tester), closeTo(rest, 2), reason: 'back to the resting drawer (reverse of the pull)');
+  });
+
+  testWidgets('a short pull springs back; the gesture can be turned off', (tester) async {
+    final prefs = await launch(tester);
+    final rest = sheetTop(tester);
+    await tester.dragFrom(tester.getCenter(find.text('Paytm').first), const Offset(0, 60));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'not far enough');
+    expect(sheetTop(tester), closeTo(rest, 1), reason: 'sprang back');
+
+    await prefs.setPullToSearch(false);
+    await tester.pumpAndSettle();
+    final g = await tester.startGesture(tester.getCenter(find.text('Paytm').first));
+    for (var i = 0; i < 14; i++) {
+      await g.moveBy(const Offset(0, 15));
+      await tester.pump();
+    }
+    expect(find.text('Pull to search'), findsNothing);
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets('search bar at the top of the drawer; Enter with no app match searches the web', (tester) async {
+    await launch(tester, stored: {'searchPosition': 'top'});
+    expect(find.byType(SearchDock), findsOneWidget);
+    final bar = tester.getTopLeft(find.byType(SearchDock));
+    expect(bar.dy, lessThan(tester.getTopLeft(find.text('Paytm').first).dy), reason: 'above the pinned / most-used card');
+    expect(bar.dy, lessThan(tester.view.physicalSize.height / tester.view.devicePixelRatio * .6), reason: 'not floating at the bottom');
+    expect(find.byTooltip('Launcher settings'), findsOneWidget, reason: 'settings sits next to it');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/18_search_top.png'));
+
+    await tester.tap(find.text('Search 7 apps'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'weather today');
+    await tester.pumpAndSettle();
+    expect(find.text('No apps match “weather today”'), findsOneWidget);
+    await tester.testTextInput.receiveAction(TextInputAction.go);
+    await tester.pump();
+    expect(calls.last.method, 'webSearch');
+    expect(calls.last.arguments, {'query': 'weather today'});
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+  });
+
+  testWidgets('Settings → Search: position + pull-down switch', (tester) async {
+    final prefs = await launch(tester);
+    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Search'));
+    await tester.tap(find.text('Search'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Top of the app drawer'));
+    await tester.pumpAndSettle();
+    expect(prefs.searchPosition, 'top');
+    await tester.tap(find.text('Pull down to search'));
+    await tester.pumpAndSettle();
+    expect(prefs.pullToSearch, isFalse);
+  });
+}

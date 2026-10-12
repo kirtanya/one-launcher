@@ -110,12 +110,22 @@ void main() {
     // Long-press the top half → choose its pages; switch Battery on.
     await tester.longPress(find.text('Screen time today'));
     await tester.pumpAndSettle();
-    expect(find.text('Top widgets'), findsOneWidget);
+    expect(find.text('Top of home'), findsOneWidget);
+    for (final g in ['Pages', 'Clock', 'Size & spacing', 'Around it']) {
+      await tester.ensureVisible(find.text(g).last); // 'Clock' is also an app name
+      expect(find.text(g), findsWidgets);
+    }
+    await tester.ensureVisible(find.byType(Switch).at(2));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Switch).at(2));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c_customise_top.png'));
-    // Clock style: pick the Bold preset, then nudge the weight slider.
-    expect(find.text('Clock style'), findsOneWidget);
+    // Clock style (one level down): pick the Bold preset, then nudge the weight slider.
+    await tester.ensureVisible(find.text('Clock style'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clock style'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Back'), findsOneWidget);
     await tester.ensureVisible(find.text('Bold'));
     await tester.tap(find.text('Bold'));
     await tester.pumpAndSettle();
@@ -123,7 +133,7 @@ void main() {
     await tester.drag(find.byType(Slider).first, const Offset(-60, 0));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_clock_style.png'));
-    Navigator.of(tester.element(find.text('Top widgets'))).pop();
+    Navigator.of(tester.element(find.text('Weight'))).pop();
     await tester.pumpAndSettle();
     await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
     await tester.pumpAndSettle();

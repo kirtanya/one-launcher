@@ -24,8 +24,12 @@ class SearchDock extends StatelessWidget {
     required this.onChanged,
     required this.onSubmitted,
     required this.onSettings,
+    this.inline = false,
   });
 
+  /// Inside the app drawer (Settings → Search bar: Top) instead of floating at the bottom:
+  /// no keyboard lift, no shadow.
+  final bool inline;
   final bool compact;
   final bool active;
   final TextEditingController controller;
@@ -43,14 +47,14 @@ class SearchDock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final bottom = math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12;
-    final small = compact && !active;
+    final bottom = inline ? DS.s8 : math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12;
+    final small = compact && !active && !inline;
     // Settings sits right of the bar at rest; they slide out while searching
     // or while the list is scrolled (dock shrinks to just the search circle).
     final tools = !active && !small;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, bottom),
+      padding: EdgeInsets.fromLTRB(inline ? DS.gutter : DS.s16, 0, inline ? DS.gutter : DS.s16, bottom),
       child: SizedBox(
         height: height,
         child: LayoutBuilder(
