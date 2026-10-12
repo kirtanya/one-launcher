@@ -203,6 +203,8 @@ class _TvHomeState extends State<TvHome> {
 
     setState(() {
       _rows = [
+        // ▶ Resume: what's playing / paused, one press away (above the quick actions).
+        if (cont.firstOrNull case final now? when now.kind == TvKind.resume) TvRow('resume', 'Resume', [now], chips: true),
         TvRow('quick', 'Quick actions', quick, chips: true),
         if (cont.isNotEmpty) TvRow('continue', 'Continue watching', cont, wide: true),
         if (fav.isNotEmpty) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
@@ -271,7 +273,7 @@ class _TvHomeState extends State<TvHome> {
   /// Landing, Home and Back all go to the default spot: the first quick action, or — with no
   /// quick actions — the first app. (Search is one ↑ away from either.)
   void _focusDefault() {
-    final quick = _rows.indexWhere((r) => r.chips && r.items.any((it) => it.key != 'q:edit'));
+    final quick = _rows.indexWhere((r) => r.id == 'quick' && r.items.any((it) => it.key != 'q:edit'));
     final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
     if (quick >= 0) {
       _focus(quick, 0);
@@ -388,9 +390,13 @@ class _TvHomeState extends State<TvHome> {
     const curve = Curves.easeOutCubic;
     // Vertical: the focused row slides to the top of the rows area; rows above slide out.
     if (_v.hasClients) {
+      // Resume + quick actions stay together at the top: on either, nothing scrolls.
+      final topGroup = _rows.indexWhere((x) => !x.chips);
       var y = 0.0;
-      for (var k = 0; k < r; k++) {
-        y += _rows[k].height;
+      if (topGroup < 0 || r >= topGroup) {
+        for (var k = 0; k < r; k++) {
+          y += _rows[k].height;
+        }
       }
       _v.animateTo(y.clamp(0.0, _v.position.maxScrollExtent), duration: dur, curve: curve);
     }
@@ -452,7 +458,7 @@ class _TvHomeState extends State<TvHome> {
       case TvKind.app:
         tv.launch(item.package);
       case TvKind.resume:
-        tv.mediaOpen();
+        tv.mediaResume(); // player to the front + play
       case TvKind.program:
         tv.openProgram(item.intent, item.package);
       case TvKind.action:
@@ -468,7 +474,7 @@ class _TvHomeState extends State<TvHome> {
 
   void _options(TvRow row, int i) {
     final item = row.items[i];
-    if (row.chips) {
+    if (row.chips && row.id == 'quick') {
       if (item.key == 'q:edit') return _editQuick();
       showTvPanel(
         context,
@@ -699,16 +705,27 @@ class _TvHomeState extends State<TvHome> {
                 children: [
                   for (final (i, item) in row.items.indexed) ...[
                     if (i > 0) const SizedBox(width: DS.s8),
-                    _QuickChip(
-                      key: ValueKey(_key(r, i)),
-                      item: item,
-                      focusNode: _node(r, i),
-                      moving: _moving == _key(r, i),
-                      onSelect: () => _moving != null ? _endMove() : _open(item),
-                      onOptions: () => _options(row, i),
-                      onMove: (d) => _move(r, i, d),
-                      onFocus: () => _onFocus(r, i),
-                    ),
+                    if (row.id == 'resume')
+                      _ResumeButton(
+                        key: ValueKey(_key(r, i)),
+                        item: item,
+                        focusNode: _node(r, i),
+                        onSelect: () => _open(item),
+                        onOptions: () => _options(row, i),
+                        onMove: (d) => _move(r, i, d),
+                        onFocus: () => _onFocus(r, i),
+                      )
+                    else
+                      _QuickChip(
+                        key: ValueKey(_key(r, i)),
+                        item: item,
+                        focusNode: _node(r, i),
+                        moving: _moving == _key(r, i),
+                        onSelect: () => _moving != null ? _endMove() : _open(item),
+                        onOptions: () => _options(row, i),
+                        onMove: (d) => _move(r, i, d),
+                        onFocus: () => _onFocus(r, i),
+                      ),
                   ],
                 ],
               ),
@@ -1315,6 +1332,68 @@ class _QuickChip extends StatelessWidget {
                   Icon(icon, size: 20, color: f ? DS.ink : TvDS.ink),
                 if (!edit) ...[const SizedBox(width: DS.s8), Text(item.title, style: TvDS.hint.copyWith(fontSize: 14, color: f ? DS.ink : TvDS.ink))],
                 if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? DS.ink : TvDS.ink),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The big "▶ Resume" button above the quick actions: picks up what's playing / paused.
+class _ResumeButton extends StatelessWidget {
+  const _ResumeButton({super.key, required this.item, required this.focusNode, required this.onSelect, required this.onOptions, this.onMove, this.onFocus});
+  final TvItem item;
+  final FocusNode focusNode;
+  final VoidCallback onSelect, onOptions;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = item.appName;
+    return Semantics(
+      button: true,
+      label: 'Resume ${item.title}',
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onLongSelect: onOptions,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => AnimatedScale(
+          scale: f ? TvDS.focusScaleCard : 1,
+          duration: Motion.popDuration,
+          curve: Motion.pop,
+          child: AnimatedContainer(
+            duration: Motion.pressIn * 2,
+            height: 40,
+            padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
+            decoration: BoxDecoration(
+              // Always the strongest thing in its row: theme colour at rest, white when focused.
+              color: f ? TvDS.surfaceFocused : DS.hero,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.play_arrow_rounded, size: 24, color: f ? DS.ink : DS.heroInk),
+                const SizedBox(width: DS.s4),
+                Text(
+                  'Resume',
+                  style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? DS.ink : DS.heroInk),
+                ),
+                const SizedBox(width: DS.s8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: Text(
+                    [item.title, if (app != null && app.isNotEmpty) 'on $app'].join(' '),
+                    style: TvDS.hint.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: (f ? DS.ink : DS.heroInk).withValues(alpha: .75)),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ),

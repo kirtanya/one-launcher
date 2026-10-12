@@ -155,6 +155,28 @@ class MediaWatcher(
                 if (controller?.playbackState?.state == PlaybackState.STATE_PLAYING) t?.pause() else t?.play()
                 result.success(true)
             }
+            // Resume: bring the app's player to the front, then press play once it's there
+            // (many apps ignore play while they're in the background).
+            "mediaResume" -> {
+                val c = controller
+                if (c == null) {
+                    result.success(false)
+                } else {
+                    val pm = activity.packageManager
+                    val opened = try {
+                        c.sessionActivity?.send()
+                        c.sessionActivity != null
+                    } catch (e: Exception) {
+                        false
+                    }
+                    if (!opened) {
+                        (pm.getLeanbackLaunchIntentForPackage(c.packageName) ?: pm.getLaunchIntentForPackage(c.packageName))
+                            ?.let { activity.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    }
+                    main.postDelayed({ try { c.transportControls.play() } catch (e: Exception) {} }, 700)
+                    result.success(true)
+                }
+            }
             "mediaNext" -> { t?.skipToNext(); result.success(true) }
             "mediaPrev" -> { t?.skipToPrevious(); result.success(true) }
             "mediaOpen" -> {

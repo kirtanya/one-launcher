@@ -104,6 +104,7 @@ class TvApps {
   }
 
   Future<void> mediaOpen() => _call('mediaOpen');
+  Future<void> mediaResume() => _call('mediaResume');
   Future<void> openNotificationAccess() => _call('openNotificationAccess');
   Future<void> openProgram(String? intent, String package) => _call('openProgram', {'intent': intent, 'package': package});
 

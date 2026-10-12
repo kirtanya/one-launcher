@@ -58,8 +58,15 @@ void main() {
     expect(find.text('Inputs'), findsOneWidget);
     expect(find.text('Network'), findsOneWidget);
     expect(find.text('Settings'), findsWidgets); // chip + the Settings app tile
+    // ▶ Resume sits right above the quick actions (something is paused: The Long Night).
+    expect(find.text('Resume'), findsWidgets);
     await _press(tester, LogicalKeyboardKey.arrowUp);
-    expect(_focused(), 'h:search', reason: 'Search is one ↑ away');
+    expect(_focused(), startsWith('resume:'));
+    expect(find.text('The Long Night on Netflix'), findsOneWidget);
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_8_resume.png'));
+    await _press(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(), 'h:search', reason: 'then Search');
+    await _press(tester, LogicalKeyboardKey.arrowDown);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), 'quick:t:inputs');
     expect(find.text('Open Inputs'), findsOneWidget, reason: 'hint names the chip; the title block keeps the show');
@@ -109,9 +116,12 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), startsWith('quick:'));
     await _press(tester, LogicalKeyboardKey.arrowUp);
+    expect(_focused(), startsWith('resume:'));
+    await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), startsWith('h:'));
-    await _press(tester, LogicalKeyboardKey.arrowDown);
-    await _press(tester, LogicalKeyboardKey.arrowDown);
+    for (var k = 0; k < 3; k++) {
+      await _press(tester, LogicalKeyboardKey.arrowDown);
+    }
     expect(_focused(), third);
 
     // Hold OK → options panel (and letting go doesn't pick the first option).
@@ -163,6 +173,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    await _press(tester, LogicalKeyboardKey.arrowUp);
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), 'h:search');
 
