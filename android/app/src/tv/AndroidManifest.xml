@@ -43,8 +43,8 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
-        <!-- Invisible: the phone remote opens onelauncher://brightness?level=N, this sets the
-             backlight and closes (see BrightnessActivity.kt). -->
+        <!-- Invisible: the phone remote opens onelauncher://picture (the TV's picture panel) or
+             onelauncher://brightness?level=N (see BrightnessActivity.kt). -->
         <activity
             android:name=".BrightnessActivity"
             android:exported="true"
@@ -57,6 +57,7 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="onelauncher" android:host="brightness"/>
+                <data android:scheme="onelauncher" android:host="picture"/>
             </intent-filter>
         </activity>
     </application>

@@ -297,7 +297,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                               children: [
                                 _Volume(onKey: _press, volume: tv.volume),
                                 const SizedBox(height: DS.s8),
-                                _Brightness(prefs: prefs),
+                                const _Picture(),
                               ],
                             ),
                           ),
@@ -598,66 +598,48 @@ class _Volume extends StatelessWidget {
   );
 }
 
-/// Brightness slider (through One Launcher TV on the TV). Sends while dragging — at most every
-/// 300 ms — and on release; remembers the value, since TVs don't report it.
-class _Brightness extends StatefulWidget {
-  const _Brightness({required this.prefs});
-  final Prefs prefs;
+/// Picture & brightness: opens the TV's own picture panel (through One Launcher TV on the TV) —
+/// TVs keep their backlight there, out of reach of any remote command; adjust it with the arrows.
+class _Picture extends StatelessWidget {
+  const _Picture();
 
   @override
-  State<_Brightness> createState() => _BrightnessState();
-}
-
-class _BrightnessState extends State<_Brightness> {
-  late double _v = widget.prefs.tvBrightness.toDouble();
-  DateTime _sent = DateTime(0);
-
-  void _send(double v, {bool force = false}) {
-    final now = DateTime.now();
-    if (!force && now.difference(_sent) < const Duration(milliseconds: 300)) return;
-    _sent = now;
-    TvRemote.instance.setBrightness(v.round());
-  }
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 64,
-    padding: const EdgeInsets.symmetric(horizontal: DS.s4),
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(32)),
-    child: Row(
-      children: [
-        Tooltip(
-          message: 'Brightness',
-          child: SizedBox(width: 48, child: Icon(Icons.light_mode_outlined, color: DS.ink)),
+  Widget build(BuildContext context) => Material(
+    color: DS.cardMuted,
+    borderRadius: BorderRadius.circular(32),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        TvRemote.instance.openPicture();
+      },
+      child: SizedBox(
+        height: 64,
+        child: Row(
+          children: [
+            SizedBox(width: 56, child: Icon(Icons.light_mode_outlined, color: DS.ink)),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Picture & brightness', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                  Text(
+                    'Opens on your TV · adjust Backlight with the arrows',
+                    style: DS.rowSub.copyWith(fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: DS.s16),
+              child: Icon(Icons.north_east_rounded, size: 18, color: DS.inkFaint),
+            ),
+          ],
         ),
-        Expanded(
-          child: Slider(
-            value: _v,
-            max: 100,
-            divisions: 20,
-            activeColor: DS.ink,
-            inactiveColor: DS.hairline,
-            thumbColor: DS.ink,
-            onChanged: (x) {
-              if (x.round() != _v.round()) HapticFeedback.selectionClick();
-              setState(() => _v = x);
-              _send(x);
-            },
-            onChangeEnd: (x) {
-              _send(x, force: true);
-              widget.prefs.setTvBrightness(x.round());
-            },
-          ),
-        ),
-        SizedBox(
-          width: 48,
-          child: Text(
-            '${_v.round()}%',
-            textAlign: TextAlign.center,
-            style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ),
-      ],
+      ),
     ),
   );
 }

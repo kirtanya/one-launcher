@@ -13,9 +13,14 @@ void main() {
     addTearDown(tester.view.reset);
     final calls = <MethodCall>[];
     Future<void> send(Map<String, Object?> m) async {
-      await tester.binding.defaultBinaryMessenger.handlePlatformMessage('one_launcher/apps', const StandardMethodCodec().encodeMethodCall(MethodCall('tvState', m)), (_) {});
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        'one_launcher/apps',
+        const StandardMethodCodec().encodeMethodCall(MethodCall('tvState', m)),
+        (_) {},
+      );
       await tester.pumpAndSettle();
     }
+
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
       calls.add(call);
       switch (call.method) {
@@ -42,7 +47,7 @@ void main() {
     expect(find.text('Kame TV'), findsOneWidget);
     expect(find.text('Connected'), findsOneWidget);
     expect(find.text('10'), findsOneWidget, reason: 'TV volume shown');
-    expect(find.byType(Slider), findsNWidgets(2), reason: 'volume + brightness sliders');
+    expect(find.byType(Slider), findsOneWidget, reason: 'volume slider');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/22_remote.png'));
 
     // Drag the slider up → several volume-up presses (no absolute volume in the protocol).
@@ -52,13 +57,11 @@ void main() {
     final ups = calls.where((c) => c.method == 'tvKey' && (c.arguments as Map)['code'] == 24).length;
     expect(ups, greaterThan(3), reason: 'pressed volume up to reach the dragged level ($ups)');
 
-    // Brightness: through One Launcher TV on the TV (the protocol has no brightness).
+    // Picture & brightness: opens the TV's own picture panel (via One Launcher TV).
     calls.clear();
-    await tester.drag(find.byType(Slider).last, const Offset(80, 0));
+    await tester.tap(find.text('Picture & brightness'));
     await tester.pumpAndSettle();
-    final link = calls.lastWhere((c) => c.method == 'tvAppLink');
-    expect((link.arguments as Map)['link'], startsWith('onelauncher://brightness?level='));
-    expect(prefs.tvBrightness, greaterThan(40), reason: 'remembered');
+    expect((calls.lastWhere((c) => c.method == 'tvAppLink').arguments as Map)['link'], 'onelauncher://picture');
 
     // The TV focuses a text field → a typing bar with the phone keyboard; typing goes to the TV.
     await send({'state': 'ime', 'host': '192.168.1.23', 'text': 'stra', 'label': 'Search'});
