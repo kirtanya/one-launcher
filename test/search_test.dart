@@ -116,6 +116,48 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 400));
   });
 
+  testWidgets('search finds phone settings; sources can be switched off; results stack upward from the bar', (tester) async {
+    final prefs = await launch(tester);
+    await tester.tap(find.text('Search 7 apps'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'wifi');
+    await tester.pumpAndSettle();
+    expect(find.text('Phone settings'), findsOneWidget);
+    expect(find.text('Wi-Fi'), findsOneWidget);
+    await tester.tap(find.text('Wi-Fi'));
+    await tester.pump();
+    expect(calls.last.method, 'openSetting');
+    expect(calls.last.arguments, {'action': 'android.settings.WIFI_SETTINGS'});
+    await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+    // Bar at the bottom: the best app match sits lowest, the web card above it.
+    await tester.tap(find.text('Search 7 apps'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'sp');
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('Search the web')).dy, lessThan(tester.getTopLeft(find.text('Open')).dy), reason: 'results grow upward from the bar');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/19_results_upward.png'));
+
+    // Search in: no web, no Play Store.
+    await prefs.setSearchIn('google', false);
+    await prefs.setSearchIn('play', false);
+    await tester.pumpAndSettle();
+    expect(find.text('Search the web'), findsNothing);
+    expect(find.text('Find apps on Play Store'), findsNothing);
+    expect(find.text('Open'), findsOneWidget, reason: 'apps still searched');
+  });
+
+  testWidgets('clock roundness: slider + presets set the ROND axis', (tester) async {
+    final prefs = await launch(tester);
+    await prefs.setClockStyle(round: 70);
+    await tester.pumpAndSettle();
+    final style = tester.widget<Text>(find.byType(Text).evaluate().map((e) => e.widget).whereType<Text>().where((t) => t.style?.fontFamily == 'ClockFlex').isEmpty
+        ? find.byType(Text).first
+        : find.byWidgetPredicate((w) => w is Text && w.style?.fontFamily == 'ClockFlex').first).style;
+    expect(style?.fontVariations?.firstWhere((v) => v.axis == 'ROND').value, 70);
+    expect(prefs.clockRound, 70);
+  });
+
   testWidgets('Settings → Search: position + pull-down switch', (tester) async {
     final prefs = await launch(tester);
     await tester.tap(find.byTooltip('Launcher settings'));
