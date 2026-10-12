@@ -11,6 +11,7 @@ Play may ask why the app uses these. All are used only on the phone.
 | Request uninstall (REQUEST_DELETE_PACKAGES) | Lets users uninstall an app from its long-press menu (Android still asks to confirm). | When the user taps Uninstall |
 | Set alarm (SET_ALARM) | The Set timer / Alarms quick actions open the phone's Clock app to set them. | No prompt (normal permission) |
 | Expand status bar (EXPAND_STATUS_BAR) | Swipe down on the home screen opens notifications, like other launchers. | No prompt (normal permission) |
+| Internet (INTERNET) | TV remote only: connects to the user's own Google TV / Android TV on the local Wi-Fi (Android requires this permission for any network connection). No servers are contacted. | No prompt (normal permission); the user pairs a TV with the code it shows |
 | App widgets (bind widgets) | Lets users place other apps' widgets on the top area. | Android asks the user when adding a widget |
 
 **Sensitive-permission declarations:** none of these are on Google's restricted list (SMS, call

@@ -2,10 +2,10 @@
 
 **Does your app collect or share any of the required user data types?** → **No**
 
-Why: One Launcher has no internet permission, no analytics, no ads and no accounts. Everything it
+Why: One Launcher contacts no servers — no analytics, no ads, no accounts. Its only network use is the TV remote, which talks directly to the user's own TV on the local Wi-Fi. Everything it
 reads (app list, usage time, calendar events, what's playing) is used on the phone to draw the
 screen and is never sent anywhere. Google's definition of "collect" is transmitting data off the
-device, which the app cannot do.
+device to the developer or third parties — the remote only sends key presses to the user's own TV.
 
 - Is all user data encrypted in transit? → Not applicable (no data leaves the device)
 - Do you provide a way for users to request deletion? → Not applicable; uninstalling or clearing

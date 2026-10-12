@@ -39,6 +39,10 @@ YOUR COLOURS, YOUR WALLPAPER
 • A clock font you tune yourself: weight, width and slant
 • Dim your wallpaper for readability, or use any photo as your background — move, zoom and blur it to fit
 
+TV REMOTE
+• Control your Google TV or Android TV from the dock: D-pad, volume, play/pause, power, and open YouTube, Netflix and more
+• Pair once with the code on your TV; works on your home Wi-Fi
+
 MADE FOR EVERY PHONE
 • Work profile apps included
 • Lighter effects switch on automatically on budget phones, so it stays smooth everywhere
@@ -46,6 +50,6 @@ MADE FOR EVERY PHONE
 
 PRIVATE BY DESIGN
 • No ads, no tracking, no accounts
-• One Launcher has no internet access — nothing you do ever leaves your phone
+• Nothing you do leaves your phone: the only connection it ever makes is to your own TV on your Wi-Fi, for the remote
 
 Set One Launcher as your home app in Settings to get started.
