@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'ui/ds.dart';
 import 'ui/perf.dart';
@@ -25,7 +26,11 @@ class SearchDock extends StatelessWidget {
     required this.onSubmitted,
     required this.onSettings,
     this.inline = false,
+    this.onSwipeClose,
   });
+
+  /// Swiped down on the bar while searching (defaults to [onClose]).
+  final VoidCallback? onSwipeClose;
 
   /// Inside the app drawer (Settings → Search bar: Top) instead of floating at the bottom:
   /// no keyboard lift, no shadow.
@@ -53,69 +58,88 @@ class SearchDock extends StatelessWidget {
     // or while the list is scrolled (dock shrinks to just the search circle).
     final tools = !active && !small;
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(inline ? DS.gutter : DS.s16, 0, inline ? DS.gutter : DS.s16, bottom),
-      child: SizedBox(
-        height: height,
-        child: LayoutBuilder(
-          builder: (context, c) {
-            final w = c.maxWidth;
-            final pillRight = active ? _slot : (small ? 0.0 : _slot);
-            final pillWidth = active ? w - _slot : (small ? height : w - _slot);
-            Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
-              duration: Motion.snapDuration,
-              curve: Motion.snap,
-              top: 0,
-              bottom: 0,
-              right: right,
-              width: height,
-              child: AnimatedOpacity(
+    // Searching at the bottom: swipe down on the bar to close search (the results above
+    // scroll on their own, so this is the one place that closes it).
+    final swipeToClose = active && !inline;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragUpdate: swipeToClose ? (d) => _swipe += d.delta.dy : null,
+      onVerticalDragStart: swipeToClose ? (_) => _swipe = 0 : null,
+      onVerticalDragEnd: swipeToClose
+          ? (d) {
+              if (_swipe > 24 || (d.primaryVelocity ?? 0) > 300) {
+                HapticFeedback.selectionClick();
+                (onSwipeClose ?? onClose)();
+              }
+            }
+          : null,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(inline ? DS.gutter : DS.s16, 0, inline ? DS.gutter : DS.s16, bottom),
+        child: SizedBox(
+          height: height,
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final w = c.maxWidth;
+              final pillRight = active ? _slot : (small ? 0.0 : _slot);
+              final pillWidth = active ? w - _slot : (small ? height : w - _slot);
+              Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
                 duration: Motion.snapDuration,
-                curve: Curves.easeOut,
-                opacity: shown ? 1 : 0,
-                child: IgnorePointer(ignoring: !shown, child: child),
-              ),
-            );
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                // The pill. Anchored to the right so it shrinks into a circle on the right.
-                AnimatedPositioned(
+                curve: Motion.snap,
+                top: 0,
+                bottom: 0,
+                right: right,
+                width: height,
+                child: AnimatedOpacity(
                   duration: Motion.snapDuration,
-                  curve: Motion.settle,
-                  top: 0,
-                  bottom: 0,
-                  right: pillRight,
-                  width: pillWidth,
-                  child: _Pill(
-                    small: small,
-                    active: active,
-                    controller: controller,
-                    focus: focus,
-                    hint: hint,
-                    onActivate: onActivate,
-                    onChanged: onChanged,
-                    onSubmitted: onSubmitted,
+                  curve: Curves.easeOut,
+                  opacity: shown ? 1 : 0,
+                  child: IgnorePointer(ignoring: !shown, child: child),
+                ),
+              );
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // The pill. Anchored to the right so it shrinks into a circle on the right.
+                  AnimatedPositioned(
+                    duration: Motion.snapDuration,
+                    curve: Motion.settle,
+                    top: 0,
+                    bottom: 0,
+                    right: pillRight,
+                    width: pillWidth,
+                    child: _Pill(
+                      small: small,
+                      active: active,
+                      controller: controller,
+                      focus: focus,
+                      hint: hint,
+                      onActivate: onActivate,
+                      onChanged: onChanged,
+                      onSubmitted: onSubmitted,
+                    ),
                   ),
-                ),
-                slide(
-                  right: tools ? 0 : -_slot,
-                  shown: tools,
-                  child: _DockCircle(icon: Icons.tune_rounded, tooltip: 'Launcher settings', onTap: onSettings),
-                ),
-                // Close button slides in from the right while searching.
-                slide(
-                  right: active ? 0 : -(height + DS.s16),
-                  shown: active,
-                  child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: onClose),
-                ),
-              ],
-            );
-          },
+                  slide(
+                    right: tools ? 0 : -_slot,
+                    shown: tools,
+                    child: _DockCircle(icon: Icons.tune_rounded, tooltip: 'Launcher settings', onTap: onSettings),
+                  ),
+                  // Close button slides in from the right while searching.
+                  slide(
+                    right: active ? 0 : -(height + DS.s16),
+                    shown: active,
+                    child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: onClose),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
   }
+
+  /// Distance of the current swipe on the bar (down = positive).
+  static double _swipe = 0;
 }
 
 /// White floating circle with a soft shadow, matching the search pill.

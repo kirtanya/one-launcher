@@ -435,7 +435,10 @@ class Prefs extends ChangeNotifier {
   Future<void> setSearchIn(String id, bool on) async {
     final s = searchIn;
     on ? s.add(id) : s.remove(id);
-    await _sp.setStringList('searchIn', [for (final x in searchSourceIds) if (s.contains(x)) x]);
+    await _sp.setStringList('searchIn', [
+      for (final x in searchSourceIds)
+        if (s.contains(x)) x,
+    ]);
     notifyListeners();
   }
 

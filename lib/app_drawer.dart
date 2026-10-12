@@ -96,21 +96,6 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (_openId != null) setState(() => _openId = null);
   }
 
-  /// Results growing upward from the bottom bar: keep the list scrolled to its end, so the
-  /// best match sits just above the bar (and the keyboard) and more results are a scroll up —
-  /// even when there are more than fit.
-  bool _bottomQueued = false;
-  void _stickToBottom() {
-    if (_bottomQueued) return;
-    _bottomQueued = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _bottomQueued = false;
-      if (!mounted || !widget.scroll.hasClients) return;
-      final pos = widget.scroll.position;
-      if (pos.pixels != pos.maxScrollExtent) pos.jumpTo(pos.maxScrollExtent);
-    });
-  }
-
   /// App shortcuts for search, loaded once per search session.
   List<AppShortcut>? _shortcuts;
   bool _loadingShortcuts = false;
@@ -362,8 +347,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final d = n.scrollDelta ?? 0;
     // Mid-pull, moving the finger back up takes the pull back first.
     if (widget.pull.value > 0 && n.dragDetails != null && d > 0) widget.onPull(-d);
-    // Pulling the results down while searching = done searching.
-    if (widget.searching && n.dragDetails != null && d < -2) {
+    // Pulling the results down while searching = done searching — with the bar at the top.
+    // With the bar at the bottom the results scroll on their own; the bar swipes away instead.
+    if (widget.searching && widget.searchBar != null && n.dragDetails != null && d < -2) {
       widget.onDismissSearch();
       return false;
     }
@@ -454,7 +440,6 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (showResults) {
       final sources = prefs.searchIn;
       if (sources.contains('shortcuts')) _loadShortcuts();
-      if (upward) _stickToBottom(); // new results: best match back just above the bar
       final results = _SearchResults(
         query: q,
         apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
@@ -480,23 +465,17 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       );
       content = [
         if (upward)
-          // Hug the bottom (just above the bar and keyboard); scrolls if it ever outgrows the screen.
-          SliverPadding(
-            padding: gutter,
-            sliver: SliverFillRemaining(
-              hasScrollBody: false,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  results,
-                  Builder(
-                    builder: (context) {
-                      _stickToBottom(); // the keyboard sliding in grows this gap: stay pinned to it
-                      return SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24);
-                    },
-                  ),
-                ],
+          // Their own scroll area, reversed: it starts at the bottom (best match just above the
+          // bar and keyboard) and scrolls up for more. Being separate, dragging it never moves
+          // or closes the sheet — closing is a swipe down on the search bar.
+          SliverFillRemaining(
+            hasScrollBody: true,
+            child: Builder(
+              builder: (context) => SingleChildScrollView(
+                reverse: true,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+                padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24),
+                child: results,
               ),
             ),
           )

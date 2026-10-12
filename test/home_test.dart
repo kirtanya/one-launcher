@@ -195,8 +195,11 @@ void main() {
     expect(find.text('Payments'), findsOneWidget, reason: 'results show the renamed folder');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/5_search.png'));
 
-    // Pull the results down → search closes, keyboard goes, back to the clock.
+    // Pulling the results doesn't close search (they scroll); swiping the bar down does → home.
     await tester.drag(find.text('Splitwise'), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget, reason: 'results scroll, search stays');
+    await tester.dragFrom(tester.getCenter(find.byType(TextField)), const Offset(0, 80));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'search closed');
     expect(find.byType(FittedBox).first.hitTestable(), findsOneWidget, reason: 'back home with the clock');

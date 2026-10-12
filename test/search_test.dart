@@ -168,6 +168,25 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/20_results_keyboard.png'));
   });
 
+  testWidgets('bar at the bottom: dragging the results scrolls them (search stays open); swiping the bar down closes', (tester) async {
+    await launch(tester);
+    await tester.tap(find.text('Search 7 apps'));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 1000); // keyboard up: results outgrow the space
+    await tester.enterText(find.byType(TextField), 's');
+    await tester.pumpAndSettle();
+    final openBefore = tester.getTopLeft(find.text('Open')).dy;
+    // Drag down on the results: they scroll (the best match moves down), search stays open.
+    await tester.dragFrom(Offset(200, openBefore - 150), const Offset(0, 200));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget, reason: 'dragging the results does not close search');
+    expect(tester.getTopLeft(find.text('Open')).dy, greaterThan(openBefore + 50), reason: 'the results scrolled to show more above');
+    // Swipe down on the bar itself → closed.
+    await tester.dragFrom(tester.getCenter(find.byType(SearchDock)), const Offset(0, 80));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'swiping the bar down closes search');
+  });
+
   testWidgets('clock roundness: slider + presets set the ROND axis', (tester) async {
     final prefs = await launch(tester);
     await prefs.setClockStyle(round: 70);

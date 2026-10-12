@@ -153,6 +153,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     hint: 'Search ${_apps.length} apps',
     onActivate: _startSearch,
     onClose: _stopSearch,
+    onSwipeClose: () {
+      _stopSearch();
+      _collapse(); // swiped away: back home to the clock
+    },
     onChanged: _onQuery,
     onSubmitted: _onSubmit,
     onSettings: _settings,
