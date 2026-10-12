@@ -230,7 +230,7 @@ class Prefs extends ChangeNotifier {
 
   /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
   /// the phone they were added on, so they can't be restored elsewhere.
-  static const _phoneOnly = {'widgetLabels', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName'};
+  static const _phoneOnly = {'widgetLabels', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
 
   String exportBackup() {
     final out = <String, Object>{};
@@ -469,6 +469,10 @@ class Prefs extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  /// Last TV brightness set from the remote (0–100 %); TVs don't report it, so we remember it.
+  int get tvBrightness => _sp.getInt('tvBrightness') ?? 40;
+  Future<void> setTvBrightness(int v) => _sp.setInt('tvBrightness', v.clamp(0, 100));
 
   bool get remoteButton => _sp.getBool('remoteButton') ?? true;
   Future<void> setRemoteButton(bool v) async {

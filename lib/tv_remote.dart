@@ -135,6 +135,10 @@ class TvRemote {
     }
   }
 
+  /// TV brightness 0–100 % as Android brightness on the TV (via One Launcher TV). Only TVs whose
+  /// backlight follows Android brightness respond; others keep it in their picture panel.
+  Future<void> setBrightness(int percent) => appLink('onelauncher://brightness?level=${(1 + percent.clamp(0, 100) * 254 / 100).round()}');
+
   /// Opens the TV's own picture settings (backlight lives there), via One Launcher TV on the TV.
   Future<void> openPicture() => appLink('onelauncher://picture');
 
