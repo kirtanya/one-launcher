@@ -176,6 +176,12 @@ void main() {
     await tester.enterText(find.byType(TextField), 's');
     await tester.pumpAndSettle();
     final openBefore = tester.getTopLeft(find.text('Open')).dy;
+    // Swiping the sideways app row keeps the keyboard (focus) up.
+    final card = find.ancestor(of: find.text('Open'), matching: find.byType(OneCard));
+    final row = find.descendant(of: card, matching: find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.horizontal));
+    await tester.drag(row, const Offset(-150, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue, reason: 'sideways swipe keeps the keyboard');
     // Drag down on the results: they scroll (the best match moves down), search stays open.
     await tester.dragFrom(Offset(200, openBefore - 150), const Offset(0, 200));
     await tester.pumpAndSettle();

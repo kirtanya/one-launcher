@@ -343,6 +343,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   }
 
   bool _onScroll(ScrollUpdateNotification n) {
+    // Scrolling up/down (the list, or the results) closes the keyboard; swiping the results'
+    // sideways app row doesn't — you're still choosing, keep typing.
+    if (n.dragDetails != null && n.metrics.axis == Axis.vertical) FocusManager.instance.primaryFocus?.unfocus();
     if (n.metrics.axis != Axis.vertical || n.depth != 0) return false; // the main list only
     final d = n.scrollDelta ?? 0;
     // Mid-pull, moving the finger back up takes the pull back first.
@@ -561,7 +564,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 child: CustomScrollView(
                   controller: widget.scroll,
                   physics: const ClampingScrollPhysics(),
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // see _onScroll: only up/down drags close the keyboard
                   slivers: [
                     // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
                     // reaches full screen, and pinned folder headers stop just below it. Only this
