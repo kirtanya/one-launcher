@@ -10,6 +10,7 @@ abstract final class TvKey {
   static const home = 3, back = 4, up = 19, down = 20, left = 21, right = 22, ok = 23;
   static const volumeUp = 24, volumeDown = 25, power = 26, menu = 82, playPause = 85;
   static const next = 87, previous = 88, mute = 164, input = 178, settings = 176;
+  static const brightnessDown = 220, brightnessUp = 221; // the TV's backlight (if it lets Android control it)
 }
 
 /// Direction of a key press on the wire.

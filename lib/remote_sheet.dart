@@ -270,6 +270,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                             children: [
                               _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back)),
                               _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home)),
+                              _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
                               _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input)),
                             ],
                           ),
@@ -277,7 +278,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
                               _Volume(onKey: _press, volume: tv.volume),
-                              _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
+                              _Brightness(onKey: _press),
                             ],
                           ),
                           SizedBox(
@@ -519,6 +520,39 @@ class _RepeatState extends State<_Repeat> {
     onLongPressEnd: (_) => _timer?.cancel(),
     onLongPressCancel: () => _timer?.cancel(),
     child: widget.child,
+  );
+}
+
+/// Brightness − / + in one pill (the TV's own backlight; hold to keep going). TVs don't report
+/// their brightness, so the middle is just the sun.
+class _Brightness extends StatelessWidget {
+  const _Brightness({required this.onKey});
+  final void Function(int code, {bool strong}) onKey;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    height: 56,
+    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(28)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _Repeat(
+          onKey: () => onKey(TvKey.brightnessDown),
+          child: Tooltip(
+            message: 'Brightness down',
+            child: SizedBox(width: 52, height: 56, child: Icon(Icons.remove_rounded, color: DS.ink)),
+          ),
+        ),
+        Icon(Icons.light_mode_outlined, color: DS.inkMuted, size: 22),
+        _Repeat(
+          onKey: () => onKey(TvKey.brightnessUp),
+          child: Tooltip(
+            message: 'Brightness up',
+            child: SizedBox(width: 52, height: 56, child: Icon(Icons.add_rounded, color: DS.ink)),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
