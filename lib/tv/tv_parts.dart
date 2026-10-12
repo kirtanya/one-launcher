@@ -141,12 +141,14 @@ class TvAppArt extends StatelessWidget {
 // ---- Side panel (options) ------------------------------------------------------
 
 class TvAction {
-  const TvAction(this.icon, this.label, this.onSelect, {this.danger = false, this.keepOpen = false});
+  const TvAction(this.icon, this.label, this.onSelect, {this.danger = false, this.keepOpen = false, this.swatch, this.selected = false});
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
   final bool danger;
   final bool keepOpen; // e.g. clock presets: try several without reopening
+  final Color? swatch; // a colour dot instead of the icon (colour picker)
+  final bool selected; // a tick at the end
 }
 
 /// Options slide in from the right, like the TV's own menus. Back closes.
@@ -205,7 +207,18 @@ Future<void> showTvPanel(
                             decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
                             child: Row(
                               children: [
-                                Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : DS.ink) : (a.danger ? DS.alert : TvDS.inkMuted)),
+                                if (a.swatch != null)
+                                  Container(
+                                    width: 22,
+                                    height: 22,
+                                    decoration: BoxDecoration(
+                                      color: a.swatch,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: TvDS.line),
+                                    ),
+                                  )
+                                else
+                                  Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : DS.ink) : (a.danger ? DS.alert : TvDS.inkMuted)),
                                 const SizedBox(width: DS.s16),
                                 Expanded(
                                   child: Text(
@@ -215,6 +228,7 @@ Future<void> showTvPanel(
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? DS.ink : TvDS.ink),
                               ],
                             ),
                           ),

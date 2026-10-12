@@ -119,6 +119,11 @@ class TvActivity : FlutterActivity() {
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
+                "getHistory" -> result.success(MediaHistory.read(this))
+                "removeHistory" -> {
+                    MediaHistory.remove(this, call.argument<String>("key")!!)
+                    result.success(true)
+                }
                 "openAction" -> result.success(openAction(call.argument<String>("id")!!))
                 "openSettings" -> result.success(open(Intent(Settings.ACTION_SETTINGS)))
                 "openHomeSettings" -> result.success(open(Intent(Settings.ACTION_HOME_SETTINGS)) || open(Intent(Settings.ACTION_SETTINGS)))

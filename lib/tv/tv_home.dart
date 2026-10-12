@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,8 @@ import '../apps.dart';
 import '../folders.dart';
 import '../prefs.dart';
 import '../ui/ds.dart';
+import '../ui/palette.dart';
+import '../ui/theme.dart';
 import '../ui/motion.dart';
 import 'tv_actions.dart';
 import 'tv_apps.dart';
@@ -34,6 +37,8 @@ class TvItem {
     this.art,
     this.progress,
     this.intent,
+    this.historyKey,
+    this.playing = false,
   });
   final String key;
   final TvKind kind;
@@ -44,9 +49,11 @@ class TvItem {
   final String? meta; // "S2 · E5 · Low Tide"
   final String? description;
   final String? image; // artwork uri (programmes)
-  final MemoryImage? art; // artwork bytes (what's playing)
+  final ImageProvider? art; // artwork (what's playing, or saved with the watch history)
   final double? progress; // 0–1 watched
   final String? intent; // deep link into the app
+  final String? historyKey; // from the watch history (the app may have closed since)
+  final bool playing; // live and playing right now
 }
 
 /// One row: Continue watching (wide), app rows (banners), streaming apps' rows (wide).
@@ -67,8 +74,9 @@ class TvRow {
 /// big title block, rows sit along the bottom. The remote steers row by row (each row
 /// remembers its tile); the focused row always sits at the same spot, rows above slide away.
 class TvHome extends StatefulWidget {
-  const TvHome({super.key, required this.prefs});
+  const TvHome({super.key, required this.prefs, this.theme});
   final Prefs prefs;
+  final OneTheme? theme; // colours (Customise → Colours)
 
   @override
   State<TvHome> createState() => _TvHomeState();
@@ -76,7 +84,7 @@ class TvHome extends StatefulWidget {
 
 class _TvHomeState extends State<TvHome> {
   List<AppEntry> _apps = const [];
-  List<Map> _watchNext = const [], _channels = const [];
+  List<Map> _watchNext = const [], _channels = const [], _history = const [];
   List<TvRow> _rows = const [];
   bool _loaded = false;
 
@@ -135,11 +143,12 @@ class _TvHomeState extends State<TvHome> {
   }
 
   Future<void> _loadContent() async {
-    final results = await Future.wait([tv.watchNext(), tv.channels()]);
+    final results = await Future.wait([tv.watchNext(), tv.channels(), tv.history()]);
     await tv.refreshMedia();
     if (!mounted) return;
     _watchNext = results[0];
     _channels = results[1];
+    _history = results[2];
     _regroup();
   }
 
@@ -173,6 +182,29 @@ class _TvHomeState extends State<TvHome> {
           meta: _joinMeta([m['artist'] as String?, if (dur > 0) _left(dur - pos)]),
           art: art is Uint8List ? MemoryImage(art) : null,
           progress: dur > 0 ? (pos / dur).clamp(0, 1) : null,
+          playing: m['playing'] == true,
+        ),
+      );
+    }
+    // Then the watch history the TV kept (apps closed since): newest first.
+    for (final h in _history) {
+      final title = h['title'] as String?;
+      final pkg = h['package'] as String? ?? '';
+      if (title == null || cont.any((c) => c.title == title && c.package == pkg)) continue;
+      final dur = (h['duration'] as num?)?.toDouble() ?? 0;
+      final pos = (h['position'] as num?)?.toDouble() ?? 0;
+      final artPath = h['art'] as String?;
+      cont.add(
+        TvItem(
+          key: 'h:${h['key']}',
+          kind: TvKind.resume,
+          title: title,
+          package: pkg,
+          appName: (h['app'] as String?) ?? appName(pkg),
+          meta: _joinMeta([h['subtitle'] as String?, if (dur > 0 && pos > 0) _left(dur - pos), _ago((h['at'] as num?)?.toInt())]),
+          art: artPath != null && !TvApps.demo ? FileImage(File(artPath)) : null,
+          progress: dur > 0 && pos > 0 ? (pos / dur).clamp(0, 1) : null,
+          historyKey: h['key'] as String?,
         ),
       );
     }
@@ -204,7 +236,16 @@ class _TvHomeState extends State<TvHome> {
     setState(() {
       _rows = [
         // ▶ Resume: what's playing / paused, one press away (above the quick actions).
-        if (cont.firstOrNull case final now? when now.kind == TvKind.resume) TvRow('resume', 'Resume', [now], chips: true),
+        if (cont.firstOrNull case final now? when now.kind == TvKind.resume)
+          TvRow('resume', 'Resume', [
+            now,
+            // Live: control it right here (music keeps playing on the home screen).
+            if (now.historyKey == null) ...[
+              if (m?['canPrev'] == true) const TvItem(key: 'm:prev', kind: TvKind.action, title: 'Previous', package: ''),
+              TvItem(key: 'm:toggle', kind: TvKind.action, title: now.playing ? 'Pause' : 'Play', package: ''),
+              if (m?['canNext'] == true) const TvItem(key: 'm:next', kind: TvKind.action, title: 'Next', package: ''),
+            ],
+          ], chips: true),
         TvRow('quick', 'Quick actions', quick, chips: true),
         if (cont.isNotEmpty) TvRow('continue', 'Continue watching', cont, wide: true),
         if (fav.isNotEmpty) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
@@ -257,6 +298,15 @@ class _TvHomeState extends State<TvHome> {
   static String? _joinMeta(List<String?> parts) {
     final p = parts.whereType<String>().where((s) => s.isNotEmpty).toList();
     return p.isEmpty ? null : p.join(' · ');
+  }
+
+  /// "Today", "Yesterday", "3 days ago" — when it was last watched.
+  static String? _ago(int? at) {
+    if (at == null || at <= 0) return null;
+    final then = DateTime.fromMillisecondsSinceEpoch(at);
+    final now = DateTime.now();
+    final days = DateTime(now.year, now.month, now.day).difference(DateTime(then.year, then.month, then.day)).inDays;
+    return days <= 0 ? 'Today' : (days == 1 ? 'Yesterday' : '$days days ago');
   }
 
   static String _left(double ms) {
@@ -458,9 +508,24 @@ class _TvHomeState extends State<TvHome> {
       case TvKind.app:
         tv.launch(item.package);
       case TvKind.resume:
-        tv.mediaResume(); // player to the front + play
+        final live = tv.media.value;
+        if (item.historyKey != null && !(live?['active'] == true && live?['package'] == item.package)) {
+          tv.launch(item.package); // the app closed since: open it (most show "continue watching" first)
+        } else {
+          tv.mediaResume(); // player to the front + play
+        }
       case TvKind.program:
         tv.openProgram(item.intent, item.package);
+      case TvKind.action when item.key.startsWith('m:'):
+        switch (item.key) {
+          case 'm:prev':
+            tv.mediaPrev();
+          case 'm:next':
+            tv.mediaNext();
+          default:
+            tv.mediaPlayPause();
+        }
+        return;
       case TvKind.action:
         if (item.key == 'q:edit') {
           _editQuick();
@@ -499,6 +564,15 @@ class _TvHomeState extends State<TvHome> {
         title: item.title,
         actions: [
           TvAction(Icons.play_arrow_rounded, item.kind == TvKind.resume ? 'Resume' : 'Watch', () => _open(item)),
+          if (item.historyKey != null)
+            TvAction(Icons.history_toggle_off_rounded, 'Remove from Continue watching', () async {
+              await tv.removeHistory(item.historyKey!);
+              _history = [
+                for (final h in _history)
+                  if (h['key'] != item.historyKey) h,
+              ];
+              _regroup();
+            }),
           if (item.package.isNotEmpty) TvAction(Icons.apps_rounded, 'Open ${item.appName ?? 'app'}', () => tv.launch(item.package)),
           if (item.package.isNotEmpty) TvAction(Icons.info_outline_rounded, 'App info', () => tv.appInfo(item.package)),
         ],
@@ -575,6 +649,52 @@ class _TvHomeState extends State<TvHome> {
     );
   }
 
+  /// The phone's colour themes on the TV: the accent (Resume, progress, glows) and the canvas
+  /// tint follow the choice. Changes show live behind the panel.
+  void _colours() {
+    final theme = widget.theme!;
+    const names = ['Blue', 'Teal', 'Green', 'Yellow', 'Orange', 'Red', 'Pink', 'Purple'];
+    showTvPanel(
+      context,
+      title: 'Colours',
+      refresh: prefs,
+      build: () {
+        final source = prefs.themeSource == 'system' && !theme.hasSystem ? 'original' : prefs.themeSource;
+        return [
+          if (theme.hasSystem)
+            TvAction(
+              Icons.auto_awesome_outlined,
+              'Match your TV',
+              () => prefs.setTheme(source: 'system'),
+              keepOpen: true,
+              swatch: theme.systemSeed,
+              selected: source == 'system',
+            ),
+          TvAction(
+            Icons.circle,
+            'One original',
+            () => prefs.setTheme(source: 'original'),
+            keepOpen: true,
+            swatch: OnePalette.original.hero,
+            selected: source == 'original',
+          ),
+          for (final (i, c) in OneTheme.basicSeeds.indexed)
+            TvAction(
+              Icons.circle,
+              names[i],
+              () => prefs.setTheme(source: 'basic', seed: c.toARGB32()),
+              keepOpen: true,
+              swatch: c,
+              selected: source == 'basic' && prefs.themeSeed == c.toARGB32(),
+            ),
+          if (source != 'original')
+            for (final MapEntry(key: id, value: (label, _)) in OneTheme.styles.entries)
+              TvAction(Icons.style_outlined, 'Style: $label', () => prefs.setTheme(style: id), keepOpen: true, selected: prefs.themeStyle == id),
+        ];
+      },
+    );
+  }
+
   void _customise() {
     final hidden = [
       for (final a in _apps)
@@ -588,6 +708,7 @@ class _TvHomeState extends State<TvHome> {
         if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
         for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
         TvAction(Icons.bolt_rounded, 'Quick actions', _editQuick),
+        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', _colours),
         TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
       ],
     );
@@ -705,7 +826,16 @@ class _TvHomeState extends State<TvHome> {
                 children: [
                   for (final (i, item) in row.items.indexed) ...[
                     if (i > 0) const SizedBox(width: DS.s8),
-                    if (row.id == 'resume')
+                    if (item.key.startsWith('m:'))
+                      _MediaButton(
+                        key: ValueKey(_key(r, i)),
+                        item: item,
+                        focusNode: _node(r, i),
+                        onSelect: () => _open(item),
+                        onMove: (d) => _move(r, i, d),
+                        onFocus: () => _onFocus(r, i),
+                      )
+                    else if (row.id == 'resume')
                       _ResumeButton(
                         key: ValueKey(_key(r, i)),
                         item: item,
@@ -883,7 +1013,7 @@ class _HeroInfo extends StatelessWidget {
     };
     final c = chip;
     final action = c != null
-        ? (c.key == 'q:edit' ? 'Edit quick actions' : 'Open ${c.title}')
+        ? (c.key == 'q:edit' ? 'Edit quick actions' : (c.key.startsWith('m:') ? c.title : 'Open ${c.title}'))
         : switch (it.kind) {
             TvKind.resume => 'Resume',
             TvKind.program => (it.progress ?? 0) > 0 ? 'Resume' : 'Watch',
@@ -1378,10 +1508,10 @@ class _ResumeButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.play_arrow_rounded, size: 24, color: f ? DS.ink : DS.heroInk),
+                Icon(item.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, size: 24, color: f ? DS.ink : DS.heroInk),
                 const SizedBox(width: DS.s4),
                 Text(
-                  'Resume',
+                  item.playing ? 'Now playing' : 'Resume',
                   style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? DS.ink : DS.heroInk),
                 ),
                 const SizedBox(width: DS.s8),
@@ -1396,6 +1526,51 @@ class _ResumeButton extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ⏮ ⏯ ⏭ next to Resume: round, quiet until focused.
+class _MediaButton extends StatelessWidget {
+  const _MediaButton({super.key, required this.item, required this.focusNode, required this.onSelect, this.onMove, this.onFocus});
+  final TvItem item;
+  final FocusNode focusNode;
+  final VoidCallback onSelect;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (item.key) {
+      'm:prev' => Icons.skip_previous_rounded,
+      'm:next' => Icons.skip_next_rounded,
+      _ => item.title == 'Pause' ? Icons.pause_rounded : Icons.play_arrow_rounded,
+    };
+    return Semantics(
+      button: true,
+      label: item.title,
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => AnimatedScale(
+          scale: f ? TvDS.focusScale : 1,
+          duration: Motion.popDuration,
+          curve: Motion.pop,
+          child: AnimatedContainer(
+            duration: Motion.pressIn * 2,
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: f ? TvDS.surfaceFocused : const Color(0x33000000),
+              shape: BoxShape.circle,
+              border: Border.all(color: f ? Colors.transparent : TvDS.line),
+            ),
+            child: Icon(icon, size: 24, color: f ? DS.ink : TvDS.ink),
           ),
         ),
       ),

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
+import 'package:one_launcher/ui/ds.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
@@ -51,6 +52,9 @@ void main() {
     await tester.pumpWidget(OneLauncherTv(prefs: prefs));
     await tester.pumpAndSettle();
     expect(find.text('Continue watching'), findsOneWidget);
+    // Watch history kept on the TV joins Continue watching (apps closed since).
+    expect(find.text('Midnight City'), findsWidgets);
+    expect(find.text('How lighthouses work'), findsWidgets);
     expect(find.text('Your apps'), findsOneWidget);
     // Lands on the first quick action; the title block shows what you were watching.
     expect(_focused(), 'quick:t:inputs');
@@ -64,6 +68,15 @@ void main() {
     expect(_focused(), startsWith('resume:'));
     expect(find.text('The Long Night on Netflix'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_8_resume.png'));
+    // Live controls next to Resume: ⏮ ⏯ ⏭.
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(), 'resume:m:prev');
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(), 'resume:m:toggle');
+    expect(find.text('Play'), findsOneWidget, reason: 'paused → the hint says Play');
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_9_controls.png'));
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), 'h:search', reason: 'then Search');
     await _press(tester, LogicalKeyboardKey.arrowDown);
@@ -102,7 +115,8 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     final third = _focused()!;
     expect(third, isNot(first));
-    expect(find.text('Final Over'), findsWidgets, reason: 'title block follows focus');
+    expect(find.text('How lighthouses work'), findsWidgets, reason: 'title block follows focus (a history item)');
+    expect(find.textContaining('2 days ago'), findsOneWidget, reason: 'history says when');
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), startsWith('fav:'));
     // Netflix is what you were watching: focusing the app shows that show, not just its name.
@@ -130,7 +144,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(find.text('Watch'), findsNWidgets(2), reason: 'programme options; panel still open after release');
+    expect(find.text('Remove from Continue watching'), findsOneWidget, reason: 'history item options; panel still open after release');
     expect(find.text('App info'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_3_options.png'));
     await tester.tapAt(const Offset(40, 270)); // outside the panel
@@ -176,6 +190,22 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowUp);
     await _press(tester, LogicalKeyboardKey.arrowUp);
     expect(_focused(), 'h:search');
+
+    // Customise → Colours → Purple: the accent changes live.
+    final before2 = DS.palette.hero;
+    await _press(tester, LogicalKeyboardKey.arrowRight); // Search → Customise
+    await _press(tester, LogicalKeyboardKey.select);
+    await tester.tap(find.text('Colours'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Purple'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Purple'));
+    await tester.pumpAndSettle();
+    expect(DS.palette.hero, isNot(before2), reason: 'accent recoloured');
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_10_colours.png'));
+    await tester.tapAt(const Offset(40, 270));
+    await tester.pumpAndSettle();
+    await _press(tester, LogicalKeyboardKey.arrowLeft); // back to Search
 
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.
     await _press(tester, LogicalKeyboardKey.select);

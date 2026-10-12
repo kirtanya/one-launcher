@@ -105,6 +105,14 @@ class TvApps {
 
   Future<void> mediaOpen() => _call('mediaOpen');
   Future<void> mediaResume() => _call('mediaResume');
+  Future<void> mediaPlayPause() => _call('mediaPlayPause');
+  Future<void> mediaNext() => _call('mediaNext');
+  Future<void> mediaPrev() => _call('mediaPrev');
+
+  /// Watch history kept on the TV (MediaHistory.kt): newest first. Keys: key, package, app,
+  /// title, subtitle, position, duration (ms), at (epoch ms), art (file path or null).
+  Future<List<Map>> history() async => demo ? _demoHistory : await _ch.invokeListMethod<Map>('getHistory') ?? const [];
+  Future<void> removeHistory(String key) => _call('removeHistory', {'key': key});
   Future<void> openNotificationAccess() => _call('openNotificationAccess');
   Future<void> openProgram(String? intent, String package) => _call('openProgram', {'intent': intent, 'package': package});
 
@@ -162,8 +170,43 @@ class TvApps {
     'playing': false,
     'position': 1980000,
     'duration': 3120000,
+    'canPrev': true,
+    'canNext': true,
     'at': 0,
   };
+
+  static final _demoHistory = <Map>[
+    {
+      'key': 'com.netflix.ninja|The Long Night',
+      'package': 'com.netflix.ninja',
+      'app': 'Netflix',
+      'title': 'The Long Night',
+      'subtitle': 'Season 2 · Episode 5',
+      'position': 1980000,
+      'duration': 3120000,
+      'at': DateTime.now().millisecondsSinceEpoch,
+    },
+    {
+      'key': 'com.spotify.tv.android|Midnight City',
+      'package': 'com.spotify.tv.android',
+      'app': 'Spotify',
+      'title': 'Midnight City',
+      'subtitle': 'M83',
+      'position': 120000,
+      'duration': 244000,
+      'at': DateTime.now().subtract(const Duration(hours: 5)).millisecondsSinceEpoch,
+    },
+    {
+      'key': 'com.google.android.youtube.tv|How lighthouses work',
+      'package': 'com.google.android.youtube.tv',
+      'app': 'YouTube',
+      'title': 'How lighthouses work',
+      'subtitle': 'Practical Engineering',
+      'position': 300000,
+      'duration': 900000,
+      'at': DateTime.now().subtract(const Duration(days: 2)).millisecondsSinceEpoch,
+    },
+  ];
 
   static const _demoWatchNext = <Map>[
     {
