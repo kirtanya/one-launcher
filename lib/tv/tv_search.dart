@@ -105,8 +105,40 @@ class _TvSearchState extends State<TvSearch> {
     final targets = [for (final p in _targets) ?byPkg[p]];
     final posters = q.isEmpty ? _trending : (_searched.toLowerCase() == q ? _results : const <TmdbTitle>[]);
 
-    // ↓ from the box: the Google TV row first (it's always there), then posters / apps.
-    void down() => _firstAction.requestFocus();
+    List<Widget> googleRow(String title) => [
+      const SizedBox(height: DS.s20),
+      Text(title, style: TvDS.rowTitleFocused),
+      const SizedBox(height: DS.s12),
+      Wrap(
+        spacing: DS.s12,
+        runSpacing: DS.s12,
+        children: [
+          if (raw.isNotEmpty)
+            TvActionPill(
+              focusNode: _firstAction,
+              icon: Icons.travel_explore_rounded,
+              label: 'Search Google TV for “$raw”',
+              onSelect: () => TvApps.instance.searchEverywhere(raw),
+            ),
+          TvActionPill(
+            focusNode: raw.isEmpty ? _firstAction : null,
+            icon: Icons.mic_none_rounded,
+            label: 'Voice search',
+            onSelect: () => TvApps.instance.openAction('t:assistant'),
+          ),
+          if (raw.isNotEmpty)
+            for (final a in targets)
+              TvActionPill(
+                leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
+                label: 'Search in ${a.label}',
+                onSelect: () => TvApps.instance.searchIn(a.package, raw),
+              ),
+        ],
+      ),
+    ];
+
+    // ↓ from the box: the first poster when there are shows & films, else the Google TV row.
+    void down() => (Tmdb.enabled && posters.isNotEmpty ? _firstPoster : _firstAction).requestFocus();
 
     return Scaffold(
       backgroundColor: TvDS.canvas,
@@ -161,36 +193,9 @@ class _TvSearchState extends State<TvSearch> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ---- Google TV: the TV's own search (every streaming app, YouTube, people) ----
-                    const SizedBox(height: DS.s20),
-                    const Text('Search with Google TV', style: TvDS.rowTitleFocused),
-                    const SizedBox(height: DS.s12),
-                    Wrap(
-                      spacing: DS.s12,
-                      runSpacing: DS.s12,
-                      children: [
-                        if (raw.isNotEmpty)
-                          TvActionPill(
-                            focusNode: _firstAction,
-                            icon: Icons.travel_explore_rounded,
-                            label: 'Search Google TV for “$raw”',
-                            onSelect: () => TvApps.instance.searchEverywhere(raw),
-                          ),
-                        TvActionPill(
-                          focusNode: raw.isEmpty ? _firstAction : null,
-                          icon: Icons.mic_none_rounded,
-                          label: 'Voice search',
-                          onSelect: () => TvApps.instance.openAction('t:assistant'),
-                        ),
-                        if (raw.isNotEmpty)
-                          for (final a in targets)
-                            TvActionPill(
-                              leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
-                              label: 'Search in ${a.label}',
-                              onSelect: () => TvApps.instance.searchIn(a.package, raw),
-                            ),
-                      ],
-                    ),
+                    // With our own shows & films search on, those come first; Google TV's search
+                    // and voice follow ("More ways to search"). Without it, Google TV leads.
+                    if (!Tmdb.enabled) ...googleRow('Search with Google TV'),
 
                     // ---- Shows & films ----
                     if (Tmdb.enabled) ...[
@@ -230,6 +235,7 @@ class _TvSearchState extends State<TvSearch> {
                         ],
                       ),
                     ],
+                    if (Tmdb.enabled) ...googleRow('More ways to search'),
                   ],
                 ),
               ),
