@@ -19,7 +19,6 @@ import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
-import 'ui/perf.dart';
 import 'widgets.dart';
 
 /// The bottom sheet of the one-screen launcher: pastel hero card, then "Most used",
@@ -82,7 +81,7 @@ class AppDrawer extends StatefulWidget {
   State<AppDrawer> createState() => AppDrawerState();
 }
 
-class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
+class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
   static const _mostUsedCount = 16; // green card: 2 pages × 8
   String? _openId; // the one open folder (Most used is the hero card, always open)
 
@@ -200,7 +199,6 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _flying.dispose();
     widget.expanded.removeListener(_trackFull);
     _glide.dispose();
     super.dispose();
@@ -209,85 +207,9 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
   /// Accordion: opening one folder closes the other. The sheet expands, the folder opens and
   /// it glides to the middle — all in one motion. A folder taller than the screen stops with
   /// its header at the top instead.
-  // ---- Folder icon → apps flight ---------------------------------------------------------
-
-  /// Each folder's header shows its first apps as a little trio; opening the folder flies them
-  /// to their places in the grid. Keys find both ends; [_flying] hides the grid's copies while
-  /// the flying ones are on their way.
-  final _trioKeys = <String, List<GlobalKey>>{};
-  final _firstKeys = <String, List<GlobalKey>>{};
-  List<GlobalKey> _trio(String id) => _trioKeys.putIfAbsent(id, () => List.generate(3, (_) => GlobalKey()));
-  List<GlobalKey> _first(String id) => _firstKeys.putIfAbsent(id, () => List.generate(3, (_) => GlobalKey()));
-  final _flying = ValueNotifier<String?>(null);
-
-  Rect? _rectOf(GlobalKey k) {
-    final b = k.currentContext?.findRenderObject() as RenderBox?;
-    if (b == null || !b.attached || !b.hasSize) return null;
-    return b.localToGlobal(Offset.zero) & b.size;
-  }
-
-  void _fly(String id, List<Rect> from, List<AppEntry> apps) {
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null || from.isEmpty) {
-      _flying.value = null;
-      return;
-    }
-    final c = AnimationController(vsync: this, duration: const Duration(milliseconds: 560));
-    final keys = _first(id);
-    final entry = OverlayEntry(
-      builder: (_) => IgnorePointer(
-        child: AnimatedBuilder(
-          animation: c,
-          builder: (_, _) => Stack(
-            children: [
-              for (var i = 0; i < from.length; i++)
-                Builder(
-                  builder: (_) {
-                    // Staggered, eased, with a small lift mid-air; the target is measured live
-                    // (the folder grows and glides to the middle at the same time).
-                    final t = Curves.easeInOutCubic.transform(((c.value - i * .08) / .84).clamp(0.0, 1.0));
-                    final to = _rectOf(keys[i]) ?? from[i];
-                    final r = Rect.lerp(from[i], to, t)!;
-                    final lift = math.sin(t * math.pi) * 20;
-                    return Positioned(
-                      left: r.left,
-                      top: r.top - lift,
-                      width: r.width,
-                      height: r.height,
-                      child: AppIcon(apps[i], size: r.width),
-                    );
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    overlay.insert(entry);
-    c.forward().whenComplete(() {
-      entry.remove();
-      c.dispose();
-      if (_flying.value == id) _flying.value = null;
-    });
-  }
-
   void _toggle(String id) {
     HapticFeedback.selectionClick();
     final opening = _openId != id;
-    // Opening: note where the header's app icons are now, then fly them into the grid.
-    if (opening && !Perf.lite.value) {
-      final apps = _derived().$2.where((g) => g.$1.id == id).firstOrNull?.$2 ?? const <AppEntry>[];
-      final from = <Rect>[];
-      for (final k in _trio(id).take(math.min(3, apps.length))) {
-        final r = _rectOf(k);
-        if (r == null) break;
-        from.add(r);
-      }
-      if (from.isNotEmpty) {
-        _flying.value = id;
-        WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? _fly(id, from, apps) : null);
-      }
-    }
     setState(() => _openId = opening ? id : null);
     // A second, firmer tick when the folder settles open / shut.
     Future.delayed(Motion.snapDuration, () {
@@ -501,7 +423,6 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
             folder: folder,
             name: prefs.folderName(folder),
             apps: list,
-            trioKeys: _trio(folder.id),
             open: _openId == folder.id,
             tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
             onToggle: () => _toggle(folder.id),
@@ -588,9 +509,6 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
                     child: _FolderBody(
                       key: _body(folder.id),
                       apps: list,
-                      firstKeys: _first(folder.id),
-                      hideFirst: _flying,
-                      id: folder.id,
                       open: _openId == folder.id,
                       tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
                       maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
@@ -849,7 +767,6 @@ class _FolderHeader extends StatelessWidget {
     required this.folder,
     required this.name,
     required this.apps,
-    required this.trioKeys,
     required this.open,
     required this.tone,
     required this.onToggle,
@@ -859,7 +776,6 @@ class _FolderHeader extends StatelessWidget {
   final Folder folder;
   final String name;
   final List<AppEntry> apps;
-  final List<GlobalKey> trioKeys;
   final bool open;
   final CardTone tone;
   final VoidCallback onToggle, onCustomise;
@@ -884,17 +800,15 @@ class _FolderHeader extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s8, DS.s12),
             child: Row(
               children: [
-                // The folder's look: its first apps in a little triangle (closed); while open they
-                // live in the grid below, so the folder's own symbol takes their place.
+                // The folder's look: its first apps in a little triangle. Opening shrinks them away
+                // to the folder's own symbol (its apps are in the grid below then).
                 SizedBox.square(
                   dimension: 64,
                   child: AnimatedSwitcher(
                     duration: Motion.snapDuration,
                     switchInCurve: Motion.pop,
-                    transitionBuilder: (child, a) => ScaleTransition(
-                      scale: a,
-                      child: FadeTransition(opacity: a, child: child),
-                    ),
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, a) => ScaleTransition(scale: a, child: child),
                     child: open || apps.isEmpty
                         ? Center(
                             key: const ValueKey('symbol'),
@@ -907,7 +821,7 @@ class _FolderHeader extends StatelessWidget {
                           )
                         : Center(
                             key: const ValueKey('trio'),
-                            child: _AppTrio(apps: apps, keys: trioKeys),
+                            child: _AppTrio(apps: apps),
                           ),
                   ),
                 ),
@@ -968,33 +882,28 @@ class _FolderHeader extends StatelessWidget {
 /// Up to three app icons in a triangle — the biggest on top, each next one smaller — as a
 /// folder's icon.
 class _AppTrio extends StatelessWidget {
-  const _AppTrio({required this.apps, required this.keys});
+  const _AppTrio({required this.apps});
   final List<AppEntry> apps;
-  final List<GlobalKey> keys;
 
-  /// (left, top, size) inside a 56 × 56 box, for 1, 2 or 3 icons.
+  /// (left, top, size) inside a 48 × 48 box, for 1, 2 or 3 icons.
   static List<(double, double, double)> _slots(int n) => switch (n) {
-    1 => const [(12, 12, 32)],
-    2 => const [(14, 1, 30), (5, 31, 23)],
-    _ => const [(13, 0, 30), (3, 30, 24), (33, 35, 19)],
+    1 => const [(11, 11, 26)],
+    2 => const [(12, 2, 25), (5, 27, 19)],
+    _ => const [(12, 1, 24), (3, 26, 19), (28, 30, 15)],
   };
 
   @override
   Widget build(BuildContext context) {
-    final slots = _slots(math.min(3, apps.length));
+    final slots = _slots(apps.length < 3 ? apps.length : 3);
     return SizedBox.square(
-      dimension: 56,
+      dimension: 48,
       child: Stack(
         children: [
           for (final (i, (x, y, size)) in slots.indexed)
             Positioned(
               left: x,
               top: y,
-              child: SizedBox.square(
-                key: keys[i],
-                dimension: size,
-                child: AppIcon(apps[i], size: size),
-              ),
+              child: AppIcon(apps[i], size: size),
             ),
         ],
       ),
@@ -1009,9 +918,6 @@ class _FolderBody extends StatefulWidget {
   const _FolderBody({
     super.key,
     required this.apps,
-    required this.firstKeys,
-    required this.hideFirst,
-    required this.id,
     required this.open,
     required this.tone,
     required this.maxHeight,
@@ -1022,9 +928,6 @@ class _FolderBody extends StatefulWidget {
   });
 
   final List<AppEntry> apps;
-  final List<GlobalKey> firstKeys; // the first three icons: where the header's trio lands
-  final ValueListenable<String?> hideFirst; // folder whose first icons are still in flight
-  final String id;
   final bool open;
   final CardTone tone;
   final double maxHeight;
@@ -1155,29 +1058,20 @@ class _FolderBodyState extends State<_FolderBody> {
                             child: LayoutBuilder(
                               builder: (context, c) {
                                 final w = c.maxWidth / 4;
-                                return ValueListenableBuilder<String?>(
-                                  valueListenable: widget.hideFirst,
-                                  builder: (context, flying, _) => Wrap(
-                                    children: [
-                                      for (final (i, a) in apps.indexed)
-                                        SizedBox(
-                                          width: w,
-                                          // Icons pop in row by row, and grow in / shrink out at the scroll edges.
-                                          child: EdgeScale(
-                                            child: PopIn(
-                                              delay: ((i ~/ 4) * 0.06 + (i % 4) * 0.02).clamp(0, .6),
-                                              child: _GridApp(
-                                                app: a,
-                                                iconKey: i < 3 ? widget.firstKeys[i] : null,
-                                                hideIcon: i < 3 && flying == widget.id,
-                                                onTap: () => widget.onLaunch(a),
-                                                onLongPress: () => widget.onLongPress(a),
-                                              ),
-                                            ),
+                                return Wrap(
+                                  children: [
+                                    for (final (i, a) in apps.indexed)
+                                      SizedBox(
+                                        width: w,
+                                        // Icons pop in row by row, and grow in / shrink out at the scroll edges.
+                                        child: EdgeScale(
+                                          child: PopIn(
+                                            delay: ((i ~/ 4) * 0.06 + (i % 4) * 0.02).clamp(0, .6),
+                                            child: _GridApp(app: a, onTap: () => widget.onLaunch(a), onLongPress: () => widget.onLongPress(a)),
                                           ),
                                         ),
-                                    ],
-                                  ),
+                                      ),
+                                  ],
                                 );
                               },
                             ),
@@ -1193,18 +1087,8 @@ class _FolderBodyState extends State<_FolderBody> {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({
-    required this.app,
-    required this.onTap,
-    required this.onLongPress,
-    this.labelColor,
-    this.pinned = false,
-    this.iconKey,
-    this.hideIcon = false,
-  });
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor, this.pinned = false});
   final AppEntry app;
-  final GlobalKey? iconKey; // lets a folder's flying icon find where it lands
-  final bool hideIcon; // its flying copy is still on the way
   final Color? labelColor; // defaults to DS.ink (themed, so resolved at build time)
   final bool pinned;
   final VoidCallback onTap, onLongPress;
@@ -1227,13 +1111,7 @@ class _GridApp extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  SizedBox(
-                    key: iconKey,
-                    child: Opacity(
-                      opacity: hideIcon ? 0 : 1,
-                      child: AppIcon(app, size: DS.appIcon),
-                    ),
-                  ),
+                  AppIcon(app, size: DS.appIcon),
                   // Small ink pin badge on pinned apps.
                   if (pinned)
                     Positioned(

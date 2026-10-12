@@ -7,7 +7,7 @@ import 'package:one_launcher/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('folder icon = its first apps in a triangle (no number); opening flies them into the grid', (tester) async {
+  testWidgets('folder icon = its first apps in a triangle (no number); opening shrinks them to the folder symbol', (tester) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.88;
     addTearDown(tester.view.reset);
@@ -35,16 +35,15 @@ void main() {
     expect(tops[1], greaterThan(tops[0]), reason: 'triangle: one on top, two below');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/23_folder_trio.png'));
 
-    final before = tester.widgetList(find.byType(AppIcon)).length;
+    // Opening: the trio shrinks away to the folder's symbol (no flight); the grid shows the apps.
     await tester.tap(find.text('Social'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 250));
-    // Mid-flight: extra icons travelling in the overlay; the grid's first icons still hidden.
-    final hidden = tester.widgetList<Opacity>(find.ancestor(of: find.byType(AppIcon), matching: find.byType(Opacity))).where((o) => o.opacity == 0);
-    expect(hidden, isNotEmpty, reason: 'grid copies wait for the flying icons');
     await tester.pumpAndSettle();
-    final shownAfter = tester.widgetList<Opacity>(find.ancestor(of: find.byType(AppIcon), matching: find.byType(Opacity))).where((o) => o.opacity == 0);
-    expect(shownAfter, isEmpty, reason: 'landed: grid icons visible');
-    expect(tester.widgetList(find.byType(AppIcon)).length, greaterThan(before - 3), reason: 'grid shows the folder apps');
+    expect(find.descendant(of: social, matching: find.byType(AppIcon)), findsNothing, reason: 'trio gone while open');
+    expect(find.descendant(of: social, matching: find.byIcon(Icons.chat_bubble_outline_rounded)), findsWidgets, reason: 'folder symbol shown');
+    expect(find.text('Discord'), findsOneWidget, reason: 'apps in the grid');
+    // Closing brings the trio back.
+    await tester.tap(find.text('Social'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: social, matching: find.byType(AppIcon)), findsNWidgets(3));
   });
 }
