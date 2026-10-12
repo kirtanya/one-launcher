@@ -141,6 +141,9 @@ class Apps {
   /// Search the web for [query] (Google app if installed, else the browser).
   Future<void> webSearch(String query) => _call('webSearch', {'query': query});
 
+  /// Open a phone settings page by its Android action (Settings.ACTION_…).
+  Future<void> openSetting(String action) => _call('openSetting', {'action': action});
+
   /// Search the Play Store's apps for [query].
   Future<void> playSearch(String query) => _call('playSearch', {'query': query});
   Future<void> openHomeSettings() => _call('openHomeSettings');

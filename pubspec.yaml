@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.10.0+3000
+version: 1.11.0+3100
 
 environment:
   sdk: ^3.13.5
@@ -71,6 +71,6 @@ flutter:
         - asset: assets/fonts/InstrumentSans-600.ttf
           weight: 600
     # Clock / big figures: Roboto Flex, variable (weight, width, slant) — see tool/subset_fonts.py
-    - family: RobotoFlex
+    - family: ClockFlex # Google Sans Flex, cut down (tool/subset_fonts.py)
       fonts:
-        - asset: assets/fonts/RobotoFlex-Clock.ttf
+        - asset: assets/fonts/ClockFlex.ttf

@@ -12,7 +12,7 @@ import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
-  await (FontLoader('RobotoFlex')..addFont(Future.value(ByteData.view(File('assets/fonts/RobotoFlex-Clock.ttf').readAsBytesSync().buffer)))).load();
+  await (FontLoader('ClockFlex')..addFont(Future.value(ByteData.view(File('assets/fonts/ClockFlex.ttf').readAsBytesSync().buffer)))).load();
   final loader = FontLoader('InstrumentSans');
   for (final w in [400, 500, 600]) {
     loader.addFont(Future.value(ByteData.view(File('assets/fonts/InstrumentSans-$w.ttf').readAsBytesSync().buffer)));

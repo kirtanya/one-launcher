@@ -67,6 +67,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     ..addListener(() => _pull.value = _pullFrom * (1 - Curves.easeOutCubic.transform(_pullBack.value)));
   double _pullFrom = 0;
 
+  /// Released past the line: search is opening — the pill stays "ready" while the list settles.
+  final _pullOpening = ValueNotifier<bool>(false);
+
   /// Search was opened from the resting sheet: closing it glides the sheet back down.
   bool _searchFromRest = false;
 
@@ -134,6 +137,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         onPull: _onPull,
         onPullEnd: _onPullEnd,
         onWebSearch: _webSearch,
+        onRun: _runFromSearch,
+        pullOpening: _pullOpening,
       ),
     ),
   );
@@ -212,6 +217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _land.dispose();
     _pullBack.dispose();
     _pull.dispose();
+    _pullOpening.dispose();
     _query.dispose();
     _focus.dispose();
     _expanded.dispose();
@@ -289,7 +295,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// sheet down shrinks it first) and the gesture is on (Settings → Pull down to search).
   void _onPull(double delta) {
     if (!prefs.pullToSearch || _searching || _expanded.value > .01) return;
-    _pullBack.stop();
+    _pullBack.stop(); // a stopped spring-back never completes, so clear its flag here
+    _pullOpening.value = false;
     final before = _pull.value;
     _pull.value = math.max(0, before + delta);
     if ((before < pullToOpen) != (_pull.value < pullToOpen)) HapticFeedback.selectionClick(); // crossed the line
@@ -300,8 +307,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     if (_pull.value <= 0 || _pullBack.isAnimating) return;
     final open = _pull.value >= pullToOpen;
     _pullFrom = _pull.value;
-    _pullBack.forward(from: 0);
+    _pullOpening.value = open;
+    _pullBack.forward(from: 0).whenComplete(() => _pullOpening.value = false);
     if (open) _startSearch();
+  }
+
+  /// A search result's action (app shortcut, settings page): run it, then tidy up.
+  Future<void> _runFromSearch(Future<void> Function() action) async {
+    await action();
+    Future.delayed(const Duration(milliseconds: 350), _stopSearch);
   }
 
   /// Search the web (or the Play Store) for what's typed, then tidy up like after an app launch.
@@ -312,15 +326,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   void _onQuery(String q) {
     setState(() {});
+    if (!prefs.searchIn.contains('apps')) return;
     final r = searchApps(_apps, q);
     if (prefs.autoOpenSingleMatch && q.trim().isNotEmpty && r.length == 1) _launch(r.first);
   }
 
-  /// Enter on the keyboard: the top app, or — when no app matches — a web search.
+  /// Enter on the keyboard: the top app, or — when no app matches — the web (or Play Store),
+  /// whichever search is set to look in.
   void _onSubmit(String q) {
-    if (q.trim().isEmpty) return;
-    final r = searchApps(_apps, q);
-    r.isNotEmpty ? _launch(r.first) : _webSearch(q.trim());
+    q = q.trim();
+    if (q.isEmpty) return;
+    final sources = prefs.searchIn;
+    final r = sources.contains('apps') ? searchApps(_apps, q) : const <AppEntry>[];
+    if (r.isNotEmpty) {
+      _launch(r.first);
+    } else if (sources.contains('google')) {
+      _webSearch(q);
+    } else if (sources.contains('play')) {
+      _webSearch(q, play: true);
+    }
   }
 
   bool _collapseOnRelease = false;

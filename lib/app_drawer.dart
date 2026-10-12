@@ -12,6 +12,9 @@ import 'folders.dart';
 import 'prefs.dart';
 import 'search.dart';
 import 'search_dock.dart';
+import 'system_settings.dart';
+import 'quick_chips.dart';
+import 'quick_actions.dart';
 import 'sheets.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -40,6 +43,8 @@ class AppDrawer extends StatefulWidget {
     required this.onPull,
     required this.onPullEnd,
     required this.onWebSearch,
+    required this.onRun,
+    required this.pullOpening,
   });
 
   /// The search bar when it lives inside the drawer (Settings → Search bar: Top); null when it
@@ -54,6 +59,12 @@ class AppDrawer extends StatefulWidget {
 
   /// Search results' web rows: search Google (or the Play Store) for the query.
   final void Function(String query, {bool play}) onWebSearch;
+
+  /// Runs a search result's action (an app shortcut, a settings page), then search closes.
+  final void Function(Future<void> Function() action) onRun;
+
+  /// A pull went past the line and was let go: search is opening (the pill stays "ready").
+  final ValueListenable<bool> pullOpening;
 
   final List<AppEntry> apps;
   final Prefs prefs;
@@ -81,7 +92,20 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
 
   /// Back to the resting state (Home pressed / after launching an app).
   void reset() {
+    _shortcuts = null; // re-read app shortcuts next search (apps may have changed)
     if (_openId != null) setState(() => _openId = null);
+  }
+
+  /// App shortcuts for search, loaded once per search session.
+  List<AppShortcut>? _shortcuts;
+  bool _loadingShortcuts = false;
+  void _loadShortcuts() {
+    if (_shortcuts != null || _loadingShortcuts) return;
+    _loadingShortcuts = true;
+    Apps.instance.shortcuts().then((list) {
+      _loadingShortcuts = false;
+      if (mounted) setState(() => _shortcuts = list ?? const []);
+    });
   }
 
   // ---- Data ----------------------------------------------------------------
@@ -405,22 +429,53 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       ),
     );
 
+    // Results only once something is typed; an empty search keeps the usual list in place
+    // (so opening search never swaps the screen out from under the motion).
+    final q = widget.query.trim();
+    final showResults = widget.searching && q.isNotEmpty;
+    // Bar at the bottom → results grow upward from it (best match nearest the bar).
+    final upward = showResults && widget.searchBar == null;
     final List<Widget> content;
-    if (widget.searching) {
+    if (showResults) {
+      final sources = prefs.searchIn;
+      if (sources.contains('shortcuts')) _loadShortcuts();
+      final results = _SearchResults(
+        query: q,
+        apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
+        shortcuts: [
+          for (final sc in sources.contains('shortcuts') ? (_shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
+            if (matchesQuery(q, [sc.label, sc.app])) sc,
+        ].take(5).toList(),
+        settings: sources.contains('settings') ? [for (final st in systemSettings) if (matchesQuery(q, [st.title, st.keywords])) st].take(4).toList() : const [],
+        web: sources.contains('google'),
+        play: sources.contains('play'),
+        upward: upward,
+        prefs: prefs,
+        google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
+        onTap: widget.onLaunch,
+        onLongPress: _longPress,
+        onWebSearch: widget.onWebSearch,
+        onRun: widget.onRun,
+      );
       content = [
-        box(
-          widget.query.trim().isEmpty
-              ? hero // suggestions while the field is empty
-              : _SearchResults(
-                  query: widget.query.trim(),
-                  results: searchApps(widget.apps, widget.query),
-                  prefs: prefs,
-                  google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
-                  onTap: widget.onLaunch,
-                  onLongPress: _longPress,
-                  onWebSearch: widget.onWebSearch,
-                ),
-        ),
+        if (upward)
+          // Hug the bottom (just above the bar and keyboard); scrolls if it ever outgrows the screen.
+          SliverPadding(
+            padding: gutter,
+            sliver: SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  results,
+                  Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24)),
+                ],
+              ),
+            ),
+          )
+        else
+          box(results),
       ];
     } else {
       content = [
@@ -468,9 +523,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
       // Pull-to-search: the list slides down with the pull and a search pill grows in the gap.
-      child: ValueListenableBuilder<double>(
-        valueListenable: widget.pull,
-        builder: (context, p, list) {
+      child: ListenableBuilder(
+        listenable: Listenable.merge([widget.pull, widget.pullOpening]),
+        builder: (context, list) {
+          final p = widget.pull.value;
           final y = pullOffset(p);
           final t = (p / pullToOpen).clamp(0.0, 1.0);
           return Stack(
@@ -481,7 +537,8 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                   top: DS.s8 + math.max(0.0, (y - 44) / 2),
                   left: 0,
                   right: 0,
-                  child: IgnorePointer(child: _PullPill(progress: t)),
+                  // Once released to open, the pill stays "ready" while it fades (no flip back).
+                  child: IgnorePointer(child: _PullPill(progress: t, ready: widget.pullOpening.value || t >= 1)),
                 ),
             ],
           );
@@ -515,6 +572,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                     if (widget.searchBar != null) SliverToBoxAdapter(child: widget.searchBar!),
                     ...content,
                     // Room for the floating search dock (and the keyboard while searching).
+                    if (!upward)
                     SliverToBoxAdapter(
                       child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
                     ),
@@ -538,12 +596,12 @@ const pullToOpen = 110.0;
 /// The pill that grows in the gap while pulling the drawer down: "Pull to search", then
 /// "Release to search" (filled) once far enough.
 class _PullPill extends StatelessWidget {
-  const _PullPill({required this.progress});
+  const _PullPill({required this.progress, required this.ready});
   final double progress;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
-    final ready = progress >= 1;
     return Center(
       child: Opacity(
         opacity: progress,
@@ -1023,145 +1081,191 @@ class _GridApp extends StatelessWidget {
   }
 }
 
-/// Search results: the best match as a big row (Enter opens it), the other matches as an
-/// icon grid, then "search the web" rows — Google (or the browser) and the Play Store.
+/// Search results, by source (Settings → Search → Search in): apps (best match big with
+/// Open — what Enter does — the rest as a grid), app shortcuts, phone settings, then the web
+/// (Google / browser) and the Play Store. With the bar at the bottom everything stacks upward
+/// from it: the best match sits right above the bar.
 class _SearchResults extends StatelessWidget {
   const _SearchResults({
     required this.query,
-    required this.results,
+    required this.apps,
+    required this.shortcuts,
+    required this.settings,
+    required this.web,
+    required this.play,
+    required this.upward,
     required this.prefs,
     required this.google,
     required this.onTap,
     required this.onLongPress,
     required this.onWebSearch,
+    required this.onRun,
   });
   final String query;
-  final List<AppEntry> results;
+  final List<AppEntry> apps;
+  final List<AppShortcut> shortcuts;
+  final List<SystemSetting> settings;
+  final bool web, play, upward;
   final Prefs prefs;
   final bool google; // the Google app is installed → say "Google"
   final ValueChanged<AppEntry> onTap, onLongPress;
   final void Function(String query, {bool play}) onWebSearch;
+  final void Function(Future<void> Function() action) onRun;
 
   String _where(AppEntry a) => '${a.work ? 'Work · ' : ''}${prefs.folderName(folderFor(a, prefs.folderOverrides))}';
 
-  @override
-  Widget build(BuildContext context) {
-    final top = results.firstOrNull;
-    final rest = results.skip(1).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (top == null)
-          OneCard(
-            tone: CardTone.muted,
-            child: Row(
-              children: [
-                Icon(Icons.search_off_rounded, color: DS.inkMuted),
-                const SizedBox(width: DS.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('No apps match “$query”', style: DS.rowTitle),
-                      Text('Try searching the web instead', style: DS.rowSub),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          OneCard(
-            padding: const EdgeInsets.fromLTRB(DS.s8, DS.s8, DS.s8, DS.s8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Best match: big, with "Open" (also what Enter does).
-                Builder(
-                  builder: (rowContext) => InkWell(
-                    borderRadius: BorderRadius.circular(DS.rMedia),
-                    onTap: () {
-                      Apps.instance.markLaunchFrom(rowContext);
-                      onTap(top);
-                    },
-                    onLongPress: () => onLongPress(top),
-                    child: Padding(
-                      padding: const EdgeInsets.all(DS.s8),
-                      child: Row(
-                        children: [
-                          AppIcon(top, size: 52),
-                          const SizedBox(width: DS.s16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  top.label,
-                                  style: DS.rowTitle.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Text(_where(top), style: DS.rowSub),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            decoration: BoxDecoration(color: DS.ink, borderRadius: BorderRadius.circular(99)),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text('Open', style: DS.pill.copyWith(color: DS.card)),
-                                const SizedBox(width: 2),
-                                Icon(Icons.north_east_rounded, size: 14, color: DS.card),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                if (rest.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
-                    child: CardDivider(),
-                  ),
-                  LayoutBuilder(
-                    builder: (context, c) => Wrap(
-                      children: [
-                        for (final a in rest)
-                          SizedBox(
-                            width: c.maxWidth / 4,
-                            child: _GridApp(app: a, onTap: () => onTap(a), onLongPress: () => onLongPress(a)),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        const SizedBox(height: DS.stack),
-        // The web, like the Pixel search bar: hands the query to Google / the Play Store.
-        OneCard(
-          padding: const EdgeInsets.symmetric(vertical: DS.s4),
-          child: Column(
+  Widget _title(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s4),
+    child: Text(text, style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+  );
+
+  /// Card body rows, flipped when the list grows upward.
+  List<Widget> _ordered(List<Widget> rows) => upward ? rows.reversed.toList() : rows;
+
+  Widget _appsCard() {
+    final top = apps.first;
+    final rest = apps.skip(1).toList();
+    final best = Builder(
+      builder: (rowContext) => InkWell(
+        borderRadius: BorderRadius.circular(DS.rMedia),
+        onTap: () {
+          Apps.instance.markLaunchFrom(rowContext);
+          onTap(top);
+        },
+        onLongPress: () => onLongPress(top),
+        child: Padding(
+          padding: const EdgeInsets.all(DS.s8),
+          child: Row(
             children: [
-              _WebRow(icon: Icons.travel_explore_rounded, title: google ? 'Search Google' : 'Search the web', query: query, onTap: () => onWebSearch(query)),
-              _WebRow(icon: Icons.shop_outlined, title: 'Find apps on Play Store', query: query, onTap: () => onWebSearch(query, play: true)),
+              AppIcon(top, size: 52),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(top.label, style: DS.rowTitle.copyWith(fontSize: 18, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(_where(top), style: DS.rowSub),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: DS.ink, borderRadius: BorderRadius.circular(99)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Open', style: DS.pill.copyWith(color: DS.card)),
+                    const SizedBox(width: 2),
+                    Icon(Icons.north_east_rounded, size: 14, color: DS.card),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
+      ),
+    );
+    return OneCard(
+      padding: const EdgeInsets.all(DS.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: _ordered([
+          best,
+          if (rest.isNotEmpty) ...[
+            const Padding(padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4), child: CardDivider()),
+            // Rows of four (not a LayoutBuilder: the upward list measures its natural height,
+            // which LayoutBuilder can't report).
+            for (var r = 0; r < rest.length; r += 4)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var c = r; c < r + 4; c++)
+                    Expanded(
+                      child: c < rest.length
+                          ? _GridApp(app: rest[c], onTap: () => onTap(rest[c]), onLongPress: () => onLongPress(rest[c]))
+                          : const SizedBox.shrink(),
+                    ),
+                ],
+              ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _rowsCard(String title, List<Widget> rows) => OneCard(
+    padding: const EdgeInsets.symmetric(vertical: DS.s4),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_title(title), ..._ordered(rows)]), // title stays on top
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final nothing = apps.isEmpty && shortcuts.isEmpty && settings.isEmpty;
+    final sections = <Widget>[
+      if (nothing)
+        OneCard(
+          tone: CardTone.muted,
+          child: Row(
+            children: [
+              Icon(Icons.search_off_rounded, color: DS.inkMuted),
+              const SizedBox(width: DS.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Nothing on your phone matches “$query”', style: DS.rowTitle),
+                    if (web || play) Text('Try the web instead', style: DS.rowSub),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      if (apps.isNotEmpty) _appsCard(),
+      if (shortcuts.isNotEmpty)
+        _rowsCard('App shortcuts', [
+          for (final sc in shortcuts)
+            _WebRow(
+              leading: ShortcutIcon(id: sc.id, size: 24),
+              title: sc.label,
+              query: sc.work ? '${sc.app} · Work' : sc.app,
+              quoted: false,
+              onTap: () => onRun(() => Apps.instance.quickAction(sc.id)),
+            ),
+        ]),
+      if (settings.isNotEmpty)
+        _rowsCard('Phone settings', [
+          for (final st in settings)
+            _WebRow(icon: st.icon, title: st.title, query: 'Settings', quoted: false, onTap: () => onRun(() => Apps.instance.openSetting(st.action))),
+        ]),
+      // The web, like the Pixel search bar: hands the query to Google / the Play Store.
+      if (web || play)
+        OneCard(
+          padding: const EdgeInsets.symmetric(vertical: DS.s4),
+          child: Column(
+            children: _ordered([
+              if (web) _WebRow(icon: Icons.travel_explore_rounded, title: google ? 'Search Google' : 'Search the web', query: query, onTap: () => onWebSearch(query)),
+              if (play) _WebRow(icon: Icons.shop_outlined, title: 'Find apps on Play Store', query: query, onTap: () => onWebSearch(query, play: true)),
+            ]),
+          ),
+        ),
+    ];
+    final ordered = upward ? sections.reversed.toList() : sections;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, w) in ordered.indexed) ...[if (i > 0) const SizedBox(height: DS.stack), w],
       ],
     );
   }
 }
 
 class _WebRow extends StatelessWidget {
-  const _WebRow({required this.icon, required this.title, required this.query, required this.onTap});
-  final IconData icon;
+  const _WebRow({this.icon, this.leading, required this.title, required this.query, this.quoted = true, required this.onTap});
+  final IconData? icon;
+  final Widget? leading; // e.g. an app shortcut's own icon
   final String title, query;
+  final bool quoted; // subtitle is the search text ("…") or a plain label
   final VoidCallback onTap;
 
   @override
@@ -1175,16 +1279,17 @@ class _WebRow extends StatelessWidget {
             Container(
               width: 40,
               height: 40,
+              alignment: Alignment.center,
               decoration: BoxDecoration(color: DS.cardMuted, shape: BoxShape.circle),
-              child: Icon(icon, size: 22, color: DS.ink),
+              child: leading ?? Icon(icon, size: 22, color: DS.ink),
             ),
             const SizedBox(width: DS.s16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-                  Text('“$query”', style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(quoted ? '“$query”' : query, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),

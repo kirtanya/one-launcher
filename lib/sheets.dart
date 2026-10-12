@@ -283,8 +283,8 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
       builder: (ctx, _) {
         final order = prefs.topOrder;
         final on = prefs.topEnabled;
-        final w0 = prefs.clockWeight, wd0 = prefs.clockWidth, sl0 = prefs.clockSlant;
-        final preset = clockPresets.where((p) => (w0 - p.$2).abs() < 1 && (wd0 - p.$3).abs() < 1 && (sl0 - p.$4).abs() < .1).firstOrNull;
+        final w0 = prefs.clockWeight, wd0 = prefs.clockWidth;
+        final preset = clockPresets.where((p) => isClockPreset(p, prefs)).firstOrNull;
         Widget label(String text, [String? hint]) => Padding(
           padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
           child: Row(
@@ -1555,6 +1555,16 @@ Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}
           _SwitchRow(Icons.swipe_down_alt_rounded, 'Pull down to search', 'Drag the app drawer down at its top', prefs.pullToSearch, prefs.setPullToSearch),
           _SwitchRow(Icons.bolt_rounded, 'Open the only match', 'When search finds just one app', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
         ]),
+        _Group('Search in', [
+          for (final (id, icon, title, sub) in const [
+            ('apps', Icons.apps_rounded, 'Apps', 'Everything installed, work apps too'),
+            ('shortcuts', Icons.bolt_rounded, 'App shortcuts', 'Actions apps offer, like Scan QR or New message'),
+            ('settings', Icons.settings_rounded, 'Phone settings', 'Wi-Fi, Bluetooth, Battery, Display…'),
+            ('google', Icons.travel_explore_rounded, 'Google', 'Search the web for what you type'),
+            ('play', Icons.shop_outlined, 'Play Store', 'Find new apps'),
+          ])
+            _SwitchRow(icon, title, sub, prefs.searchIn.contains(id), (v) => prefs.setSearchIn(id, v)),
+        ]),
         const SizedBox(height: DS.s8),
       ],
     ),
@@ -1845,7 +1855,7 @@ class _ClockStyleEditor extends StatelessWidget {
             child: FittedBox(
               child: Text(
                 sample,
-                style: clockStyle(weight: w, width: wd, slant: sl).copyWith(shadows: const [], color: DS.onWallpaper),
+                style: clockStyle(weight: w, width: wd, slant: sl, round: prefs.clockRound).copyWith(shadows: const [], color: DS.onWallpaper),
               ),
             ),
           ),
@@ -1860,13 +1870,13 @@ class _ClockStyleEditor extends StatelessWidget {
             itemCount: clockPresets.length,
             separatorBuilder: (_, _) => const SizedBox(width: DS.s8),
             itemBuilder: (context, i) {
-              final (name, pw, pwd, psl) = clockPresets[i];
+              final (name, pw, pwd, psl, pr) = clockPresets[i];
               return _Chip(
                 label: name,
-                selected: (w - pw).abs() < 1 && (wd - pwd).abs() < 1 && (sl - psl).abs() < .1,
+                selected: isClockPreset(clockPresets[i], prefs),
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  prefs.setClockStyle(weight: pw, width: pwd, slant: psl);
+                  prefs.setClockStyle(weight: pw, width: pwd, slant: psl, round: pr);
                 },
               );
             },
@@ -1877,6 +1887,7 @@ class _ClockStyleEditor extends StatelessWidget {
         slider('Width', 'Narrow', 'Wide', wd, 25, 151, 21, (x) => prefs.setClockStyle(width: x)),
         // Slant runs 0 → −10; the slider shows it upright → italic.
         slider('Slant', 'Upright', 'Italic', -sl, 0, 10, 10, (x) => prefs.setClockStyle(slant: -x)),
+        slider('Roundness', 'Sharp', 'Round', prefs.clockRound, 0, 100, 10, (x) => prefs.setClockStyle(round: x)),
       ],
     );
   }

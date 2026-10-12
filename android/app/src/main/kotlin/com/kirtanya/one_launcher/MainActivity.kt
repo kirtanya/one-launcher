@@ -164,6 +164,10 @@ class MainActivity : FlutterActivity() {
                 }
                 // Search box → the web (Google app if installed, else the browser) / Play Store.
                 "webSearch" -> result.success(webSearch(call.argument<String>("query") ?: ""))
+                // Search → a phone settings page (falls back to the main Settings screen).
+                "openSetting" -> result.success(
+                    open(Intent(call.argument<String>("action") ?: Settings.ACTION_SETTINGS)) || open(Intent(Settings.ACTION_SETTINGS)),
+                )
                 "playSearch" -> result.success(
                     open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=" + android.net.Uri.encode(call.argument<String>("query") ?: "") + "&c=apps")))
                         || open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?c=apps&q=" + android.net.Uri.encode(call.argument<String>("query") ?: "")))),

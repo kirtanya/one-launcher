@@ -145,7 +145,9 @@ class Prefs extends ChangeNotifier {
   double get clockWeight => _sp.getDouble('clockWeight') ?? 300;
   double get clockWidth => _sp.getDouble('clockWidth') ?? 25;
   double get clockSlant => _sp.getDouble('clockSlant') ?? 0;
-  Future<void> setClockStyle({double? weight, double? width, double? slant}) async {
+  double get clockRound => _sp.getDouble('clockRound') ?? 0; // 0 sharp … 100 fully rounded
+  Future<void> setClockStyle({double? weight, double? width, double? slant, double? round}) async {
+    if (round != null) await _sp.setDouble('clockRound', round.clamp(0, 100));
     if (weight != null) await _sp.setDouble('clockWeight', weight.clamp(100, 1000));
     if (width != null) await _sp.setDouble('clockWidth', width.clamp(25, 151));
     if (slant != null) await _sp.setDouble('clockSlant', slant.clamp(-10, 0));
@@ -424,6 +426,16 @@ class Prefs extends ChangeNotifier {
   String get searchPosition => _sp.getString('searchPosition') ?? 'bottom';
   Future<void> setSearchPosition(String v) async {
     await _sp.setString('searchPosition', v);
+    notifyListeners();
+  }
+
+  /// What search looks through: apps, app shortcuts, phone settings, Google (web), Play Store.
+  static const searchSourceIds = ['apps', 'shortcuts', 'settings', 'google', 'play'];
+  Set<String> get searchIn => (_sp.getStringList('searchIn') ?? searchSourceIds).toSet();
+  Future<void> setSearchIn(String id, bool on) async {
+    final s = searchIn;
+    on ? s.add(id) : s.remove(id);
+    await _sp.setStringList('searchIn', [for (final x in searchSourceIds) if (s.contains(x)) x]);
     notifyListeners();
   }
 

@@ -8,7 +8,7 @@ import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> _loadFonts() async {
-  await (FontLoader('RobotoFlex')..addFont(Future.value(ByteData.view(File('assets/fonts/RobotoFlex-Clock.ttf').readAsBytesSync().buffer)))).load();
+  await (FontLoader('ClockFlex')..addFont(Future.value(ByteData.view(File('assets/fonts/ClockFlex.ttf').readAsBytesSync().buffer)))).load();
   final loader = FontLoader('InstrumentSans');
   for (final w in [400, 500, 600]) {
     loader.addFont(Future.value(ByteData.view(File('assets/fonts/InstrumentSans-$w.ttf').readAsBytesSync().buffer)));
@@ -139,7 +139,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('64%'), findsOneWidget, reason: 'battery page added after screen time');
     final big = tester.widget<Text>(find.text('64%')).style!;
-    expect(big.fontFamily, 'RobotoFlex');
+    expect(big.fontFamily, 'ClockFlex');
     final wght = big.fontVariations!.firstWhere((v) => v.axis == 'wght').value;
     expect(wght, isNot(800), reason: 'the weight slider moved it off the Bold preset');
     final prefs2 = (tester.widget(find.byType(OneLauncher)) as OneLauncher).prefs;

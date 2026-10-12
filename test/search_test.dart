@@ -108,7 +108,7 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'weather today');
     await tester.pumpAndSettle();
-    expect(find.text('No apps match “weather today”'), findsOneWidget);
+    expect(find.text('Nothing on your phone matches “weather today”'), findsOneWidget);
     await tester.testTextInput.receiveAction(TextInputAction.go);
     await tester.pump();
     expect(calls.last.method, 'webSearch');
