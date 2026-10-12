@@ -205,6 +205,31 @@ void main() {
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_10_colours.png'));
     await tester.tapAt(const Offset(40, 270));
     await tester.pumpAndSettle();
+    // Customise → Home screen → Remote hints off: "OK · Hold OK" disappears; Cards → Large.
+    expect(find.text('Hold OK'), findsOneWidget);
+    await _press(tester, LogicalKeyboardKey.select); // focus is still on Customise
+    expect(find.text('Home screen'), findsOneWidget);
+    expect(find.text('Remote & behaviour'), findsOneWidget);
+    await tester.tap(find.text('Home screen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remote hints (OK · Hold OK)'), findsOneWidget);
+    await tester.tap(find.text('Remote hints (OK · Hold OK)'));
+    await tester.pumpAndSettle();
+    expect(prefs.tvSettings['hints'], false);
+    expect(find.text('Hold OK'), findsNothing, reason: 'hints hidden live behind the panel');
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_11_customise.png'));
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cards & motion'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Card size'));
+    await tester.pumpAndSettle();
+    expect(prefs.tvSettings['cardScale'], 1.15, reason: 'Medium → Large');
+    await tester.tapAt(const Offset(40, 270));
+    await tester.pumpAndSettle();
+    await prefs.resetTvSettings();
+    await tester.pumpAndSettle();
+    expect(find.text('Hold OK'), findsOneWidget, reason: 'Reset brings everything back');
     await _press(tester, LogicalKeyboardKey.arrowLeft); // back to Search
 
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.

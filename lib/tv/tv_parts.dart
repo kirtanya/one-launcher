@@ -141,7 +141,7 @@ class TvAppArt extends StatelessWidget {
 // ---- Side panel (options) ------------------------------------------------------
 
 class TvAction {
-  const TvAction(this.icon, this.label, this.onSelect, {this.danger = false, this.keepOpen = false, this.swatch, this.selected = false});
+  const TvAction(this.icon, this.label, this.onSelect, {this.danger = false, this.keepOpen = false, this.swatch, this.selected = false, this.value});
   final IconData icon;
   final String label;
   final VoidCallback onSelect;
@@ -149,6 +149,7 @@ class TvAction {
   final bool keepOpen; // e.g. clock presets: try several without reopening
   final Color? swatch; // a colour dot instead of the icon (colour picker)
   final bool selected; // a tick at the end
+  final String? value; // current setting, shown on the right ("Artwork")
 }
 
 /// Options slide in from the right, like the TV's own menus. Back closes.
@@ -172,7 +173,7 @@ Future<void> showTvPanel(
       child: Material(
         color: const Color(0xFF1C1C1C),
         child: SizedBox(
-          width: 380,
+          width: 440,
           height: double.infinity,
           child: FocusTraversalGroup(
             child: ListenableBuilder(
@@ -228,6 +229,11 @@ Future<void> showTvPanel(
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (a.value != null)
+                                  Text(
+                                    a.value!,
+                                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w400, color: f ? DS.inkMuted : TvDS.inkMuted),
+                                  ),
                                 if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? DS.ink : TvDS.ink),
                               ],
                             ),
@@ -255,7 +261,8 @@ Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().to
 /// Darkens a full-bleed picture into the canvas: from the left (behind text) and the bottom,
 /// plus a light veil at the top.
 class TvScrims extends StatelessWidget {
-  const TvScrims({super.key});
+  const TvScrims({super.key, this.strength = 1});
+  final double strength; // Customise → Background darkness (×, clamped)
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +273,15 @@ class TvScrims extends StatelessWidget {
         children: [
           DecoratedBox(
             decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [c, c.withValues(alpha: .92), c.withValues(alpha: .35), c.withValues(alpha: 0)], stops: const [0, .3, .55, .75]),
+              gradient: LinearGradient(
+                colors: [
+                  c,
+                  c.withValues(alpha: (.92 * strength).clamp(0, 1)),
+                  c.withValues(alpha: (.35 * strength).clamp(0, 1)),
+                  c.withValues(alpha: 0),
+                ],
+                stops: const [0, .3, .55, .75],
+              ),
             ),
           ),
           DecoratedBox(
@@ -274,7 +289,12 @@ class TvScrims extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [TvDS.scrim.withValues(alpha: .35), c.withValues(alpha: 0), c.withValues(alpha: .85), c],
+                colors: [
+                  TvDS.scrim.withValues(alpha: (.35 * strength).clamp(0, 1)),
+                  c.withValues(alpha: 0),
+                  c.withValues(alpha: (.85 * strength).clamp(0, 1)),
+                  c,
+                ],
                 stops: const [0, .2, .58, .74],
               ),
             ),

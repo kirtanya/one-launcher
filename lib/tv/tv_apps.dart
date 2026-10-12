@@ -113,6 +113,8 @@ class TvApps {
   /// title, subtitle, position, duration (ms), at (epoch ms), art (file path or null).
   Future<List<Map>> history() async => demo ? _demoHistory : await _ch.invokeListMethod<Map>('getHistory') ?? const [];
   Future<void> removeHistory(String key) => _call('removeHistory', {'key': key});
+  Future<void> setHistoryEnabled(bool on) => _call('setHistoryEnabled', {'on': on});
+  Future<void> clearHistory() => _call('clearHistory');
   Future<void> openNotificationAccess() => _call('openNotificationAccess');
   Future<void> openProgram(String? intent, String package) => _call('openProgram', {'intent': intent, 'package': package});
 

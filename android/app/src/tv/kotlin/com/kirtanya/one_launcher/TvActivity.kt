@@ -120,6 +120,14 @@ class TvActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "getHistory" -> result.success(MediaHistory.read(this))
+                "setHistoryEnabled" -> {
+                    MediaHistory.setEnabled(this, call.argument<Boolean>("on") ?: true)
+                    result.success(true)
+                }
+                "clearHistory" -> {
+                    MediaHistory.clear(this)
+                    result.success(true)
+                }
                 "removeHistory" -> {
                     MediaHistory.remove(this, call.argument<String>("key")!!)
                     result.success(true)

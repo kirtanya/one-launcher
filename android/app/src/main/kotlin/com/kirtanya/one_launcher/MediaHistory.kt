@@ -67,6 +67,7 @@ class MediaHistory(private val context: Context) {
 
     /** Save this session's item (at most every 15 s while playing; always on pause / change). */
     private fun record(c: MediaController, force: Boolean) {
+        if (!enabled(context)) return // Customise → Remote & behaviour → Remember what I watch
         val meta = c.metadata ?: return
         val title = meta.getString(MediaMetadata.METADATA_KEY_TITLE) ?: meta.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE) ?: return
         if (title.isBlank()) return
@@ -135,6 +136,14 @@ class MediaHistory(private val context: Context) {
                 val o = a.getJSONObject(i)
                 o.keys().asSequence().associateWith { k -> o.get(k).takeUnless { it == JSONObject.NULL } }
             }
+        }
+
+        fun enabled(c: Context) = prefs(c).getBoolean("enabled", true)
+        fun setEnabled(c: Context, on: Boolean) = prefs(c).edit().putBoolean("enabled", on).apply()
+
+        fun clear(c: Context) {
+            prefs(c).edit().remove(KEY).apply()
+            File(c.filesDir, "history").listFiles()?.forEach { it.delete() }
         }
 
         fun remove(c: Context, key: String) {

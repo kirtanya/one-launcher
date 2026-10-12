@@ -386,6 +386,18 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// TV: look & behaviour settings (Customise), one JSON map; see lib/tv/tv_settings.dart.
+  Map<String, dynamic> get tvSettings => Map<String, dynamic>.from(_json('tvSettings'));
+  Future<void> setTvSetting(String key, Object? value) async {
+    await _sp.setString('tvSettings', jsonEncode(tvSettings..[key] = value));
+    notifyListeners();
+  }
+
+  Future<void> resetTvSettings() async {
+    await _sp.remove('tvSettings');
+    notifyListeners();
+  }
+
   /// TV: the quick action chips above the rows, in order ("t:…" built-in, `a:<package>` apps).
   static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings'];
   List<String> get tvQuickActions => _sp.getStringList('tvQuickActions') ?? tvQuickDefault;

@@ -18,6 +18,7 @@ import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_search.dart';
+import 'tv_settings.dart';
 
 enum TvKind { app, resume, program, action }
 
@@ -65,9 +66,11 @@ class TvRow {
   final bool wide;
   final bool chips; // the quick action chips above the rows (no title, short)
 
-  double get cardW => wide ? TvDS.wideW : TvDS.tileW;
-  double get cardH => wide ? TvDS.wideH : TvDS.tileH;
-  double get height => chips ? TvDS.cardRowPad + 40 + TvDS.cardRowGap : TvDS.cardRowTitleH + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
+  // Customise → Card size scales every card; Row titles off removes their line.
+  double get cardW => (wide ? TvDS.wideW : TvDS.tileW) * TvLook.number('cardScale');
+  double get cardH => (wide ? TvDS.wideH : TvDS.tileH) * TvLook.number('cardScale');
+  double get height =>
+      chips ? TvDS.cardRowPad + 40 + TvDS.cardRowGap : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
 }
 
 /// The TV home screen, cinematic: the focused item's artwork fills the screen behind a
@@ -156,6 +159,7 @@ class _TvHomeState extends State<TvHome> {
 
   void _regroup() {
     if (!mounted) return;
+    TvLook.read(prefs);
     final hidden = prefs.hidden.toSet();
     final visible = [
       for (final a in _apps)
@@ -236,26 +240,28 @@ class _TvHomeState extends State<TvHome> {
     setState(() {
       _rows = [
         // ▶ Resume: what's playing / paused, one press away (above the quick actions).
-        if (cont.firstOrNull case final now? when now.kind == TvKind.resume)
+        if (cont.firstOrNull case final now? when now.kind == TvKind.resume && TvLook.on('resume'))
           TvRow('resume', 'Resume', [
             now,
             // Live: control it right here (music keeps playing on the home screen).
-            if (now.historyKey == null) ...[
+            if (now.historyKey == null && TvLook.on('controls')) ...[
               if (m?['canPrev'] == true) const TvItem(key: 'm:prev', kind: TvKind.action, title: 'Previous', package: ''),
               TvItem(key: 'm:toggle', kind: TvKind.action, title: now.playing ? 'Pause' : 'Play', package: ''),
               if (m?['canNext'] == true) const TvItem(key: 'm:next', kind: TvKind.action, title: 'Next', package: ''),
             ],
           ], chips: true),
-        TvRow('quick', 'Quick actions', quick, chips: true),
-        if (cont.isNotEmpty) TvRow('continue', 'Continue watching', cont, wide: true),
-        if (fav.isNotEmpty) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
-        if (recents.length > 1) TvRow('recent', 'Jump back in', [for (final a in recents) appItem(a)]),
-        for (final c in _channels)
-          if ((c['programs'] as List?)?.isNotEmpty ?? false)
-            TvRow('ch:${c['id']}', '${c['name'] ?? appName(c['package'] as String? ?? '')}', [
-              for (final p in (c['programs'] as List).cast<Map>()) ?_program(p, appName(c['package'] as String? ?? '')),
-            ], wide: true),
-        for (final (f, list) in groups) TvRow(f.id, prefs.folderNames[f.id] ?? f.name, [for (final a in _ordered(f.id, list)) appItem(a)]),
+        if (TvLook.on('quick')) TvRow('quick', 'Quick actions', quick, chips: true),
+        if (cont.isNotEmpty && TvLook.on('rowContinue')) TvRow('continue', 'Continue watching', cont, wide: true),
+        if (fav.isNotEmpty && TvLook.on('rowFav')) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
+        if (recents.length > 1 && TvLook.on('rowRecent')) TvRow('recent', 'Jump back in', [for (final a in recents) appItem(a)]),
+        if (TvLook.on('rowChannels'))
+          for (final c in _channels)
+            if ((c['programs'] as List?)?.isNotEmpty ?? false)
+              TvRow('ch:${c['id']}', '${c['name'] ?? appName(c['package'] as String? ?? '')}', [
+                for (final p in (c['programs'] as List).cast<Map>()) ?_program(p, appName(c['package'] as String? ?? '')),
+              ], wide: true),
+        if (TvLook.on('rowFolders'))
+          for (final (f, list) in groups) TvRow(f.id, prefs.folderNames[f.id] ?? f.name, [for (final a in _ordered(f.id, list)) appItem(a)]),
       ];
     });
     // The title block follows focus; keep it pointing at a live item.
@@ -324,14 +330,18 @@ class _TvHomeState extends State<TvHome> {
   /// quick actions — the first app. (Search is one ↑ away from either.)
   void _focusDefault() {
     final quick = _rows.indexWhere((r) => r.id == 'quick' && r.items.any((it) => it.key != 'q:edit'));
+    final resume = _rows.indexWhere((r) => r.id == 'resume');
     final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
-    if (quick >= 0) {
-      _focus(quick, 0);
-    } else if (apps >= 0) {
-      _focus(apps, 0);
-    } else {
-      _focus(-1, 0);
-    }
+    // Customise → Start on (falls through when that spot isn't there).
+    const search = -100; // (indexWhere uses -1 for "not there")
+    final order = switch (TvLook.str('landing')) {
+      'search' => [search],
+      'resume' => [resume, quick, apps],
+      'app' => [apps, quick],
+      _ => [quick, apps],
+    };
+    final target = order.firstWhere((r) => r == search || r >= 0, orElse: () => search);
+    _focus(target == search ? -1 : target, 0);
     // Every row back to its start; the title block shows the first show / app (not a chip).
     for (final r in _rows) {
       _col.remove(r.id);
@@ -695,20 +705,22 @@ class _TvHomeState extends State<TvHome> {
     );
   }
 
+  /// Customise: every look & behaviour setting (tv_settings.dart), plus the editors that
+  /// live here (quick actions, colours, apps).
   void _customise() {
     final hidden = [
       for (final a in _apps)
         if (prefs.hidden.contains(a.package)) a,
     ];
     final mediaOff = tv.media.value?['granted'] == false;
-    showTvPanel(
+    showTvCustomise(
       context,
-      title: 'One Launcher TV',
-      actions: [
+      prefs: prefs,
+      extras: [
+        TvAction(Icons.bolt_rounded, 'Edit quick actions', _editQuick),
+        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', _colours),
         if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
         for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
-        TvAction(Icons.bolt_rounded, 'Quick actions', _editQuick),
-        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', _colours),
         TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
       ],
     );
@@ -723,13 +735,21 @@ class _TvHomeState extends State<TvHome> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_moving != null) return _endMove(); // Back while moving an app = done
-        _focusDefault();
+        switch (TvLook.str('back')) {
+          case 'search':
+            _focus(-1, 0);
+          case 'none':
+            break;
+          default:
+            _focusDefault();
+        }
       },
       child: Scaffold(
         backgroundColor: TvDS.canvas,
         body: LayoutBuilder(
           builder: (context, c) {
-            final rowsTop = c.maxHeight * TvDS.rowsTop;
+            TvLook.read(prefs);
+            final rowsTop = c.maxHeight * TvLook.number('rowsAt');
             return Stack(
               fit: StackFit.expand,
               children: [
@@ -739,9 +759,9 @@ class _TvHomeState extends State<TvHome> {
                   right: 0,
                   width: c.maxWidth * .74,
                   height: c.maxHeight * .8,
-                  child: _Backdrop(item: _backdrop),
+                  child: TvLook.str('backdrop') == 'off' ? const SizedBox.expand() : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
                 ),
-                const TvScrims(),
+                TvScrims(strength: TvLook.number('dim')),
 
                 // ---- Title block: what's focused ----
                 Positioned(
@@ -750,7 +770,7 @@ class _TvHomeState extends State<TvHome> {
                   width: TvDS.heroW,
                   height: rowsTop - TvDS.heroTop - DS.s12,
                   child: _HeroInfo(
-                    item: _hero,
+                    item: TvLook.on('hero') || _moving != null ? _hero : null,
                     chip: _chip,
                     rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
                     moving: _moving != null,
@@ -869,18 +889,19 @@ class _TvHomeState extends State<TvHome> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: EdgeInsets.only(left: TvDS.safe.left),
-            child: SizedBox(
-              height: TvDS.cardRowTitleH,
-              child: AnimatedDefaultTextStyle(
-                duration: Motion.snapDuration,
-                curve: Motion.settle,
-                style: focusedRow ? TvDS.rowTitleFocused : TvDS.rowTitle,
-                child: Text(row.title),
+          if (TvLook.on('rowTitles'))
+            Padding(
+              padding: EdgeInsets.only(left: TvDS.safe.left),
+              child: SizedBox(
+                height: TvDS.cardRowTitleH,
+                child: AnimatedDefaultTextStyle(
+                  duration: Motion.snapDuration,
+                  curve: Motion.settle,
+                  style: focusedRow ? TvDS.rowTitleFocused : TvDS.rowTitle,
+                  child: Text(row.title),
+                ),
               ),
             ),
-          ),
           const SizedBox(height: TvDS.cardRowPad),
           SizedBox(
             height: row.cardH,
@@ -922,14 +943,15 @@ class _TvHomeState extends State<TvHome> {
 /// banner as a soft, out-of-focus wash (drawn tiny and stretched — a free blur).
 /// Each new picture fades in while settling from a slight zoom.
 class _Backdrop extends StatelessWidget {
-  const _Backdrop({required this.item});
+  const _Backdrop({required this.item, this.glowOnly = false});
   final TvItem? item;
+  final bool glowOnly; // Customise → Background picture: Soft glow
 
   @override
   Widget build(BuildContext context) {
     final it = item;
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 650),
+      duration: TvLook.anim(const Duration(milliseconds: 650)),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
@@ -938,8 +960,9 @@ class _Backdrop extends StatelessWidget {
   }
 
   Widget _picture(TvItem it) {
+    if (glowOnly) return _wash(it);
     Widget settle(Widget child) => TweenAnimationBuilder<double>(
-      tween: Tween(begin: 1.06, end: 1),
+      tween: Tween(begin: TvLook.str('motion') == 'reduced' ? 1.0 : 1.06, end: 1),
       duration: const Duration(milliseconds: 1800),
       curve: Curves.easeOutCubic,
       builder: (context, s, child) => Transform.scale(scale: s, alignment: Alignment.topRight, child: child),
@@ -1044,7 +1067,7 @@ class _HeroInfo extends StatelessWidget {
               Text('Done', style: TvDS.heroMeta.copyWith(fontSize: 13)),
             ],
           )
-        else
+        else if (TvLook.on('hints'))
           Row(
             children: [
               _Keycap('OK'),
@@ -1160,10 +1183,10 @@ class _TopButton extends StatelessWidget {
           children: [
             AnimatedScale(
               scale: f ? TvDS.focusScale : 1,
-              duration: Motion.popDuration,
+              duration: TvLook.anim(Motion.popDuration),
               curve: Motion.pop,
               child: AnimatedContainer(
-                duration: Motion.pressIn * 2,
+                duration: TvLook.anim(Motion.pressIn * 2),
                 height: 40,
                 width: pill ? null : 40,
                 padding: pill ? const EdgeInsets.symmetric(horizontal: DS.s16) : EdgeInsets.zero,
@@ -1188,7 +1211,7 @@ class _TopButton extends StatelessWidget {
                   alignment: Alignment.bottomCenter,
                   child: AnimatedOpacity(
                     opacity: f ? 1 : 0,
-                    duration: Motion.pressIn * 2,
+                    duration: TvLook.anim(Motion.pressIn * 2),
                     child: Text(label, style: TvDS.hint, maxLines: 1, softWrap: false),
                   ),
                 ),
@@ -1239,7 +1262,12 @@ class _ClockState extends State<_Clock> {
 
   @override
   Widget build(BuildContext context) {
-    final h = MediaQuery.alwaysUse24HourFormatOf(context) ? _now.hour : (_now.hour % 12 == 0 ? 12 : _now.hour % 12);
+    final h24 = switch (TvLook.str('clock24')) {
+      '12' => false,
+      '24' => true,
+      _ => MediaQuery.alwaysUse24HourFormatOf(context),
+    };
+    final h = h24 ? _now.hour : (_now.hour % 12 == 0 ? 12 : _now.hour % 12);
     final time = '${h.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
     return ListenableBuilder(
       listenable: widget.prefs,
@@ -1247,9 +1275,9 @@ class _ClockState extends State<_Clock> {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          Text('${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', style: TvDS.date.copyWith(fontSize: 15)),
-          const SizedBox(width: DS.s12),
-          Text(time, style: TvDS.topClock.copyWith(fontSize: 22)),
+          if (TvLook.on('date')) Text('${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', style: TvDS.date.copyWith(fontSize: 15)),
+          if (TvLook.on('date') && TvLook.on('clock')) const SizedBox(width: DS.s12),
+          if (TvLook.on('clock')) Text(time, style: TvDS.topClock.copyWith(fontSize: 22)),
         ],
       ),
     );
@@ -1291,11 +1319,12 @@ class _Card extends StatelessWidget {
         onMove: onMove,
         onFocus: onFocus,
         builder: (context, f) => AnimatedScale(
-          scale: moving ? TvDS.focusScaleCard + .06 : (f ? TvDS.focusScaleCard : 1),
-          duration: Motion.popDuration,
+          // Customise → Focused card: grow + glow / grow / outline only.
+          scale: moving ? TvDS.focusScaleCard + .06 : (f && TvLook.str('focus') != 'outline' ? TvDS.focusScaleCard : 1),
+          duration: TvLook.anim(Motion.popDuration),
           curve: Motion.pop,
           child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
+            duration: TvLook.anim(Motion.pressIn * 2),
             width: width,
             height: height,
             // Ring + glow only on the focused card (one blur on screen at a time).
@@ -1305,7 +1334,7 @@ class _Card extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(TvDS.rTile),
-              boxShadow: f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
+              boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(TvDS.rTile),
@@ -1438,10 +1467,10 @@ class _QuickChip extends StatelessWidget {
         onFocus: onFocus,
         builder: (context, f) => AnimatedScale(
           scale: moving ? 1.14 : (f ? TvDS.focusScaleCard : 1),
-          duration: Motion.popDuration,
+          duration: TvLook.anim(Motion.popDuration),
           curve: Motion.pop,
           child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
+            duration: TvLook.anim(Motion.pressIn * 2),
             height: 40,
             padding: EdgeInsets.symmetric(horizontal: edit ? DS.s12 : DS.s16),
             decoration: BoxDecoration(
@@ -1494,10 +1523,10 @@ class _ResumeButton extends StatelessWidget {
         onFocus: onFocus,
         builder: (context, f) => AnimatedScale(
           scale: f ? TvDS.focusScaleCard : 1,
-          duration: Motion.popDuration,
+          duration: TvLook.anim(Motion.popDuration),
           curve: Motion.pop,
           child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
+            duration: TvLook.anim(Motion.pressIn * 2),
             height: 40,
             padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
             decoration: BoxDecoration(
@@ -1559,10 +1588,10 @@ class _MediaButton extends StatelessWidget {
         onFocus: onFocus,
         builder: (context, f) => AnimatedScale(
           scale: f ? TvDS.focusScale : 1,
-          duration: Motion.popDuration,
+          duration: TvLook.anim(Motion.popDuration),
           curve: Motion.pop,
           child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
+            duration: TvLook.anim(Motion.pressIn * 2),
             width: 40,
             height: 40,
             decoration: BoxDecoration(
