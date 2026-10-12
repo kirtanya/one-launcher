@@ -9,6 +9,8 @@
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
     <!-- Shows & films search (TMDB) and artwork -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Brightness from the phone's remote (granted once: "Modify system settings") -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions"/>
     <application
         android:label="One Launcher TV"
         android:banner="@drawable/tv_banner"
@@ -39,6 +41,22 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.HOME"/>
                 <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </activity>
+        <!-- Invisible: the phone remote opens onelauncher://brightness?level=N, this sets the
+             backlight and closes (see BrightnessActivity.kt). -->
+        <activity
+            android:name=".BrightnessActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="onelauncher" android:host="brightness"/>
             </intent-filter>
         </activity>
     </application>

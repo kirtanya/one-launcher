@@ -42,15 +42,23 @@ void main() {
     expect(find.text('Kame TV'), findsOneWidget);
     expect(find.text('Connected'), findsOneWidget);
     expect(find.text('10'), findsOneWidget, reason: 'TV volume shown');
-    expect(find.byType(Slider), findsOneWidget, reason: 'volume slider');
+    expect(find.byType(Slider), findsNWidgets(2), reason: 'volume + brightness sliders');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/22_remote.png'));
 
     // Drag the slider up → several volume-up presses (no absolute volume in the protocol).
     calls.clear();
-    await tester.drag(find.byType(Slider), const Offset(60, 0));
+    await tester.drag(find.byType(Slider).first, const Offset(60, 0));
     await tester.pumpAndSettle(const Duration(seconds: 2));
     final ups = calls.where((c) => c.method == 'tvKey' && (c.arguments as Map)['code'] == 24).length;
     expect(ups, greaterThan(3), reason: 'pressed volume up to reach the dragged level ($ups)');
+
+    // Brightness: through One Launcher TV on the TV (the protocol has no brightness).
+    calls.clear();
+    await tester.drag(find.byType(Slider).last, const Offset(80, 0));
+    await tester.pumpAndSettle();
+    final link = calls.lastWhere((c) => c.method == 'tvAppLink');
+    expect((link.arguments as Map)['link'], startsWith('onelauncher://brightness?level='));
+    expect(prefs.tvBrightness, greaterThan(40), reason: 'remembered');
 
     // The TV focuses a text field → a typing bar with the phone keyboard; typing goes to the TV.
     await send({'state': 'ime', 'host': '192.168.1.23', 'text': 'stra', 'label': 'Search'});

@@ -135,6 +135,10 @@ class TvRemote {
     }
   }
 
+  /// TV brightness 0–100 %, through One Launcher TV on the TV (onelauncher://brightness): the
+  /// remote protocol itself has no brightness. Needs One Launcher TV with "Modify system settings".
+  Future<void> setBrightness(int percent) => appLink('onelauncher://brightness?level=${(1 + percent.clamp(0, 100) * 254 / 100).round()}');
+
   Future<void> appLink(String link) async {
     try {
       await _ch.invokeMethod('tvAppLink', {'link': link});
