@@ -96,6 +96,21 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (_openId != null) setState(() => _openId = null);
   }
 
+  /// Results growing upward from the bottom bar: keep the list scrolled to its end, so the
+  /// best match sits just above the bar (and the keyboard) and more results are a scroll up —
+  /// even when there are more than fit.
+  bool _bottomQueued = false;
+  void _stickToBottom() {
+    if (_bottomQueued) return;
+    _bottomQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bottomQueued = false;
+      if (!mounted || !widget.scroll.hasClients) return;
+      final pos = widget.scroll.position;
+      if (pos.pixels != pos.maxScrollExtent) pos.jumpTo(pos.maxScrollExtent);
+    });
+  }
+
   /// App shortcuts for search, loaded once per search session.
   List<AppShortcut>? _shortcuts;
   bool _loadingShortcuts = false;
@@ -439,6 +454,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (showResults) {
       final sources = prefs.searchIn;
       if (sources.contains('shortcuts')) _loadShortcuts();
+      if (upward) _stickToBottom(); // new results: best match back just above the bar
       final results = _SearchResults(
         query: q,
         apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
@@ -446,7 +462,12 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
           for (final sc in sources.contains('shortcuts') ? (_shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
             if (matchesQuery(q, [sc.label, sc.app])) sc,
         ].take(5).toList(),
-        settings: sources.contains('settings') ? [for (final st in systemSettings) if (matchesQuery(q, [st.title, st.keywords])) st].take(4).toList() : const [],
+        settings: sources.contains('settings')
+            ? [
+                for (final st in systemSettings)
+                  if (matchesQuery(q, [st.title, st.keywords])) st,
+              ].take(4).toList()
+            : const [],
         web: sources.contains('google'),
         play: sources.contains('play'),
         upward: upward,
@@ -469,7 +490,12 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   results,
-                  Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24)),
+                  Builder(
+                    builder: (context) {
+                      _stickToBottom(); // the keyboard sliding in grows this gap: stay pinned to it
+                      return SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24);
+                    },
+                  ),
                 ],
               ),
             ),
@@ -538,7 +564,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                   left: 0,
                   right: 0,
                   // Once released to open, the pill stays "ready" while it fades (no flip back).
-                  child: IgnorePointer(child: _PullPill(progress: t, ready: widget.pullOpening.value || t >= 1)),
+                  child: IgnorePointer(
+                    child: _PullPill(progress: t, ready: widget.pullOpening.value || t >= 1),
+                  ),
                 ),
             ],
           );
@@ -573,9 +601,9 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
                     ...content,
                     // Room for the floating search dock (and the keyboard while searching).
                     if (!upward)
-                    SliverToBoxAdapter(
-                      child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
-                    ),
+                      SliverToBoxAdapter(
+                        child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
+                      ),
                   ],
                 ),
               ),
@@ -1143,7 +1171,12 @@ class _SearchResults extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(top.label, style: DS.rowTitle.copyWith(fontSize: 18, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                      top.label,
+                      style: DS.rowTitle.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text(_where(top), style: DS.rowSub),
                   ],
                 ),
@@ -1172,7 +1205,10 @@ class _SearchResults extends StatelessWidget {
         children: _ordered([
           best,
           if (rest.isNotEmpty) ...[
-            const Padding(padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4), child: CardDivider()),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
+              child: CardDivider(),
+            ),
             // Rows of four (not a LayoutBuilder: the upward list measures its natural height,
             // which LayoutBuilder can't report).
             for (var r = 0; r < rest.length; r += 4)
@@ -1244,7 +1280,8 @@ class _SearchResults extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: DS.s4),
           child: Column(
             children: _ordered([
-              if (web) _WebRow(icon: Icons.travel_explore_rounded, title: google ? 'Search Google' : 'Search the web', query: query, onTap: () => onWebSearch(query)),
+              if (web)
+                _WebRow(icon: Icons.travel_explore_rounded, title: google ? 'Search Google' : 'Search the web', query: query, onTap: () => onWebSearch(query)),
               if (play) _WebRow(icon: Icons.shop_outlined, title: 'Find apps on Play Store', query: query, onTap: () => onWebSearch(query, play: true)),
             ]),
           ),
@@ -1288,7 +1325,12 @@ class _WebRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    title,
+                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   Text(quoted ? '“$query”' : query, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),

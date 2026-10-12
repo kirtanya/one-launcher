@@ -147,6 +147,20 @@ void main() {
     expect(find.text('Open'), findsOneWidget, reason: 'apps still searched');
   });
 
+  testWidgets('more results than fit above the keyboard: the best match still sits just above the bar', (tester) async {
+    await launch(tester);
+    await tester.tap(find.text('Search 7 apps'));
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 1000); // keyboard up (physical px)
+    await tester.enterText(find.byType(TextField), 's'); // apps + many phone settings
+    await tester.pumpAndSettle();
+    final barTop = tester.getTopLeft(find.byType(SearchDock)).dy;
+    final open = tester.getBottomLeft(find.text('Open'));
+    expect(open.dy, lessThan(barTop), reason: 'best match is above the bar, not behind it');
+    expect(open.dy, greaterThan(barTop - 120), reason: 'and right next to it');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/20_results_keyboard.png'));
+  });
+
   testWidgets('clock roundness: slider + presets set the ROND axis', (tester) async {
     final prefs = await launch(tester);
     await prefs.setClockStyle(round: 70);
