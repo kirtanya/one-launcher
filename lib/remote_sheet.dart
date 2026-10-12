@@ -252,6 +252,15 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 ],
               ),
             ),
+            // Typing on the TV: shows when a text field is focused there (or the keyboard button).
+            ValueListenableBuilder<(String, String)?>(
+              valueListenable: tv.ime,
+              builder: (context, ime, _) => AnimatedSize(
+                duration: Motion.snapDuration,
+                curve: Motion.settle,
+                child: ime == null || !live ? const SizedBox(width: double.infinity) : _TypeOnTv(key: ValueKey(ime.$2), start: ime.$1, label: ime.$2),
+              ),
+            ),
             Expanded(
               child: AnimatedOpacity(
                 duration: Motion.snapDuration,
@@ -272,14 +281,19 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                               _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home)),
                               _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
                               _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input)),
+                              _Round(
+                                icon: Icons.keyboard_rounded,
+                                tooltip: 'Type on TV',
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  tv.ime.value ??= ('', '');
+                                },
+                              ),
                             ],
                           ),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _Volume(onKey: _press, volume: tv.volume),
-                              _Brightness(onKey: _press),
-                            ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                            child: _Volume(onKey: _press, volume: tv.volume),
                           ),
                           SizedBox(
                             height: 40,
@@ -523,40 +537,9 @@ class _RepeatState extends State<_Repeat> {
   );
 }
 
-/// Brightness − / + in one pill (the TV's own backlight; hold to keep going). TVs don't report
-/// their brightness, so the middle is just the sun.
-class _Brightness extends StatelessWidget {
-  const _Brightness({required this.onKey});
-  final void Function(int code, {bool strong}) onKey;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 56,
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(28)),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _Repeat(
-          onKey: () => onKey(TvKey.brightnessDown),
-          child: Tooltip(
-            message: 'Brightness down',
-            child: SizedBox(width: 52, height: 56, child: Icon(Icons.remove_rounded, color: DS.ink)),
-          ),
-        ),
-        Icon(Icons.light_mode_outlined, color: DS.inkMuted, size: 22),
-        _Repeat(
-          onKey: () => onKey(TvKey.brightnessUp),
-          child: Tooltip(
-            message: 'Brightness up',
-            child: SizedBox(width: 52, height: 56, child: Icon(Icons.add_rounded, color: DS.ink)),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-/// Volume − / mute / + in one pill, with the TV's level when it tells us.
+/// Volume: − · slider · + with the TV's level (drag to a level — the remote presses volume
+/// keys until the TV gets there); tap the speaker to mute. Before the TV reports its level,
+/// just − / mute / +.
 class _Volume extends StatelessWidget {
   const _Volume({required this.onKey, required this.volume});
   final void Function(int code, {bool strong}) onKey;
@@ -564,45 +547,137 @@ class _Volume extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    height: 56,
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(28)),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _Repeat(
-          onKey: () => onKey(TvKey.volumeDown),
-          child: Tooltip(
-            message: 'Volume down',
-            child: SizedBox(width: 56, height: 56, child: Icon(Icons.remove_rounded, color: DS.ink)),
+    height: 64,
+    padding: const EdgeInsets.symmetric(horizontal: DS.s4),
+    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(32)),
+    child: ValueListenableBuilder<(int, int, bool)?>(
+      valueListenable: volume,
+      builder: (context, v, _) => Row(
+        children: [
+          Tooltip(
+            message: 'Mute',
+            child: IconButton(
+              onPressed: () => onKey(TvKey.mute),
+              icon: Icon(v?.$3 == true ? Icons.volume_off_rounded : Icons.volume_up_rounded, color: v?.$3 == true ? DS.alert : DS.ink),
+            ),
           ),
-        ),
-        ValueListenableBuilder<(int, int, bool)?>(
-          valueListenable: volume,
-          builder: (context, v, _) => GestureDetector(
-            onTap: () => onKey(TvKey.mute),
+          _Repeat(
+            onKey: () => onKey(TvKey.volumeDown),
             child: Tooltip(
-              message: 'Mute',
-              child: SizedBox(
-                width: 56,
-                child: Center(
-                  child: v == null
-                      ? Icon(Icons.volume_up_rounded, color: DS.ink)
-                      : v.$3
-                      ? Icon(Icons.volume_off_rounded, color: DS.alert)
-                      : Text('${v.$1}', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600)),
-                ),
+              message: 'Volume down',
+              child: SizedBox(width: 36, height: 56, child: Icon(Icons.remove_rounded, color: DS.ink)),
+            ),
+          ),
+          Expanded(
+            child: v == null || v.$2 <= 0 ? Center(child: Text('Volume', style: DS.rowSub)) : _VolumeSlider(level: v.$1, max: v.$2),
+          ),
+          _Repeat(
+            onKey: () => onKey(TvKey.volumeUp),
+            child: Tooltip(
+              message: 'Volume up',
+              child: SizedBox(width: 36, height: 56, child: Icon(Icons.add_rounded, color: DS.ink)),
+            ),
+          ),
+          SizedBox(
+            width: 36,
+            child: Text(
+              v == null ? '' : '${v.$1}',
+              textAlign: TextAlign.center,
+              style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Shows the dragged value while dragging, then follows the TV's reported level.
+class _VolumeSlider extends StatefulWidget {
+  const _VolumeSlider({required this.level, required this.max});
+  final int level, max;
+
+  @override
+  State<_VolumeSlider> createState() => _VolumeSliderState();
+}
+
+class _VolumeSliderState extends State<_VolumeSlider> {
+  double? _drag;
+
+  @override
+  Widget build(BuildContext context) => Slider(
+    value: (_drag ?? widget.level.toDouble()).clamp(0, widget.max.toDouble()),
+    max: widget.max.toDouble(),
+    divisions: widget.max,
+    activeColor: DS.ink,
+    inactiveColor: DS.hairline,
+    thumbColor: DS.ink,
+    onChanged: (x) {
+      if (_drag == null || x.round() != _drag!.round()) HapticFeedback.selectionClick();
+      setState(() => _drag = x);
+    },
+    onChangeEnd: (x) {
+      setState(() => _drag = null);
+      TvRemote.instance.setVolume(x.round());
+    },
+  );
+}
+
+/// Type on the TV from the phone keyboard: mirrors the TV's focused field; every change is
+/// sent whole, Enter submits there.
+class _TypeOnTv extends StatefulWidget {
+  const _TypeOnTv({super.key, required this.start, required this.label});
+  final String start, label;
+
+  @override
+  State<_TypeOnTv> createState() => _TypeOnTvState();
+}
+
+class _TypeOnTvState extends State<_TypeOnTv> {
+  late final _text = TextEditingController(text: widget.start)..selection = TextSelection.collapsed(offset: widget.start.length);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s4, DS.s4, DS.s4),
+      decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(DS.rMedia)),
+      child: Row(
+        children: [
+          Icon(Icons.keyboard_rounded, color: DS.heroInk),
+          const SizedBox(width: DS.s12),
+          Expanded(
+            child: TextField(
+              controller: _text,
+              autofocus: true,
+              cursorColor: DS.heroInk,
+              textInputAction: TextInputAction.go,
+              style: DS.rowTitle.copyWith(color: DS.heroInk),
+              onChanged: TvRemote.instance.text,
+              onSubmitted: (_) {
+                TvRemote.instance.key(TvKey.enter);
+                TvRemote.instance.ime.value = null;
+              },
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                hintText: widget.label.isEmpty ? 'Type on your TV' : widget.label,
+                hintStyle: DS.rowSub.copyWith(color: DS.heroInk.withValues(alpha: .6)),
               ),
             ),
           ),
-        ),
-        _Repeat(
-          onKey: () => onKey(TvKey.volumeUp),
-          child: Tooltip(
-            message: 'Volume up',
-            child: SizedBox(width: 56, height: 56, child: Icon(Icons.add_rounded, color: DS.ink)),
+          IconButton(
+            tooltip: 'Done typing',
+            icon: Icon(Icons.close_rounded, color: DS.heroInk),
+            onPressed: () => TvRemote.instance.ime.value = null,
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }

@@ -10,7 +10,7 @@ abstract final class TvKey {
   static const home = 3, back = 4, up = 19, down = 20, left = 21, right = 22, ok = 23;
   static const volumeUp = 24, volumeDown = 25, power = 26, menu = 82, playPause = 85;
   static const next = 87, previous = 88, mute = 164, input = 178, settings = 176;
-  static const brightnessDown = 220, brightnessUp = 221; // the TV's backlight (if it lets Android control it)
+  static const enter = 66, delete = 67;
 }
 
 /// Direction of a key press on the wire.
@@ -28,6 +28,9 @@ class TvRemote {
   /// (level, max, muted) when the TV reports it.
   final volume = ValueNotifier<(int, int, bool)?>(null);
 
+  /// A text field is focused on the TV: (its current text, its label). Null when not typing.
+  final ime = ValueNotifier<(String, String)?>(null);
+
   /// The last problem, in words (connection lost, wrong code…).
   final error = ValueNotifier<String?>(null);
 
@@ -40,8 +43,11 @@ class TvRemote {
         error.value = null;
       case 'disconnected':
         status.value = TvStatus.disconnected;
+        ime.value = null;
       case 'volume':
         volume.value = ((m['level'] as num).toInt(), (m['max'] as num).toInt(), m['muted'] == true);
+      case 'ime':
+        ime.value = ((m['text'] as String?) ?? '', (m['label'] as String?) ?? '');
       case 'error':
         error.value = m['message'] as String?;
     }
@@ -98,6 +104,34 @@ class TvRemote {
     } catch (e) {
       status.value = TvStatus.disconnected;
       error.value = _why(e);
+    }
+  }
+
+  /// Types on the TV: replaces its focused field with [text].
+  Future<void> text(String text) async {
+    try {
+      await _ch.invokeMethod('tvText', {'text': text});
+    } catch (e) {
+      error.value = _why(e);
+    }
+  }
+
+  /// Volume to [target] (0…max): the protocol only has volume keys, so press up/down the
+  /// right number of times; the TV reports the real level back as it changes.
+  bool _settingVolume = false;
+  Future<void> setVolume(int target) async {
+    final v = volume.value;
+    if (v == null || _settingVolume) return;
+    _settingVolume = true;
+    try {
+      var steps = target - v.$1;
+      final code = steps > 0 ? TvKey.volumeUp : TvKey.volumeDown;
+      for (steps = steps.abs(); steps > 0; steps--) {
+        await key(code);
+        await Future<void>.delayed(const Duration(milliseconds: 45));
+      }
+    } finally {
+      _settingVolume = false;
     }
   }
 

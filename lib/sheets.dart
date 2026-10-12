@@ -1737,7 +1737,10 @@ class _Group extends StatelessWidget {
           if (title != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s8),
-              child: Text(title!.toUpperCase(), style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600)),
+              child: Text(
+                title!.toUpperCase(),
+                style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
+              ),
             ),
           ClipRRect(
             borderRadius: BorderRadius.circular(DS.rMedia),

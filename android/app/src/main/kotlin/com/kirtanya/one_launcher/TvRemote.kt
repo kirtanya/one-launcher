@@ -65,6 +65,10 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
     private var host: String? = null
     @Volatile private var lastServerCert: X509Certificate? = null
 
+    // Typing on the TV: the TV's counters for the focused text field (it ignores edits without them).
+    private var imeCounter = 0L
+    private var fieldCounter = 0L
+
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
         when (call.method) {
             "tvDiscover" -> discover(result)
@@ -73,6 +77,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
             "tvConnect" -> io.execute { reply(result) { connect(call.argument<String>("host")!!) } }
             "tvKey" -> io.execute { reply(result) { key(call.argument<Int>("code")!!, call.argument<Int>("direction") ?: 3) } }
             "tvAppLink" -> io.execute { reply(result) { appLink(call.argument<String>("link")!!) } }
+            "tvText" -> io.execute { reply(result) { text(call.argument<String>("text") ?: "") } }
             "tvDisconnect" -> io.execute { reply(result) { disconnect(); true } }
             "tvForget" -> io.execute { reply(result) { disconnect(); prefs.edit().remove("pin:" + (call.argument<String>("host") ?: "")).apply(); true } }
             else -> return false
@@ -295,6 +300,20 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
                         val st = Pb.parse(m[40]!!.first() as ByteArray)
                         emit("power", mapOf("on" to (((st[1]?.firstOrNull() as? Long) ?: 0) != 0L)))
                     }
+                    m.containsKey(20) -> { // a text field got focus on the TV (IME key inject: app + field)
+                        val k = Pb.parse(m[20]!!.first() as ByteArray)
+                        (k[1]?.firstOrNull() as? ByteArray)?.let { app -> imeCounter = (Pb.parse(app)[1]?.firstOrNull() as? Long) ?: imeCounter }
+                        (k[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) }
+                    }
+                    m.containsKey(22) -> { // the TV asks for a keyboard
+                        val req = Pb.parse(m[22]!!.first() as ByteArray)
+                        (req[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) } ?: emit("ime", mapOf("text" to "", "label" to ""))
+                    }
+                    m.containsKey(21) -> { // the TV edited the field itself: keep our counters in step
+                        val e = Pb.parse(m[21]!!.first() as ByteArray)
+                        imeCounter = (e[1]?.firstOrNull() as? Long) ?: imeCounter
+                        fieldCounter = (e[2]?.firstOrNull() as? Long) ?: fieldCounter
+                    }
                     m.containsKey(3) -> emit("error", mapOf("message" to "The TV reported an error"))
                 }
             }
@@ -305,6 +324,23 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
             out = null
             emit("disconnected")
         }
+    }
+
+    /** Text field status from the TV: counter, current text, label → Flutter shows the keyboard. */
+    private fun emitIme(f: Map<Int, List<Any>>) {
+        fieldCounter = (f[1]?.firstOrNull() as? Long) ?: fieldCounter
+        val value = (f[2]?.firstOrNull() as? ByteArray)?.toString(Charsets.UTF_8) ?: ""
+        val label = (f[6]?.firstOrNull() as? ByteArray)?.toString(Charsets.UTF_8) ?: ""
+        emit("ime", mapOf("text" to value, "label" to label))
+    }
+
+    /** Replace the TV's focused text field with [value] (sent whole on each change). */
+    private fun text(value: String): Boolean {
+        val pos = (value.length - 1).toLong()
+        val obj = Pb().int(1, pos).int(2, pos).str(3, value)
+        val edit = Pb().int(1, 1).msg(2, obj)
+        write(Pb().msg(21, Pb().int(1, imeCounter).int(2, fieldCounter).msg(3, edit)))
+        return true
     }
 
     private fun key(code: Int, direction: Int): Boolean {
