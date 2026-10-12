@@ -187,6 +187,28 @@ void main() {
     expect(find.byType(TextField), findsNothing, reason: 'swiping the bar down closes search');
   });
 
+  testWidgets('bottom search after scrolling the drawer: every result can be scrolled into view', (tester) async {
+    await launch(tester);
+    // Open the drawer full and scroll it down first.
+    await tester.timedDrag(find.text('Paytm').first, const Offset(0, -700), const Duration(milliseconds: 900));
+    await tester.pumpAndSettle();
+    await tester.dragFrom(const Offset(200, 600), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.search_rounded).last);
+    await tester.pumpAndSettle();
+    tester.view.viewInsets = const FakeViewPadding(bottom: 1000);
+    await tester.enterText(find.byType(TextField), 's');
+    await tester.pumpAndSettle();
+    // Scroll the results all the way (finger down) → the topmost result must be fully on screen.
+    for (var i = 0; i < 6; i++) {
+      await tester.dragFrom(const Offset(200, 300), const Offset(0, 400));
+      await tester.pumpAndSettle();
+    }
+    final top = find.text(find.text('Search the web').evaluate().isNotEmpty ? 'Search the web' : 'Search Google');
+    expect(top, findsOneWidget);
+    expect(tester.getTopLeft(top).dy, greaterThan(20), reason: 'the first result is reachable, not hidden off the top');
+  });
+
   testWidgets('clock roundness: slider + presets set the ROND axis', (tester) async {
     final prefs = await launch(tester);
     await prefs.setClockStyle(round: 70);
