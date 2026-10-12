@@ -111,8 +111,8 @@ void main() {
     await tester.longPress(find.text('Screen time today'));
     await tester.pumpAndSettle();
     expect(find.text('Top of home'), findsOneWidget);
-    for (final g in ['Pages', 'Clock', 'Size & spacing', 'Around it']) {
-      await tester.ensureVisible(find.text(g).last); // 'Clock' is also an app name
+    for (final g in ['Pages', 'CLOCK', 'Size & spacing', 'AROUND IT']) {
+      await tester.ensureVisible(find.text(g).last);
       expect(find.text(g), findsWidgets);
     }
     await tester.ensureVisible(find.byType(Switch).at(2));
@@ -133,7 +133,7 @@ void main() {
     await tester.drag(find.byType(Slider).first, const Offset(-60, 0));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_clock_style.png'));
-    Navigator.of(tester.element(find.text('Weight'))).pop();
+    Navigator.of(tester.element(find.text('Weight')), rootNavigator: true).pop(); // close the whole sheet
     await tester.pumpAndSettle();
     await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
     await tester.pumpAndSettle();
@@ -212,10 +212,16 @@ void main() {
     // Settings is a bottom sheet exactly as tall as the app drawer at rest (top 25%).
     expect(tester.getTopLeft(find.text('Settings')).dy, closeTo(screenH * .25 + 36, 8), reason: 'sheet top = drawer top');
     // Grouped settings page; the sliders live one level down.
-    for (final g in ['Look', 'Home screen', 'Apps & search', 'Launcher']) {
+    for (final g in ['LOOK', 'HOME SCREEN', 'APPS & SEARCH', 'TV REMOTE', 'LAUNCHER']) {
+      await tester.ensureVisible(find.text(g));
       expect(find.text(g), findsOneWidget);
     }
+    expect(find.text('Search settings'), findsOneWidget, reason: 'a search box finds any setting');
+    await tester.ensureVisible(find.text('Settings'));
+    await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6a_settings.png'));
+    await tester.ensureVisible(find.text('Layout'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Layout'));
     await tester.pumpAndSettle();
     expect(find.text('Top widgets size'), findsOneWidget);
@@ -234,6 +240,8 @@ void main() {
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.text('Top 50% · padding 40 pt'), findsOneWidget, reason: 'summary shows the new values');
+    await tester.ensureVisible(find.text('Wallpaper'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Wallpaper'));
     await tester.pumpAndSettle();
     // Wallpaper dim: drag to the max (60%) → the black layer over the wallpaper follows.
@@ -246,7 +254,7 @@ void main() {
         .whereType<Color>()
         .where((c) => c.r == 0 && c.g == 0 && c.b == 0 && (c.a - .6).abs() < .01);
     expect(dim, isNotEmpty, reason: 'wallpaper dimmed to 60%');
-    Navigator.of(tester.element(find.text('Wallpaper dim'))).pop();
+    Navigator.of(tester.element(find.text('Wallpaper dim')), rootNavigator: true).pop(); // close the whole sheet
     await tester.pumpAndSettle();
     final after = tester.getTopLeft(find.text('WhatsApp').first).dy;
     expect(after, greaterThan(before + 100), reason: 'sheet moved down ($before → $after)');

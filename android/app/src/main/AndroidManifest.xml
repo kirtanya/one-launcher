@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <!-- Quick action "Set timer" / "Alarms" (opens the Clock app) -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
+    <!-- TV remote only: talks to the user's own TV on the local Wi-Fi (Android needs this for any socket). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="One Launcher"
         android:name="${applicationName}"

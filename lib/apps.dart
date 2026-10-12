@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 
+import 'tv_remote.dart';
+
 import 'quick_actions.dart';
 
 /// An Android app widget that can be added to the top carousel.
@@ -78,6 +80,8 @@ class Apps {
           onPermissionsChanged?.call();
         case 'torchChanged':
           torchOn.value = call.arguments == true;
+        case 'tvState':
+          TvRemote.instance.onEvent(call.arguments as Map);
         case 'mediaChanged':
           media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }

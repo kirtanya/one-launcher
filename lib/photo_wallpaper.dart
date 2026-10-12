@@ -174,7 +174,7 @@ class _PhotoPainter extends CustomPainter {
 
 /// Full-screen photo framing, like setting a lock-screen wallpaper: drag to move, pinch to
 /// zoom, blur slider at the bottom. Saves as you go; Reset puts it back centred.
-Future<void> showPhotoEditor(BuildContext context, {required Prefs prefs}) => Navigator.of(context).push(
+Future<void> showPhotoEditor(BuildContext context, {required Prefs prefs}) => Navigator.of(context, rootNavigator: true).push(
   PageRouteBuilder<void>(
     transitionDuration: Motion.snapDuration,
     reverseTransitionDuration: Motion.snapDuration,

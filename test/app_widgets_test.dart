@@ -82,7 +82,7 @@ void main() {
     expect(find.text('Calendar · Month'), findsWidgets, reason: 'listed in Top widgets');
 
     // Close the sheet and swipe to the widget page (placeholder off-device).
-    Navigator.of(tester.element(find.text('Top of home'))).pop();
+    Navigator.of(tester.element(find.text('Top of home')), rootNavigator: true).pop();
     await tester.pumpAndSettle();
     for (var i = 0; i < 3; i++) { // clock → screen time → now playing → widget
       await tester.fling(find.byType(PageView), const Offset(-250, 0), 1200);

@@ -92,6 +92,10 @@ const sheetBack = 'back';
 /// [keyboard]: the sheet has a text field — its content makes room for the keyboard.
 /// [barrier]: the shade behind the sheet (default when null).
 /// [height]: the sheet's height cap; with [fill] it is exactly that tall (content scrolls).
+///
+/// Sheets with a [height] are *paged*: opening another sheet from inside one (Settings → a
+/// detail, Top of home → Clock style…) slides it in as a page of the same sheet, with a back
+/// arrow — the sheet itself stays put. Called from inside such a sheet, this pushes a page.
 Future<Object?> showOneSheetWith(
   BuildContext context, {
   required WidgetBuilder builder,
@@ -102,6 +106,12 @@ Future<Object?> showOneSheetWith(
   Color? barrier,
   bool keyboard = false,
 }) {
+  final host = SheetHost.maybeOf(context);
+  if (host != null) return host.push(builder, scrollable: scrollable);
+  final paged = height != null;
+  final nav = GlobalKey<NavigatorState>();
+  final depth = ValueNotifier<int>(0); // pages in a paged sheet (the observer counts the first too)
+  final observer = _DepthObserver(depth); // one for the sheet's life (rebuilds must not reset it)
   var searching = false; // a search field inside is active → the sheet goes full screen
   return showModalBottomSheet<Object?>(
     context: context,
@@ -110,83 +120,176 @@ Future<Object?> showOneSheetWith(
     backgroundColor: Colors.transparent,
     elevation: 0,
     isScrollControlled: true,
+    useRootNavigator: true,
     barrierColor: barrier, // lighter for sheets that preview on the home screen behind them
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setSheet) {
         final screen = MediaQuery.sizeOf(ctx).height;
         // Searching breaks the usual height rule: full screen, room for results and keyboard.
         final full = searching;
-        final grow = fill || full;
+        final grow = fill || full || paged;
+        void goBack() => (paged && depth.value > 1) ? nav.currentState!.pop() : Navigator.pop(ctx, sheetBack);
+        final content = paged
+            ? SheetHost._(
+                nav: nav,
+                sheet: ctx,
+                child: Navigator(
+                  key: nav,
+                  observers: [observer..onEmpty = () => Navigator.pop(ctx)],
+                  onGenerateInitialRoutes: (_, _) => [SheetHost._route(builder, scrollable: scrollable)],
+                ),
+              )
+            : (scrollable ? SingleChildScrollView(child: builder(ctx)) : builder(ctx));
         return SheetSearchScope(
           onActive: (on) {
             if (on != searching) setSheet(() => searching = on);
           },
-          child: PopScope(
-            canPop: !back,
-            onPopInvokedWithResult: (didPop, _) {
-              if (!didPop) Navigator.pop(ctx, sheetBack);
-            },
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
-              // A Material (not a plain box) so rows keep their tap ripples.
-              child: Material(
-                color: DS.card,
-                child: AnimatedContainer(
-                  duration: Motion.snapDuration,
-                  curve: Curves.easeOutCubic,
-                  constraints: full
-                      ? BoxConstraints.tightFor(height: screen)
-                      : height == null
-                      ? BoxConstraints(maxHeight: screen)
-                      : (fill ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
-                      child: Column(
-                        mainAxisSize: grow ? MainAxisSize.max : MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Drag handle (+ back arrow on a 2nd-level sheet).
-                          SizedBox(
-                            height: back ? 52 : 36,
-                            child: Stack(
-                              children: [
-                                Center(
-                                  child: Container(
-                                    width: 32,
-                                    height: 4,
-                                    decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
-                                  ),
-                                ),
-                                if (back)
-                                  Positioned(
-                                    left: DS.s12,
-                                    top: DS.s4,
-                                    child: IconButton(
-                                      tooltip: 'Back',
-                                      icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
-                                      onPressed: () => Navigator.pop(ctx, sheetBack),
+          child: ValueListenableBuilder<int>(
+            valueListenable: depth,
+            builder: (ctx, pages, child) {
+              final showBack = back || pages > 1;
+              return PopScope(
+                canPop: !showBack,
+                onPopInvokedWithResult: (didPop, _) {
+                  if (!didPop) goBack();
+                },
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
+                  // A Material (not a plain box) so rows keep their tap ripples.
+                  child: Material(
+                    color: DS.card,
+                    child: AnimatedContainer(
+                      duration: Motion.snapDuration,
+                      curve: Curves.easeOutCubic,
+                      constraints: full
+                          ? BoxConstraints.tightFor(height: screen)
+                          : height == null
+                          ? BoxConstraints(maxHeight: screen)
+                          : (fill || paged ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
+                      child: SafeArea(
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
+                          child: Column(
+                            mainAxisSize: grow ? MainAxisSize.max : MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Drag handle (+ back arrow on a page below the first).
+                              SizedBox(
+                                height: showBack ? 52 : 36,
+                                child: Stack(
+                                  children: [
+                                    Center(
+                                      child: Container(
+                                        width: 32,
+                                        height: 4,
+                                        decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                    if (showBack)
+                                      Positioned(
+                                        left: DS.s12,
+                                        top: DS.s4,
+                                        child: IconButton(
+                                          tooltip: 'Back',
+                                          icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                                          onPressed: goBack,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              Flexible(fit: grow ? FlexFit.tight : FlexFit.loose, child: child!),
+                            ],
                           ),
-                          Flexible(
-                            fit: grow ? FlexFit.tight : FlexFit.loose,
-                            child: scrollable ? SingleChildScrollView(child: builder(ctx)) : builder(ctx),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
+              );
+            },
+            child: content,
           ),
         );
       },
     ),
   );
+}
+
+/// The pages of a paged sheet (see [showOneSheetWith]): sheets opened inside it push here.
+class SheetHost extends InheritedWidget {
+  const SheetHost._({required this.nav, required this.sheet, required super.child});
+  final GlobalKey<NavigatorState> nav;
+  final BuildContext sheet; // the sheet's own route context (to close the whole sheet)
+
+  static SheetHost? maybeOf(BuildContext context) => context.getInheritedWidgetOfExactType<SheetHost>();
+
+  /// Close the whole sheet (from any page), e.g. before opening a system screen.
+  static void close(BuildContext context) {
+    final host = maybeOf(context);
+    host == null ? Navigator.pop(context) : Navigator.pop(host.sheet);
+  }
+
+  Future<Object?> push(WidgetBuilder builder, {bool scrollable = true}) => nav.currentState!.push<Object?>(_route(builder, scrollable: scrollable));
+
+  /// A page: slides in from the right over the one before (which eases a little to the left).
+  static Route<Object?> _route(WidgetBuilder builder, {required bool scrollable}) => PageRouteBuilder<Object?>(
+    transitionDuration: Motion.snapDuration,
+    reverseTransitionDuration: Motion.snapDuration,
+    pageBuilder: (context, _, _) => Material(
+      color: DS.card,
+      child: scrollable ? SingleChildScrollView(child: Builder(builder: builder)) : Builder(builder: builder),
+    ),
+    transitionsBuilder: (context, a, b, child) {
+      final inC = CurvedAnimation(parent: a, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+      final outC = CurvedAnimation(parent: b, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+      return SlideTransition(
+        position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(inC),
+        child: SlideTransition(
+          position: Tween(begin: Offset.zero, end: const Offset(-.25, 0)).animate(outC),
+          child: child,
+        ),
+      );
+    },
+  );
+
+  @override
+  bool updateShouldNotify(SheetHost old) => false;
+}
+
+class _DepthObserver extends NavigatorObserver {
+  _DepthObserver(this.depth);
+  final ValueNotifier<int> depth;
+  int _n = 0;
+
+  /// The first page itself was popped (e.g. a page that closes itself when done): close the sheet.
+  VoidCallback? onEmpty;
+
+  // Routes change during builds (the first page arrives while the sheet builds): publish the
+  // count right after the frame instead of mid-build.
+  void _publish() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => depth.value = _n);
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void didPush(Route route, Route? previousRoute) {
+    _n++;
+    _publish();
+  }
+
+  @override
+  void didPop(Route route, Route? previousRoute) {
+    _n = (_n - 1).clamp(0, 99);
+    _publish();
+    if (_n == 0) WidgetsBinding.instance.addPostFrameCallback((_) => onEmpty?.call());
+  }
+
+  @override
+  void didRemove(Route route, Route? previousRoute) {
+    _n = (_n - 1).clamp(0, 99);
+    _publish();
+  }
 }
 
 /// Lets a search field inside a sheet tell the sheet it's searching (so it goes full screen).

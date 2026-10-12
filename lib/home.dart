@@ -11,6 +11,7 @@ import 'apps.dart';
 import 'prefs.dart';
 import 'quick_actions.dart';
 import 'quick_chips.dart';
+import 'remote_sheet.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
@@ -160,6 +161,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onChanged: _onQuery,
     onSubmitted: _onSubmit,
     onSettings: _settings,
+    onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
   );
 
   @override

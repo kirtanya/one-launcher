@@ -9,6 +9,8 @@ import 'quick_chips.dart';
 import 'prefs.dart';
 import 'photo_wallpaper.dart';
 import 'quick_actions.dart';
+import 'tv_remote.dart';
+import 'remote_sheet.dart';
 import 'top/header_fonts.dart';
 import 'ui/palette.dart';
 import 'ui/theme.dart';
@@ -384,7 +386,7 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
                         },
                       ),
                       Divider(height: 1, thickness: 1, color: DS.hairline),
-                      _NavRow(Icons.add_rounded, 'Add app widget', 'Any app’s widget becomes a page', () => showWidgetPicker(context, prefs: prefs)),
+                      _NavRow(Icons.add_rounded, 'Add app widget', 'Any app’s widget becomes a page', () => showWidgetPicker(ctx, prefs: prefs)),
                     ],
                   ),
                 ),
@@ -395,7 +397,7 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
                 Icons.text_fields_rounded,
                 'Clock style',
                 preset?.$1 ?? 'Custom · weight ${w0.round()}, width ${wd0.round()}',
-                () => Navigator.pop(ctx, 'clock'),
+                () => _showClockStyle(ctx, prefs: prefs),
               ),
             ]),
             label('Size & spacing'),
@@ -406,9 +408,9 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
                 Icons.wallpaper_rounded,
                 'Wallpaper',
                 '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · dim ${(prefs.wallpaperDim * 100).round()}%',
-                () => Navigator.pop(ctx, 'wallpaper'),
+                () => _showWallpaperSheet(ctx, prefs: prefs),
               ),
-              _NavRow(Icons.bolt_rounded, 'Quick actions', '${prefs.quickChips.length} chips above the apps', () => Navigator.pop(ctx, 'chips')),
+              _NavRow(Icons.bolt_rounded, 'Quick actions', '${prefs.quickChips.length} chips above the apps', () => showCustomiseChips(ctx, prefs: prefs)),
             ]),
             const SizedBox(height: DS.s8),
           ],
@@ -416,18 +418,7 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
       },
     ),
   );
-  // One level down; its back arrow comes back here.
-  if (!context.mounted) return r;
-  final Future<Object?> Function()? next = switch (r) {
-    'clock' => () => _showClockStyle(context, prefs: prefs),
-    'wallpaper' => () => _showWallpaperSheet(context, prefs: prefs),
-    'chips' => () => showCustomiseChips(context, prefs: prefs, back: true),
-    _ => null,
-  };
-  if (next == null) return r;
-  final r2 = await next();
-  if (r2 == sheetBack && context.mounted) return showCustomiseTop(context, prefs: prefs, back: back);
-  return r2;
+  return r;
 }
 
 /// Top of home → Clock style (2nd level): presets + weight / width / slant, live on the clock.
@@ -453,7 +444,6 @@ Future<Object?> _showClockStyle(BuildContext context, {required Prefs prefs}) =>
 );
 
 /// Choose, order and remove the quick-action chips. Built-in actions and apps' own shortcuts.
-const _toChipLook = 'chipLook';
 
 Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, bool back = false}) async {
   final shortcuts = Apps.instance.shortcuts(); // load once while the sheet is open
@@ -519,7 +509,7 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
               ),
               SheetSearchField(hint: 'Search actions & app shortcuts', onChanged: (q) => setQuery(() => query = q)),
               if (!searching) ...[
-                _Group(null, [_NavRow(Icons.style_outlined, 'Chip look', ChipLook.of(prefs).summary, () => Navigator.pop(ctx, _toChipLook))]),
+                _Group(null, [_NavRow(Icons.style_outlined, 'Chip look', ChipLook.of(prefs).summary, () => _showChipLook(ctx, prefs: prefs))]),
                 const SizedBox(height: DS.s8),
                 // Current chips.
                 ReorderableListView.builder(
@@ -623,11 +613,7 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
       ),
     ),
   );
-  if (r != _toChipLook) return r;
-  // Chip look (one level down); its back arrow returns here.
-  final r2 = context.mounted ? await _showChipLook(context, prefs: prefs) : null;
-  if (r2 == sheetBack && context.mounted) return showCustomiseChips(context, prefs: prefs, back: back);
-  return r2;
+  return r;
 }
 
 /// Quick actions → Chip look: colour, opacity, shape, size, what to show, outline. Short and
@@ -1287,127 +1273,251 @@ class _SwatchPainter extends CustomPainter {
 /// Height of the app drawer at rest: Settings sheets match it, so the top widgets stay in view.
 double drawerHeight(BuildContext context, Prefs prefs) => MediaQuery.sizeOf(context).height * (1 - prefs.topShare);
 
-/// Settings: a short page of grouped rows. Each row opens its detail as a 2nd-level sheet
-/// with a back arrow; back returns here. Sliders live in their own small sheets so the
-/// home screen stays visible behind them while you drag.
+/// One row of Settings: shown in its section, and found by the settings search.
+class _Setting {
+  const _Setting(this.section, this.icon, this.title, this.subtitle, {this.keywords = '', this.open, this.value, this.onChanged, this.external = false});
+  final String section, title, subtitle, keywords;
+  final IconData icon;
+  final void Function(BuildContext ctx)? open; // opens its page (or a system screen)
+  final bool? value; // a switch row
+  final ValueChanged<bool>? onChanged;
+  final bool external;
+
+  bool matches(String q) => matchesQuery(q, [title, subtitle, keywords, section]);
+
+  Widget row(BuildContext ctx) =>
+      value != null ? _SwitchRow(icon, title, subtitle, value!, onChanged!) : _NavRow(icon, title, subtitle, () => open!(ctx), external: external);
+}
+
+/// Settings: one sheet (as tall as the app drawer, so the home stays in view above) whose
+/// pages slide in and out — tap a row for its page, back to return. A search box finds any
+/// setting. Rows say what's set right now.
 Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps, required OneTheme theme}) {
-  // Close Settings, show the detail sheet; its back arrow brings Settings back.
-  void go(BuildContext ctx, Future<Object?> Function() open) async {
-    Navigator.pop(ctx);
-    final r = await open();
-    if (r == sheetBack && context.mounted) showSettingsSheet(context, prefs: prefs, apps: apps, theme: theme);
-  }
-
-  // Leaves the launcher (system screens): just close.
-  void leave(BuildContext ctx, VoidCallback open) {
-    Navigator.pop(ctx);
-    open();
-  }
-
+  var query = '';
   return showOneSheetWith(
     context,
     height: drawerHeight(context, prefs),
     fill: true,
-    builder: (ctx) => ListenableBuilder(
-      listenable: prefs,
-      builder: (ctx, _) {
-        final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
-        final source = const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours';
-        final style = OneTheme.styles[prefs.themeStyle]?.$1 ?? 'Tonal';
-        final cards = const {'light': 'light cards', 'dark': 'dark cards', 'auto': 'auto cards'}[prefs.cardStyle] ?? 'light cards';
-        final top = prefs.topPages.map((id) => topWidgetFor(id, prefs.widgetLabels).name).join(', ');
-        final dim = (prefs.wallpaperDim * 100).round();
-        final chips = prefs.quickChips.length;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'Settings', subtitle: 'One Launcher'),
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setQuery) => ListenableBuilder(
+        listenable: prefs,
+        builder: (ctx, _) {
+          final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
+          final source = const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours';
+          final style = OneTheme.styles[prefs.themeStyle]?.$1 ?? 'Tonal';
+          final cards = const {'light': 'light cards', 'dark': 'dark cards', 'auto': 'auto cards'}[prefs.cardStyle] ?? 'light cards';
+          final top = prefs.topPages.map((id) => topWidgetFor(id, prefs.widgetLabels).name).join(', ');
+          final dim = (prefs.wallpaperDim * 100).round();
+          final chips = prefs.quickChips.length;
+          final preset = clockPresets.where((p) => isClockPreset(p, prefs)).firstOrNull?.$1 ?? 'Custom';
+          final all = <_Setting>[
+            // Look
+            _Setting(
+              'Look',
+              Icons.palette_outlined,
+              'Colours & style',
+              '$source · $style · $cards',
+              keywords: 'theme material you dark light cards accent',
+              open: (c) => showColoursSheet(c, prefs: prefs, theme: theme),
             ),
-            _Group('Look', [
-              _NavRow(
-                Icons.palette_outlined,
-                'Colours & style',
-                '$source · $style · $cards',
-                () => go(ctx, () => showColoursSheet(context, prefs: prefs, theme: theme, back: true)),
+            _Setting(
+              'Look',
+              Icons.wallpaper_rounded,
+              'Wallpaper',
+              '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · ${dim == 0 ? 'dim off' : 'dim $dim%'}',
+              keywords: 'background photo dim blur zoom',
+              open: (c) => _showWallpaperSheet(c, prefs: prefs),
+            ),
+            _Setting(
+              'Look',
+              Icons.text_fields_rounded,
+              'Clock style',
+              preset,
+              keywords: 'font weight width slant roundness rounded',
+              open: (c) => _showClockStyle(c, prefs: prefs),
+            ),
+            // Home screen
+            _Setting(
+              'Home screen',
+              Icons.view_carousel_outlined,
+              'Top widgets',
+              top.isEmpty ? 'None' : top,
+              keywords: 'pages widgets clock screen time battery calendar now playing',
+              open: (c) => showCustomiseTop(c, prefs: prefs),
+            ),
+            _Setting(
+              'Home screen',
+              Icons.dashboard_outlined,
+              'Layout',
+              'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
+              keywords: 'size split padding spacing',
+              open: (c) => _showLayoutSheet(c, prefs: prefs),
+            ),
+            _Setting(
+              'Home screen',
+              Icons.bolt_rounded,
+              'Quick chips',
+              chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
+              keywords: 'actions shortcuts pills look',
+              open: (c) => showCustomiseChips(c, prefs: prefs),
+            ),
+            // Apps & search
+            _Setting(
+              'Apps & search',
+              Icons.search_rounded,
+              'Search',
+              '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · pull down ${prefs.pullToSearch ? 'on' : 'off'}',
+              keywords: 'google play store settings shortcuts pull',
+              open: (c) => _showSearchSettings(c, prefs: prefs),
+            ),
+            _Setting(
+              'Apps & search',
+              Icons.unfold_more_rounded,
+              'Open folders as you scroll',
+              'The folder that stops in the middle opens',
+              keywords: 'folders auto',
+              value: prefs.autoOpenFolders,
+              onChanged: prefs.setAutoOpenFolders,
+            ),
+            _Setting(
+              'Apps & search',
+              Icons.visibility_off_outlined,
+              'Hidden apps',
+              hidden == 0 ? 'None' : '$hidden hidden',
+              keywords: 'hide',
+              open: (c) => _showHiddenApps(c, prefs: prefs, apps: apps),
+            ),
+            // TV
+            _Setting(
+              'TV remote',
+              Icons.settings_remote_rounded,
+              'Remote button',
+              prefs.remoteButton ? 'Next to search' : 'Hidden',
+              keywords: 'tv television google tv control',
+              value: prefs.remoteButton,
+              onChanged: prefs.setRemoteButton,
+            ),
+            _Setting(
+              'TV remote',
+              Icons.tv_rounded,
+              'Your TV',
+              prefs.tvHost == null ? 'Not set up yet' : '${prefs.tvName} · ${prefs.tvHost}',
+              keywords: 'pair forget television',
+              open: (c) => _showTvSettings(c, prefs: prefs, home: context),
+            ),
+            // Launcher
+            _Setting(
+              'Launcher',
+              Icons.speed_rounded,
+              'Lighter effects',
+              switch (prefs.effects) {
+                'lite' => 'On · smoothest on any phone',
+                'full' => 'Off · all animations',
+                _ => Perf.autoSlow ? 'On for this phone (automatic)' : 'Automatic · on if this phone is slow',
+              },
+              keywords: 'performance smooth animations battery',
+              value: Perf.lite.value,
+              onChanged: (v) => prefs.setEffects(v ? 'lite' : 'full'),
+            ),
+            _Setting(
+              'Launcher',
+              Icons.settings_backup_restore_rounded,
+              'Backup & restore',
+              'Save all settings to a file',
+              keywords: 'export import save',
+              open: (c) => showBackupSheet(c, prefs: prefs),
+            ),
+            _Setting(
+              'Launcher',
+              Icons.home_outlined,
+              'Default home app',
+              'Opens your phone’s settings',
+              keywords: 'launcher default',
+              external: true,
+              open: (c) {
+                SheetHost.close(c);
+                Apps.instance.openHomeSettings();
+              },
+            ),
+          ];
+          final q = query.trim();
+          final found = q.isEmpty ? const <_Setting>[] : all.where((x) => x.matches(q)).toList();
+          final sections = <String>[];
+          for (final x in all) {
+            if (!sections.contains(x.section)) sections.add(x.section);
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s12),
+                child: Text('Settings', style: DS.title.copyWith(fontSize: 28)),
               ),
-              _NavRow(
-                Icons.wallpaper_rounded,
-                'Wallpaper',
-                '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · ${dim == 0 ? 'dim off' : 'dim $dim%'}',
-                () => go(ctx, () => _showWallpaperSheet(context, prefs: prefs)),
-              ),
-            ]),
-            _Group('Home screen', [
-              _NavRow(
-                Icons.dashboard_outlined,
-                'Layout',
-                'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
-                () => go(ctx, () => _showLayoutSheet(context, prefs: prefs)),
-              ),
-              _NavRow(
-                Icons.view_carousel_outlined,
-                'Top widgets',
-                top.isEmpty ? 'None' : top,
-                () => go(ctx, () => showCustomiseTop(context, prefs: prefs, back: true)),
-              ),
-              _NavRow(
-                Icons.bolt_rounded,
-                'Quick chips',
-                chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
-                () => go(ctx, () => showCustomiseChips(context, prefs: prefs, back: true)),
-              ),
-            ]),
-            _Group('Apps & search', [
-              _SwitchRow(
-                Icons.unfold_more_rounded,
-                'Open folders as you scroll',
-                'The folder that stops in the middle opens',
-                prefs.autoOpenFolders,
-                prefs.setAutoOpenFolders,
-              ),
-              _NavRow(
-                Icons.search_rounded,
-                'Search',
-                '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · pull down ${prefs.pullToSearch ? 'on' : 'off'}',
-                () => go(ctx, () => _showSearchSettings(context, prefs: prefs)),
-              ),
-              _NavRow(
-                Icons.visibility_off_outlined,
-                'Hidden apps',
-                hidden == 0 ? 'None' : '$hidden hidden',
-                () => go(ctx, () => _showHiddenApps(context, prefs: prefs, apps: apps)),
-              ),
-            ]),
-            _Group('Launcher', [
-              _SwitchRow(
-                Icons.speed_rounded,
-                'Lighter effects',
-                switch (prefs.effects) {
-                  'lite' => 'On · smoothest on any phone',
-                  'full' => 'Off · all animations',
-                  _ => Perf.autoSlow ? 'On for this phone (automatic)' : 'Automatic · turns on if this phone is slow',
-                },
-                Perf.lite.value,
-                (v) => prefs.setEffects(v ? 'lite' : 'full'),
-              ),
-              _NavRow(
-                Icons.settings_backup_restore_rounded,
-                'Backup & restore',
-                'Save all settings to a file',
-                () => go(ctx, () => showBackupSheet(context, prefs: prefs, back: true)),
-              ),
-              _NavRow(Icons.home_outlined, 'Default home app', 'Opens your phone’s settings', () => leave(ctx, Apps.instance.openHomeSettings), external: true),
-            ]),
-            const SizedBox(height: DS.s8),
-          ],
-        );
-      },
+              SheetSearchField(hint: 'Search settings', onChanged: (v) => setQuery(() => query = v)),
+              if (q.isNotEmpty) ...[
+                if (found.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(DS.s24),
+                    child: Text('No setting matches “$q”', style: DS.rowSub),
+                  )
+                else
+                  _Group(null, [for (final x in found) x.row(ctx)]),
+              ] else
+                for (final sec in sections) _Group(sec, [for (final x in all.where((x) => x.section == sec)) x.row(ctx)]),
+              const SizedBox(height: DS.s16),
+            ],
+          );
+        },
+      ),
     ),
   );
 }
+
+/// Settings → Your TV (page): remote button on/off, the paired TV, forget it, open the remote.
+Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, required BuildContext home}) => showOneSheetWith(
+  context,
+  height: drawerHeight(context, prefs),
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
+          child: SheetHeader(title: 'TV remote', subtitle: 'Control your Google TV from the dock'),
+        ),
+        _Group(null, [_SwitchRow(Icons.settings_remote_rounded, 'Remote button', 'Between search and settings', prefs.remoteButton, prefs.setRemoteButton)]),
+        _Group('Your TV', [
+          if (prefs.tvHost == null)
+            _NavRow(Icons.add_link_rounded, 'Set up a TV', 'Pair once with the code on your TV', () {
+              SheetHost.close(ctx);
+              showTvRemote(home, prefs: prefs);
+            })
+          else ...[
+            _NavRow(Icons.tv_rounded, prefs.tvName, prefs.tvHost!, () {
+              SheetHost.close(ctx);
+              showTvRemote(home, prefs: prefs);
+            }),
+            _NavRow(Icons.link_off_rounded, 'Forget this TV', 'You’ll pair again next time', () async {
+              HapticFeedback.mediumImpact();
+              await TvRemote.instance.forget(prefs.tvHost!);
+              await prefs.setTv(null);
+            }),
+          ],
+        ]),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s16),
+          child: Text(
+            'Works with Google TV and Android TV on the same Wi-Fi. Only your phone and TV talk to each other.',
+            style: DS.rowSub.copyWith(fontSize: 13),
+          ),
+        ),
+      ],
+    ),
+  ),
+);
 
 /// Settings → Layout (2nd level): split + padding. Short sheet, so the home updates in view.
 Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
@@ -1494,7 +1604,7 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
               _NavRow(Icons.photo_library_outlined, 'Choose another photo', 'From your gallery', pick),
             ] else
               _NavRow(Icons.image_outlined, 'Change phone wallpaper', 'Opens your phone’s picker', () {
-                Navigator.pop(ctx);
+                SheetHost.close(ctx);
                 Apps.instance.openWallpaperPicker();
               }, external: true),
           ]),
@@ -1620,14 +1730,14 @@ class _Group extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s16, 0),
+      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (title != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s8),
-              child: Text(title!, style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+              child: Text(title!.toUpperCase(), style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600)),
             ),
           ClipRRect(
             borderRadius: BorderRadius.circular(DS.rMedia),
@@ -1635,7 +1745,7 @@ class _Group extends StatelessWidget {
               color: DS.cardMuted,
               child: Column(
                 children: [
-                  for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, thickness: 1, indent: 68, color: DS.hairline), r],
+                  for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, thickness: 1, indent: 72, endIndent: DS.s16, color: DS.hairline), r],
                 ],
               ),
             ),
@@ -1735,12 +1845,13 @@ class _IconDisc extends StatelessWidget {
   const _IconDisc(this.icon);
   final IconData icon;
 
+  // The theme's accent (the green card's colour): rows read at a glance, in any theme.
   @override
   Widget build(BuildContext context) => Container(
-    width: 36,
-    height: 36,
-    decoration: BoxDecoration(color: DS.card, shape: BoxShape.circle),
-    child: Icon(icon, size: 20, color: DS.ink),
+    width: 40,
+    height: 40,
+    decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(12)),
+    child: Icon(icon, size: 21, color: DS.heroInk),
   );
 }
 

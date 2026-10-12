@@ -27,7 +27,11 @@ class SearchDock extends StatelessWidget {
     required this.onSettings,
     this.inline = false,
     this.onSwipeClose,
+    this.onRemote,
   });
+
+  /// TV remote button between the bar and settings (null = hidden, Settings → TV remote).
+  final VoidCallback? onRemote;
 
   /// Swiped down on the bar while searching (defaults to [onClose]).
   final VoidCallback? onSwipeClose;
@@ -80,8 +84,10 @@ class SearchDock extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, c) {
               final w = c.maxWidth;
-              final pillRight = active ? _slot : (small ? 0.0 : _slot);
-              final pillWidth = active ? w - _slot : (small ? height : w - _slot);
+              // Room on the right for settings (and the remote button, when shown).
+              final tray = onRemote != null ? _slot * 2 : _slot;
+              final pillRight = active ? _slot : (small ? 0.0 : tray);
+              final pillWidth = active ? w - _slot : (small ? height : w - tray);
               Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
                 duration: Motion.snapDuration,
                 curve: Motion.snap,
@@ -118,6 +124,12 @@ class SearchDock extends StatelessWidget {
                       onSubmitted: onSubmitted,
                     ),
                   ),
+                  if (onRemote != null)
+                    slide(
+                      right: tools ? _slot : -_slot,
+                      shown: tools,
+                      child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!),
+                    ),
                   slide(
                     right: tools ? 0 : -_slot,
                     shown: tools,

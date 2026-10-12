@@ -66,7 +66,7 @@ void main() {
     await tester.tap(find.text('Dark'));
     await tester.pumpAndSettle();
 
-    Navigator.of(tester.element(find.text('Colours & style'))).pop();
+    Navigator.of(tester.element(find.text('Colours & style')), rootNavigator: true).pop();
     await tester.pumpAndSettle();
     // Const widgets got rebuilt too: the dividers use the new hairline colour.
     final dividerColors = tester

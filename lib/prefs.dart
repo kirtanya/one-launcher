@@ -233,7 +233,7 @@ class Prefs extends ChangeNotifier {
   String exportBackup() {
     final out = <String, Object>{};
     for (final k in _sp.getKeys()) {
-      if (k == 'widgetLabels' || k == 'installId' || k == 'wallpaperPhoto' || k == 'slowFrames') continue; // phone-specific
+      if (k == 'widgetLabels' || k == 'installId' || k == 'wallpaperPhoto' || k == 'slowFrames' || k == 'tvHost' || k == 'tvName') continue; // phone-specific
       final v = _sp.get(k);
       out[k] = switch (v) {
         final String s => {'t': 's', 'v': s},
@@ -451,6 +451,26 @@ class Prefs extends ChangeNotifier {
       for (final x in searchSourceIds)
         if (s.contains(x)) x,
     ]);
+    notifyListeners();
+  }
+
+  /// TV remote: the paired TV (address + name) and whether the dock shows the remote button.
+  String? get tvHost => _sp.getString('tvHost');
+  String get tvName => _sp.getString('tvName') ?? 'TV';
+  Future<void> setTv(String? host, {String? name}) async {
+    if (host == null) {
+      await _sp.remove('tvHost');
+      await _sp.remove('tvName');
+    } else {
+      await _sp.setString('tvHost', host);
+      if (name != null) await _sp.setString('tvName', name);
+    }
+    notifyListeners();
+  }
+
+  bool get remoteButton => _sp.getBool('remoteButton') ?? true;
+  Future<void> setRemoteButton(bool v) async {
+    await _sp.setBool('remoteButton', v);
     notifyListeners();
   }
 
