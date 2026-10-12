@@ -274,7 +274,8 @@ class TvActivity : FlutterActivity() {
         fun c(cls: String) = Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.$cls")
         val candidates = when (id) {
             "t:inputs" -> listOf(Intent("com.android.tv.action.VIEW_INPUTS"))
-            "t:assistant" -> listOf(Intent(Intent.ACTION_ASSIST), Intent("android.search.action.GLOBAL_SEARCH"))
+            // Google TV voice search (GLOBAL_SEARCH with no words starts listening).
+            "t:assistant" -> listOf(Intent("android.search.action.GLOBAL_SEARCH"), Intent(Intent.ACTION_ASSIST))
             "t:wifi" -> listOf(Intent(Settings.ACTION_WIFI_SETTINGS))
             "t:bluetooth" -> listOf(c("accessories.AddAccessoryActivity"), Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
             "t:sound" -> listOf(Intent(Settings.ACTION_SOUND_SETTINGS), c("device.displaysound.DisplaySoundActivity"))

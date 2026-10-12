@@ -13,6 +13,7 @@ import '../ui/palette.dart';
 import '../ui/theme.dart';
 import '../ui/motion.dart';
 import 'tv_actions.dart';
+import 'tv_all_apps.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
@@ -102,7 +103,7 @@ class _TvHomeState extends State<TvHome> {
   TvItem? _backdrop; // what the big picture shows (settles after a beat, so fast moves don't flicker)
   Timer? _backdropTimer;
 
-  static const _header = ['search', 'customise']; // Inputs, Settings… are quick action chips now
+  static const _header = ['search', 'voice', 'customise']; // Inputs, Settings… are quick action chips now
 
   Prefs get prefs => widget.prefs;
   TvApps get tv => TvApps.instance;
@@ -252,7 +253,12 @@ class _TvHomeState extends State<TvHome> {
           ], chips: true),
         if (TvLook.on('quick')) TvRow('quick', 'Quick actions', quick, chips: true),
         if (cont.isNotEmpty && TvLook.on('rowContinue')) TvRow('continue', 'Continue watching', cont, wide: true),
-        if (fav.isNotEmpty && TvLook.on('rowFav')) TvRow('fav', 'Your apps', [for (final a in fav) appItem(a)]),
+        if (fav.isNotEmpty && TvLook.on('rowFav'))
+          TvRow('fav', 'Your apps', [
+            for (final a in fav) appItem(a),
+            // Every app, one press away: the last tile opens the All apps screen.
+            TvItem(key: 'all-apps', kind: TvKind.action, title: 'All apps', package: '', meta: '${visible.length}'),
+          ]),
         if (recents.length > 1 && TvLook.on('rowRecent')) TvRow('recent', 'Jump back in', [for (final a in recents) appItem(a)]),
         if (TvLook.on('rowChannels'))
           for (final c in _channels)
@@ -368,7 +374,8 @@ class _TvHomeState extends State<TvHome> {
     if (_moving != null) {
       // Moving an app: ← → slide it along its row; ↑ ↓ do nothing until OK / Back.
       if (d == AxisDirection.left && i > 0) _shift(r, i, -1);
-      final last = r >= 0 && _rows[r].chips ? _len(r) - 2 : _len(r) - 1; // "Edit" stays at the end
+      // "Edit" / "All apps" stay at the end.
+      final last = r >= 0 && (_rows[r].chips || _rows[r].items.last.key == 'all-apps') ? _len(r) - 2 : _len(r) - 1;
       if (d == AxisDirection.right && i < last) _shift(r, i, 1);
       return true;
     }
@@ -406,7 +413,10 @@ class _TvHomeState extends State<TvHome> {
   /// Swap the moving app with its neighbour and save the row's new order.
   Future<void> _shift(int r, int i, int by) async {
     final row = _rows[r];
-    final list = [for (final it in row.items) it.package];
+    final list = [
+      for (final it in row.items)
+        if (it.key != 'all-apps') it.package,
+    ];
     list.insert(i + by, list.removeAt(i));
     HapticFeedback.selectionClick();
     if (row.chips) {
@@ -536,6 +546,9 @@ class _TvHomeState extends State<TvHome> {
             tv.mediaPlayPause();
         }
         return;
+      case TvKind.action when item.key == 'all-apps':
+        _allApps();
+        return;
       case TvKind.action:
         if (item.key == 'q:edit') {
           _editQuick();
@@ -547,8 +560,19 @@ class _TvHomeState extends State<TvHome> {
     }
   }
 
+  void _allApps() => Navigator.of(context).push(
+    tvFade(
+      TvAllApps(
+        apps: _apps,
+        prefs: prefs,
+        onLaunch: (a) => _open(TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a)),
+      ),
+    ),
+  );
+
   void _options(TvRow row, int i) {
     final item = row.items[i];
+    if (item.key == 'all-apps') return _allApps();
     if (row.chips && row.id == 'quick') {
       if (item.key == 'q:edit') return _editQuick();
       showTvPanel(
@@ -635,6 +659,7 @@ class _TvHomeState extends State<TvHome> {
         ),
       ),
     ),
+    'voice' => tv.openAction('t:assistant'), // Google TV voice search
     _ => _customise(),
   };
 
@@ -717,6 +742,7 @@ class _TvHomeState extends State<TvHome> {
       context,
       prefs: prefs,
       extras: [
+        TvAction(Icons.apps_rounded, 'All apps', _allApps),
         TvAction(Icons.bolt_rounded, 'Edit quick actions', _editQuick),
         if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', _colours),
         if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
@@ -914,18 +940,30 @@ class _TvHomeState extends State<TvHome> {
                 children: [
                   for (final (i, item) in row.items.indexed) ...[
                     if (i > 0) const SizedBox(width: TvDS.gap),
-                    _Card(
-                      key: ValueKey(_key(r, i)),
-                      item: item,
-                      width: row.cardW,
-                      height: row.cardH,
-                      focusNode: _node(r, i),
-                      moving: _moving == _key(r, i),
-                      onSelect: () => _moving != null ? _endMove() : _open(item),
-                      onOptions: () => _options(row, i),
-                      onMove: (d) => _move(r, i, d),
-                      onFocus: () => _onFocus(r, i),
-                    ),
+                    if (item.key == 'all-apps')
+                      _AllAppsTile(
+                        key: ValueKey(_key(r, i)),
+                        count: item.meta ?? '',
+                        width: row.cardW,
+                        height: row.cardH,
+                        focusNode: _node(r, i),
+                        onSelect: () => _open(item),
+                        onMove: (d) => _move(r, i, d),
+                        onFocus: () => _onFocus(r, i),
+                      )
+                    else
+                      _Card(
+                        key: ValueKey(_key(r, i)),
+                        item: item,
+                        width: row.cardW,
+                        height: row.cardH,
+                        focusNode: _node(r, i),
+                        moving: _moving == _key(r, i),
+                        onSelect: () => _moving != null ? _endMove() : _open(item),
+                        onOptions: () => _options(row, i),
+                        onMove: (d) => _move(r, i, d),
+                        onFocus: () => _onFocus(r, i),
+                      ),
                   ],
                 ],
               ),
@@ -1167,6 +1205,7 @@ class _TopButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final (icon, label) = switch (id) {
       'search' => (Icons.search_rounded, 'Search'),
+      'voice' => (Icons.mic_none_rounded, 'Voice search'),
       _ => (Icons.tune_rounded, 'Customise'),
     };
     final pill = id == 'search';
@@ -1600,6 +1639,63 @@ class _MediaButton extends StatelessWidget {
               border: Border.all(color: f ? Colors.transparent : TvDS.line),
             ),
             child: Icon(icon, size: 24, color: f ? DS.ink : TvDS.ink),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The last tile of Your apps: a grid icon + "All apps · 42". Opens the All apps screen.
+class _AllAppsTile extends StatelessWidget {
+  const _AllAppsTile({
+    super.key,
+    required this.count,
+    required this.width,
+    required this.height,
+    required this.focusNode,
+    required this.onSelect,
+    this.onMove,
+    this.onFocus,
+  });
+  final String count;
+  final double width, height;
+  final FocusNode focusNode;
+  final VoidCallback onSelect;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'All apps',
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => AnimatedScale(
+          scale: f && TvLook.str('focus') != 'outline' ? TvDS.focusScaleCard : 1,
+          duration: TvLook.anim(Motion.popDuration),
+          curve: Motion.pop,
+          child: AnimatedContainer(
+            duration: TvLook.anim(Motion.pressIn * 2),
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              color: f ? TvDS.surfaceFocused : TvDS.surface,
+              borderRadius: BorderRadius.circular(TvDS.rTile),
+              border: Border.all(color: f ? Colors.transparent : TvDS.line),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.apps_rounded, size: 32, color: f ? DS.ink : TvDS.ink),
+                const SizedBox(height: DS.s8),
+                Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? DS.ink : TvDS.ink)),
+              ],
+            ),
           ),
         ),
       ),

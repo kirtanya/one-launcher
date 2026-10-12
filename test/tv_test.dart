@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
+import 'package:one_launcher/tv/tv_title.dart';
 import 'package:one_launcher/ui/ds.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -171,6 +172,20 @@ void main() {
     expect(_focused(), moved, reason: 'focus stays on the moved app');
     expect(prefs.favourites.indexOf(moved.split(':').last), 1, reason: 'now second (was first): $before → ${prefs.favourites}');
 
+    // Your apps ends with "All apps" → the All apps screen (every app, sortable).
+    for (var k = 0; k < 20 && _focused() != 'fav:all-apps'; k++) {
+      await _press(tester, LogicalKeyboardKey.arrowRight);
+    }
+    expect(_focused(), 'fav:all-apps');
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(find.text('All apps'), findsOneWidget);
+    expect(find.text('A–Z'), findsOneWidget);
+    expect(find.text('File Manager'), findsWidgets, reason: 'apps that aren’t in Your apps are here too');
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_12_all_apps.png'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Sort'), findsNothing, reason: 'Back returns home');
+
     // Back on the home screen → the default spot: the first quick action.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -193,8 +208,12 @@ void main() {
 
     // Customise → Colours → Purple: the accent changes live.
     final before2 = DS.palette.hero;
-    await _press(tester, LogicalKeyboardKey.arrowRight); // Search → Customise
+    await _press(tester, LogicalKeyboardKey.arrowRight); // Search → Voice search
+    expect(_focused(), 'h:voice');
+    await _press(tester, LogicalKeyboardKey.arrowRight); // → Customise
     await _press(tester, LogicalKeyboardKey.select);
+    await tester.scrollUntilVisible(find.text('Colours'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Colours'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('Purple'), 120, scrollable: find.byType(Scrollable).last);
@@ -230,6 +249,7 @@ void main() {
     await prefs.resetTvSettings();
     await tester.pumpAndSettle();
     expect(find.text('Hold OK'), findsOneWidget, reason: 'Reset brings everything back');
+    await _press(tester, LogicalKeyboardKey.arrowLeft);
     await _press(tester, LogicalKeyboardKey.arrowLeft); // back to Search
 
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.
@@ -242,12 +262,20 @@ void main() {
     expect(find.text('Shows & films'), findsOneWidget);
     expect(find.text('The Long Night'), findsWidgets);
     expect(find.text('Night Shift'), findsWidgets);
-    expect(find.text('Search everywhere for “night”'), findsOneWidget);
+    // Google TV first: search it for the words, or voice; posters below.
+    expect(find.text('Search Google TV for “night”'), findsOneWidget);
+    expect(find.text('Voice search'), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(FocusManager.instance.primaryFocus?.context?.widget, isNot(isA<EditableText>()));
+    expect(find.text('Search Google TV for “night”'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4_search.png'));
 
-    // OK on a poster → its page: ratings, where to watch (apps on this TV), cast.
+    // ↓ to the posters; OK on one → its page: ratings, where to watch (apps on this TV), cast.
+    TvPoster? poster() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>();
+    for (var k = 0; k < 4 && poster() == null; k++) {
+      await _press(tester, LogicalKeyboardKey.arrowDown); // through the search pills (they wrap)
+    }
+    expect(poster()?.title.title, 'The Long Night');
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.text('Where to watch'), findsOneWidget);
     expect(find.text('Watch on Netflix'), findsOneWidget);

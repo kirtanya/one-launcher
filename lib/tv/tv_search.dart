@@ -105,11 +105,8 @@ class _TvSearchState extends State<TvSearch> {
     final targets = [for (final p in _targets) ?byPkg[p]];
     final posters = q.isEmpty ? _trending : (_searched.toLowerCase() == q ? _results : const <TmdbTitle>[]);
 
-    void down() {
-      if (posters.isNotEmpty) return _firstPoster.requestFocus();
-      if (apps.isNotEmpty) return _firstApp.requestFocus();
-      if (raw.isNotEmpty) _firstAction.requestFocus();
-    }
+    // ↓ from the box: the Google TV row first (it's always there), then posters / apps.
+    void down() => _firstAction.requestFocus();
 
     return Scaffold(
       backgroundColor: TvDS.canvas,
@@ -131,11 +128,13 @@ class _TvSearchState extends State<TvSearch> {
                 controller: _q,
                 autofocus: true,
                 onChanged: _onType,
-                onSubmitted: (_) => down(),
+                // Enter / Done on the keyboard: straight to Google TV's results (unless our own
+                // shows & films search is on — then into those results).
+                onSubmitted: (_) => raw.isNotEmpty && !Tmdb.enabled ? TvApps.instance.searchEverywhere(raw) : down(),
                 style: TvDS.panelTitle,
                 cursorColor: TvDS.ink,
                 decoration: InputDecoration(
-                  hintText: Tmdb.enabled ? 'Shows, films, apps' : 'Search apps',
+                  hintText: 'Shows, films, YouTube, apps',
                   hintStyle: TvDS.panelTitle.copyWith(color: TvDS.inkMuted),
                   prefixIcon: const Icon(Icons.search_rounded, color: TvDS.inkMuted, size: 28),
                   suffixIcon: _loading
@@ -162,6 +161,37 @@ class _TvSearchState extends State<TvSearch> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ---- Google TV: the TV's own search (every streaming app, YouTube, people) ----
+                    const SizedBox(height: DS.s20),
+                    const Text('Search with Google TV', style: TvDS.rowTitleFocused),
+                    const SizedBox(height: DS.s12),
+                    Wrap(
+                      spacing: DS.s12,
+                      runSpacing: DS.s12,
+                      children: [
+                        if (raw.isNotEmpty)
+                          TvActionPill(
+                            focusNode: _firstAction,
+                            icon: Icons.travel_explore_rounded,
+                            label: 'Search Google TV for “$raw”',
+                            onSelect: () => TvApps.instance.searchEverywhere(raw),
+                          ),
+                        TvActionPill(
+                          focusNode: raw.isEmpty ? _firstAction : null,
+                          icon: Icons.mic_none_rounded,
+                          label: 'Voice search',
+                          onSelect: () => TvApps.instance.openAction('t:assistant'),
+                        ),
+                        if (raw.isNotEmpty)
+                          for (final a in targets)
+                            TvActionPill(
+                              leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
+                              label: 'Search in ${a.label}',
+                              onSelect: () => TvApps.instance.searchIn(a.package, raw),
+                            ),
+                      ],
+                    ),
+
                     // ---- Shows & films ----
                     if (Tmdb.enabled) ...[
                       const SizedBox(height: DS.s24),
@@ -196,31 +226,6 @@ class _TvSearchState extends State<TvSearch> {
                               focusNode: i == 0 ? _firstApp : null,
                               onSelect: () => widget.onLaunch(a),
                               onOptions: () {},
-                            ),
-                        ],
-                      ),
-                    ],
-
-                    // ---- Other ways to search ----
-                    if (raw.isNotEmpty) ...[
-                      const SizedBox(height: DS.s24),
-                      const Text('More ways to search', style: TvDS.rowTitle),
-                      const SizedBox(height: DS.s12),
-                      Wrap(
-                        spacing: DS.s12,
-                        runSpacing: DS.s12,
-                        children: [
-                          TvActionPill(
-                            focusNode: _firstAction,
-                            icon: Icons.travel_explore_rounded,
-                            label: 'Search everywhere for “$raw”',
-                            onSelect: () => TvApps.instance.searchEverywhere(raw),
-                          ),
-                          for (final a in targets)
-                            TvActionPill(
-                              leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
-                              label: 'Search in ${a.label}',
-                              onSelect: () => TvApps.instance.searchIn(a.package, raw),
                             ),
                         ],
                       ),
