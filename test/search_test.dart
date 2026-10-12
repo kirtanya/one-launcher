@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/search_dock.dart';
+import 'package:one_launcher/ui/components.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -158,6 +159,12 @@ void main() {
     final open = tester.getBottomLeft(find.text('Open'));
     expect(open.dy, lessThan(barTop), reason: 'best match is above the bar, not behind it');
     expect(open.dy, greaterThan(barTop - 120), reason: 'and right next to it');
+    // The other matching apps: one row that scrolls sideways, just above the best match.
+    final card = find.ancestor(of: find.text('Open'), matching: find.byType(OneCard)); // the apps card
+    final row = find.descendant(of: card, matching: find.byWidgetPredicate((w) => w is ListView && w.scrollDirection == Axis.horizontal));
+    expect(row, findsOneWidget);
+    expect(tester.getBottomLeft(row).dy, lessThan(tester.getTopLeft(find.text('Open')).dy));
+    expect(tester.getSize(row).height, lessThan(110), reason: 'a single row');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/20_results_keyboard.png'));
   });
 

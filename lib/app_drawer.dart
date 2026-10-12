@@ -1110,7 +1110,7 @@ class _GridApp extends StatelessWidget {
 }
 
 /// Search results, by source (Settings → Search → Search in): apps (best match big with
-/// Open — what Enter does — the rest as a grid), app shortcuts, phone settings, then the web
+/// Open — what Enter does — the other matches in one sideways-scrolling row), app shortcuts, phone settings, then the web
 /// (Google / browser) and the Play Store. With the bar at the bottom everything stacks upward
 /// from it: the best match sits right above the bar.
 class _SearchResults extends StatelessWidget {
@@ -1209,20 +1209,20 @@ class _SearchResults extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s4),
               child: CardDivider(),
             ),
-            // Rows of four (not a LayoutBuilder: the upward list measures its natural height,
-            // which LayoutBuilder can't report).
-            for (var r = 0; r < rest.length; r += 4)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var c = r; c < r + 4; c++)
-                    Expanded(
-                      child: c < rest.length
-                          ? _GridApp(app: rest[c], onTap: () => onTap(rest[c]), onLongPress: () => onLongPress(rest[c]))
-                          : const SizedBox.shrink(),
-                    ),
-                ],
+            // The other matches: one row that scrolls sideways (next best first), so the
+            // result list stays short and other kinds of results stay in view.
+            SizedBox(
+              height: 96,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: DS.s4),
+                itemCount: rest.length,
+                itemBuilder: (context, i) => SizedBox(
+                  width: 78,
+                  child: _GridApp(app: rest[i], onTap: () => onTap(rest[i]), onLongPress: () => onLongPress(rest[i])),
+                ),
               ),
+            ),
           ],
         ]),
       ),
