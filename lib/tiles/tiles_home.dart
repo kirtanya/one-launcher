@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../quick_actions.dart';
-import '../quick_chips.dart' show ShortcutIcon;
+import '../quick_chips.dart' show ShortcutIcon, QuickChipsRow;
 import '../photo_wallpaper.dart';
 import '../prefs.dart';
 import '../remote_sheet.dart';
@@ -57,6 +57,12 @@ class TileSpec {
     _ => (2, 2),
   };
 
+  /// The quick-actions row: one group across the whole width.
+  bool get isChips => id == 'chips';
+
+  /// Its cells on a [cols]-column grid (the chips row is always full width, one row high).
+  (int, int) spanIn(int cols) => isChips ? (cols, 1) : span;
+
   Map<String, dynamic> toJson() => {'id': id, 'size': size, 'colour': ?colour};
   static TileSpec fromJson(Map<String, dynamic> m) => TileSpec(m['id'] as String, m['size'] as String? ?? 'm', m['colour'] as String?);
   TileSpec resized(String s) => TileSpec(id, s, colour);
@@ -86,7 +92,7 @@ List<(TileSpec, int, int)> packTiles(List<TileSpec> tiles, {int cols = 4}) {
   final used = <(int, int)>{};
   final out = <(TileSpec, int, int)>[];
   for (final t in tiles) {
-    final (w, h) = t.span;
+    final (w, h) = t.spanIn(cols);
     var placed = false;
     for (var row = 0; !placed; row++) {
       for (var col = 0; col + w <= cols && !placed; col++) {
@@ -200,7 +206,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver {
       if (!picks.contains(a.package)) picks.add(a.package);
     }
     const sizes = ['m', 's', 's', 's', 's', 'm', 's', 's', 's', 's'];
-    return [const TileSpec('clock', 'w'), for (final (i, p) in picks.take(10).indexed) TileSpec('app:$p', sizes[i])];
+    return [const TileSpec('clock', 'w'), const TileSpec('chips', 'm'), for (final (i, p) in picks.take(10).indexed) TileSpec('app:$p', sizes[i])];
   }
 
   List<TileSpec> get _tiles {
@@ -436,17 +442,18 @@ class _StartPage extends StatelessWidget {
     final box = _grid.currentContext?.findRenderObject() as RenderBox?;
     final dragged = placed.where((p) => p.$1.id == d.data).firstOrNull;
     if (box == null || dragged == null) return;
-    final (w, h) = (dragged.$1.span.$1 * (unit + gap), dragged.$1.span.$2 * (unit + gap));
+    final (w, h) = (dragged.$1.spanIn(cols).$1 * (unit + gap), dragged.$1.spanIn(cols).$2 * (unit + gap));
     final p = box.globalToLocal(d.offset + Offset(w / 2, h / 2));
     if (p.dy < 0 || p.dx < 0) return;
     final col = (p.dx / (unit + gap)).floor().clamp(0, cols - 1), row = (p.dy / (unit + gap)).floor();
     String? target;
     for (final (t, c, r) in placed) {
-      if (col >= c && col < c + t.span.$1 && row >= r && row < r + t.span.$2) target = t.id;
+      final (sw, sh) = t.spanIn(cols);
+      if (col >= c && col < c + sw && row >= r && row < r + sh) target = t.id;
     }
     if (target == null) {
       final (last, lc, lr) = placed.last;
-      final pastEnd = row >= lr + last.span.$2 || (row >= lr && col >= lc + last.span.$1);
+      final pastEnd = row >= lr + last.spanIn(cols).$2 || (row >= lr && col >= lc + last.spanIn(cols).$1);
       if (!pastEnd || last.id == d.data) return;
       target = '';
     }
@@ -465,7 +472,7 @@ class _StartPage extends StatelessWidget {
         final cols = prefs.tileColumns;
         final unit = (c.maxWidth - 2 * side - (cols - 1) * gap) / cols;
         final placed = packTiles(tiles, cols: cols);
-        final rows = placed.fold<int>(0, (m, p) => math.max(m, p.$3 + p.$1.span.$2));
+        final rows = placed.fold<int>(0, (m, p) => math.max(m, p.$3 + p.$1.spanIn(cols).$2));
         final height = rows == 0 ? 0.0 : rows * unit + (rows - 1) * gap;
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -494,8 +501,8 @@ class _StartPage extends StatelessWidget {
                             curve: Motion.settle,
                             left: col * (unit + gap),
                             top: row * (unit + gap),
-                            width: t.span.$1 * unit + (t.span.$1 - 1) * gap,
-                            height: t.span.$2 * unit + (t.span.$2 - 1) * gap,
+                            width: t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
+                            height: t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
                             child: Landed(
                               landing: startLanding,
                               style: prefs.tileAnim,
@@ -504,8 +511,9 @@ class _StartPage extends StatelessWidget {
                               // Long Start: tiles below the fold come in as you scroll to them.
                               scroll: scroll,
                               top: pad.top + DS.s24 + row * (unit + gap),
-                              bottom: pad.top + DS.s24 + (row + t.span.$2) * (unit + gap),
+                              bottom: pad.top + DS.s24 + (row + t.spanIn(cols).$2) * (unit + gap),
                               child: _EditableTile(
+                                prefs: prefs,
                                 tile: t,
                                 editing: editing,
                                 selected: selected == t.id,
@@ -519,6 +527,19 @@ class _StartPage extends StatelessWidget {
                                         tile: t,
                                         prefs: prefs,
                                         onTap: editing ? () => onEdit(t.id) : () => onLaunch(apps[t.package]!),
+                                      )
+                                    : t.isChips
+                                    // No tile behind it: the chips look as on the classic home. In edit
+                                    // mode a tap selects the group (long-press anywhere on it moves it).
+                                    ? GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: editing ? () => onEdit(t.id) : null,
+                                        child: IgnorePointer(
+                                          ignoring: editing,
+                                          child: Center(
+                                            child: QuickChipsRow(prefs: prefs, padding: EdgeInsets.zero, chipLongPress: false),
+                                          ),
+                                        ),
                                       )
                                     : t.isAction
                                     ? _ActionTile(tile: t, prefs: prefs, onTap: editing ? () => onEdit(t.id) : null)
@@ -594,9 +615,11 @@ class _EditableTile extends StatelessWidget {
     required this.onUnpin,
     required this.onResize,
     required this.onRecolour,
+    required this.prefs,
     required this.child,
   });
 
+  final Prefs prefs;
   final TileSpec tile;
   final bool editing, selected;
   final VoidCallback onEdit, onUnpin, onResize, onRecolour;
@@ -640,16 +663,28 @@ class _EditableTile extends StatelessWidget {
               top: -8,
               child: _EditButton(icon: Icons.push_pin_outlined, tooltip: 'Unpin', onTap: onUnpin),
             ),
-            Positioned(
-              right: -8,
-              bottom: -8,
-              child: _EditButton(icon: Icons.open_in_full_rounded, tooltip: 'Resize', onTap: onResize),
-            ),
-            Positioned(
-              left: -8,
-              bottom: -8,
-              child: _EditButton(icon: Icons.palette_outlined, tooltip: 'Tile colour', onTap: onRecolour),
-            ),
+            if (tile.isChips)
+              Positioned(
+                right: 36,
+                top: -8,
+                child: _EditButton(
+                  icon: Icons.tune_rounded,
+                  tooltip: 'Customise quick actions',
+                  onTap: () => showCustomiseChips(context, prefs: prefs),
+                ),
+              )
+            else ...[
+              Positioned(
+                right: -8,
+                bottom: -8,
+                child: _EditButton(icon: Icons.open_in_full_rounded, tooltip: 'Resize', onTap: onResize),
+              ),
+              Positioned(
+                left: -8,
+                bottom: -8,
+                child: _EditButton(icon: Icons.palette_outlined, tooltip: 'Tile colour', onTap: onRecolour),
+              ),
+            ],
           ],
         ],
       ),
@@ -877,9 +912,15 @@ Future<void> addActionTile(BuildContext context, Prefs prefs) async {
   final picked = await showOneSheetWith(context, builder: (ctx) => _ActionPicker(onStart: onStart));
   if (picked is! (String, String, String)) return;
   final (id, label, app) = picked;
-  if (id.startsWith('s:')) await prefs.nameQuickAction(id, label, app);
   HapticFeedback.mediumImpact();
-  await prefs.setTiles([...?prefs.tiles, TileSpec('qa:$id', 's').toJson()]);
+  final tiles = [...?prefs.tiles];
+  if (id == 'chips') {
+    // The whole quick-actions row, right under the first tile (usually the clock) so it's seen.
+    tiles.insert(math.min(1, tiles.length), const TileSpec('chips', 'm').toJson());
+    return prefs.setTiles(tiles);
+  }
+  if (id.startsWith('s:')) await prefs.nameQuickAction(id, label, app);
+  await prefs.setTiles([...tiles, TileSpec('qa:$id', 's').toJson()]);
 }
 
 class _ActionPicker extends StatefulWidget {
@@ -897,7 +938,7 @@ class _ActionPickerState extends State<_ActionPicker> {
   @override
   Widget build(BuildContext context) {
     Widget row(String id, Widget icon, String title, String sub, String app) {
-      final added = widget.onStart.contains('qa:$id');
+      final added = widget.onStart.contains(id == 'chips' ? 'chips' : 'qa:$id');
       return InkWell(
         onTap: added ? null : () => Navigator.pop(context, (id, title, app)),
         child: Padding(
@@ -931,6 +972,8 @@ class _ActionPickerState extends State<_ActionPicker> {
           child: SheetHeader(title: 'Add a tile', subtitle: 'Quick actions and app shortcuts'),
         ),
         SheetSearchField(hint: 'Search actions & app shortcuts', onChanged: (q) => setState(() => _query = q)),
+        if (matchesQuery(_query, ['Quick actions row', 'chips']))
+          row('chips', Icon(Icons.view_week_outlined, color: DS.ink), 'Quick actions row', 'All your quick actions in one line · move it as a group', ''),
         for (final MapEntry(key: id, value: (name, icon)) in builtInActions.entries)
           if (matchesQuery(_query, [name])) row(id, Icon(icon, color: DS.ink), name, 'Quick action', ''),
         FutureBuilder<List<AppShortcut>?>(

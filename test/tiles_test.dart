@@ -5,6 +5,7 @@ import 'package:one_launcher/apps.dart';
 import 'package:one_launcher/home.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
+import 'package:one_launcher/quick_chips.dart';
 import 'package:one_launcher/tiles/tiles_home.dart';
 import 'package:one_launcher/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -150,7 +151,7 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/33_home_view_settings.png'));
     await tester.tap(find.text('Reset Start'));
     await tester.pumpAndSettle();
-    expect(_tiles(prefs)[1].id, 'app:com.amazon', reason: 'starting tiles again (Amazon back in 2nd place, not last)');
+    expect(_tiles(prefs)[2].id, 'app:com.amazon', reason: 'starting tiles again (Amazon back after the clock + chips, not last)');
     await tester.ensureVisible(find.text('Classic'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Classic'));
@@ -167,7 +168,7 @@ void main() {
     final calls = <MethodCall>[];
     final prefs = await _setUp(tester, {'homeView': 'tiles'}, calls: calls);
     final before = [for (final t in _tiles(prefs)) t.id];
-    expect(before.take(3), ['clock', 'app:com.amazon', 'app:com.camera']);
+    expect(before.take(3), ['clock', 'chips', 'app:com.amazon']);
     // Pick Amazon (medium, top-left under the clock) up and drop it at the bottom right.
     final g = await tester.startGesture(tester.getCenter(find.text('Amazon')));
     await tester.pump(const Duration(milliseconds: 700)); // long-press picks it up
@@ -192,7 +193,7 @@ void main() {
     // Edit mode → Add tile → a quick action as a small tile; tapping it runs the action.
     await tester.tap(find.text('Add tile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Flashlight'));
+    await tester.tap(find.text('Flashlight').last); // the picker's (the chips row has one too)
     await tester.pumpAndSettle();
     expect(_tiles(prefs).last.id, 'qa:b:torch');
     expect(_tiles(prefs).last.size, 's');
@@ -201,7 +202,7 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/34_tiles_action.png'));
     calls.clear();
-    await tester.tap(find.byIcon(Icons.flashlight_on_outlined));
+    await tester.tap(find.byIcon(Icons.flashlight_on_outlined).last);
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:torch'), isNotEmpty);
     // Our own TV remote as a tile: opens the remote sheet (not a phone action).
@@ -229,6 +230,38 @@ void main() {
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.focusNode!.hasFocus, isTrue, reason: 'search focused');
     expect(find.text('Search 7 apps'), findsOneWidget);
+  });
+
+  testWidgets('Tiles: the quick-actions row is one full-width group — no box, moves as one, customise inside', (tester) async {
+    final calls = <MethodCall>[];
+    final prefs = await _setUp(tester, {'homeView': 'tiles'}, calls: calls);
+    expect(find.byType(QuickChip), findsAtLeast(2), reason: 'the default quick actions, on Start (scrolls sideways)');
+    final row = tester.getRect(find.byType(QuickChipsRow));
+    expect(row.width, greaterThan(300), reason: 'full width');
+    // Tap a chip → runs it.
+    await tester.tap(find.text('Set timer'));
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:timer'), isNotEmpty);
+
+    // Long-press the row (on a chip) and drag it down past the apps → the whole group moves.
+    final g = await tester.startGesture(tester.getCenter(find.text('Flashlight')));
+    await tester.pump(const Duration(milliseconds: 700));
+    for (var i = 0; i < 14; i++) {
+      await g.moveBy(const Offset(0, 40));
+      await tester.pump(const Duration(milliseconds: 260));
+    }
+    await g.up();
+    await tester.pumpAndSettle();
+    final ids = [for (final t in _tiles(prefs)) t.id];
+    expect(ids.indexOf('chips'), greaterThan(2), reason: 'row moved down: $ids');
+    expect(find.byType(QuickChip), findsAtLeast(2), reason: 'still one row with its chips');
+    // Edit mode: the row offers Customise (arrange / add inside), not resize or colour.
+    expect(find.byTooltip('Customise quick actions'), findsWidgets);
+    expect(find.byTooltip('Resize'), findsNothing);
+    await tester.tap(find.byTooltip('Customise quick actions').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Quick actions'), findsWidgets, reason: 'the same customise sheet as the classic view');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/35_tiles_chips_customise.png'));
   });
 
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {

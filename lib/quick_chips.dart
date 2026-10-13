@@ -102,7 +102,13 @@ class ChipLook {
 /// Row of quick-action pills floating on the wallpaper just above the app sheet; scrolls
 /// sideways and ends with ＋ to customise. Dark frosted pills so they read on any wallpaper.
 class QuickChipsRow extends StatelessWidget {
-  const QuickChipsRow({super.key, required this.prefs});
+  const QuickChipsRow({super.key, required this.prefs, this.padding = const EdgeInsets.symmetric(horizontal: DS.s12), this.chipLongPress = true});
+
+  /// Space at the row's ends (none on Tiles: Start's own margins line it up).
+  final EdgeInsets padding;
+
+  /// Long-press a chip to customise. Off on Tiles, where long-press picks the whole row up.
+  final bool chipLongPress;
 
   /// Height of the row, and the gap it keeps from the sheet's top edge.
   static const height = 48.0, gap = DS.s8;
@@ -131,7 +137,7 @@ class QuickChipsRow extends StatelessWidget {
       height: height,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+        padding: padding,
         children: [
           for (final id in ids)
             Padding(
@@ -147,7 +153,7 @@ class QuickChipsRow extends StatelessWidget {
                               icon: Icon(on ? Icons.flashlight_on_rounded : builtInActions[id]!.$2, size: look.iconSize, color: on ? DS.heroInk : look.ink),
                               active: on,
                               onTap: () => _run(context, id, builtInActions[id]!.$1),
-                              onLongPress: customise,
+                              onLongPress: chipLongPress ? customise : null,
                             ),
                           )
                         : QuickChip(
@@ -155,14 +161,14 @@ class QuickChipsRow extends StatelessWidget {
                             label: builtInActions[id]!.$1,
                             icon: Icon(builtInActions[id]!.$2, size: look.iconSize, color: look.ink),
                             onTap: () => _run(context, id, builtInActions[id]!.$1),
-                            onLongPress: customise,
+                            onLongPress: chipLongPress ? customise : null,
                           ))
                   : QuickChip(
                       look: look,
                       label: labels[id]!.split('|').first,
                       icon: ShortcutIcon(id: id, size: look.iconSize + 2, color: look.ink),
                       onTap: () => _run(context, id, labels[id]!.split('|').first),
-                      onLongPress: customise,
+                      onLongPress: chipLongPress ? customise : null,
                     ),
             ),
           // ＋ to customise.
