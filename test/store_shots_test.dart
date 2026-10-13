@@ -120,6 +120,8 @@ void main() {
     await shot('5_settings');
     await tester.tap(find.text('Colours & style'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Basic colours')); // in the editor's controls panel
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Basic colours'));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Colour').at(7));

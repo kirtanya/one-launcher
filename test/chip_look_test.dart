@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:one_launcher/home.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/quick_chips.dart';
@@ -37,9 +38,9 @@ void main() {
     expect(find.text('Dark · 40% · Pill'), findsOneWidget);
     await tester.tap(find.text('Chip look'));
     await tester.pumpAndSettle();
-    // The chips sit above the sheet: visible while editing.
-    final sheetTop = tester.getTopLeft(find.text('Chip look')).dy;
-    expect(tester.getBottomLeft(find.byType(QuickChip).first).dy, lessThan(sheetTop), reason: 'chips in view above the sheet');
+    // An editor: the home screen (with its chips) live above the controls.
+    final preview = find.byWidgetPredicate((w) => w is HomeScreen && w.preview);
+    expect(find.descendant(of: preview, matching: find.byType(QuickChip)), findsWidgets, reason: 'chips in the live preview');
 
     await tester.tap(find.text('Light'));
     await tester.pumpAndSettle();
@@ -48,9 +49,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Solid'), findsOneWidget);
     expect(chipMaterial().color, const Color(0xFFFFFFFF));
-    await tester.tap(find.text('Square'));
-    await tester.tap(find.text('Large'));
-    await tester.pumpAndSettle();
+    for (final option in ['Square', 'Large']) {
+      await tester.ensureVisible(find.text(option)); // the controls panel scrolls
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(option));
+      await tester.pumpAndSettle();
+    }
     await tester.ensureVisible(find.text('Icon only'));
     await tester.tap(find.text('Icon only'));
     await tester.pumpAndSettle();

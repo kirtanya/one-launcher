@@ -279,10 +279,11 @@ Future<void> showChooseApps(BuildContext context, {required Prefs prefs, require
 /// one place — its pages and app widgets, clock style, size & spacing, wallpaper and the quick
 /// chips. Short enough that the top stays in view and every change shows live above it.
 Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bool back = false}) async {
-  final r = await showOneSheetWith(
+  final r = await showEditor(
     context,
-    back: back,
-    height: drawerHeight(context, prefs),
+    title: 'Top of home',
+    prefs: prefs,
+    view: 'classic',
     builder: (ctx) => ListenableBuilder(
       listenable: prefs,
       builder: (ctx, _) {
@@ -425,10 +426,11 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
 }
 
 /// Top of home → Clock style (2nd level): presets + weight / width / slant, live on the clock.
-Future<Object?> _showClockStyle(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+Future<Object?> _showClockStyle(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
-  back: true,
-  height: drawerHeight(context, prefs),
+  title: 'Clock style',
+  prefs: prefs,
+  view: 'classic',
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) => Column(
@@ -451,11 +453,10 @@ Future<Object?> _showClockStyle(BuildContext context, {required Prefs prefs}) =>
 Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, bool back = false}) async {
   final shortcuts = Apps.instance.shortcuts(); // load once while the sheet is open
   var query = '';
-  final r = await showOneSheetWith(
+  final r = await showEditor(
     context,
-    back: back,
-    keyboard: true,
-    height: drawerHeight(context, prefs), // chips (above the drawer) stay in view
+    title: 'Quick actions',
+    prefs: prefs,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setQuery) => ListenableBuilder(
         listenable: prefs,
@@ -621,11 +622,10 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
 
 /// Quick actions → Chip look: colour, opacity, shape, size, what to show, outline. Short and
 /// lightly shaded so the chips above it — on the home screen — show every change live.
-Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
-  back: true,
-  height: drawerHeight(context, prefs),
-  barrier: const Color(0x14000000),
+  title: 'Chip look',
+  prefs: prefs,
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) {
@@ -1037,10 +1037,10 @@ Future<Object?> showBackupSheet(BuildContext context, {required Prefs prefs, boo
 /// Colours & style — modelled on Pixel's "Wallpaper & style".
 Future<Object?> showColoursSheet(BuildContext context, {required Prefs prefs, required OneTheme theme, bool back = false}) {
   var tab = prefs.themeSource;
-  return showOneSheetWith(
+  return showEditor(
     context,
-    back: back,
-    height: back ? drawerHeight(context, prefs) : null,
+    title: 'Colours & style',
+    prefs: prefs,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setTab) => ListenableBuilder(
         listenable: Listenable.merge([prefs, theme]),
@@ -1308,7 +1308,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
   var query = '';
   return showOneSheetWith(
     context,
-    height: drawerHeight(context, prefs),
+    height: MediaQuery.sizeOf(context).height, // full screen (its pages too)
     fill: true,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setQuery) => ListenableBuilder(
@@ -1777,102 +1777,47 @@ class _HomeEditorState extends State<_HomeEditor> {
       listenable: prefs,
       builder: (context, _) {
         if (!_tabs.any((t) => t.$1 == _tab)) _tab = 'view';
-        final screen = MediaQuery.sizeOf(context);
-        return Scaffold(
-          backgroundColor: DS.cardMuted,
-          body: SafeArea(
-            child: Column(
-              children: [
-                // ✕ · title · Done
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
-                  child: Row(
-                    children: [
-                      Material(
-                        color: DS.card,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: 'Close',
-                          onPressed: () => Navigator.pop(context),
-                          icon: Icon(Icons.close_rounded, color: DS.ink),
-                        ),
-                      ),
-                      const SizedBox(width: DS.s16),
-                      Expanded(
-                        child: Text('Home screen', style: DS.rowTitle.copyWith(fontSize: 24, fontWeight: FontWeight.w500)),
-                      ),
-                      FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Done'),
-                      ),
-                    ],
-                  ),
-                ),
-                // The live preview: your home screen, scaled down.
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: DS.s8),
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: screen.width / screen.height,
-                        child: _HomePreview(prefs: prefs, theme: widget.theme),
-                      ),
-                    ),
-                  ),
-                ),
-                // The controls for the chosen tab.
-                Container(
-                  margin: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
-                  height: screen.height * .34,
-                  decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(DS.rCard)),
-                  clipBehavior: Clip.antiAlias,
-                  // Built in full (the panel is short): every control exists, scrolled to or not.
-                  child: SingleChildScrollView(
-                    key: ValueKey(_tab), // each tab opens at its top
-                    padding: const EdgeInsets.only(bottom: DS.s16),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _section(context)),
-                  ),
-                ),
-                // Tabs, like Pixel's Style · Colour · Size.
-                Container(
-                  margin: const EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, DS.s12),
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(32)),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final (id, icon, name) in _tabs)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: Material(
-                              color: _tab == id ? DS.cardMuted : Colors.transparent,
-                              shape: const StadiumBorder(),
-                              clipBehavior: Clip.antiAlias,
-                              child: InkWell(
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  setState(() => _tab = id);
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (_tab == id) ...[Icon(icon, size: 20, color: DS.ink), const SizedBox(width: DS.s8)],
-                                      Text(name, style: DS.rowTitle.copyWith(fontSize: 15, fontWeight: _tab == id ? FontWeight.w600 : FontWeight.w400)),
-                                    ],
-                                  ),
-                                ),
-                              ),
+        return _EditorFrame(
+          title: 'Home screen',
+          prefs: prefs,
+          panelKey: ValueKey(_tab), // each tab opens at its top
+          panel: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _section(context)),
+          // Tabs, like Pixel's Style · Colour · Size.
+          tabs: Container(
+            margin: const EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, DS.s12),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(32)),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (id, icon, name) in _tabs)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Material(
+                        color: _tab == id ? DS.cardMuted : Colors.transparent,
+                        shape: const StadiumBorder(),
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _tab = id);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_tab == id) ...[Icon(icon, size: 20, color: DS.ink), const SizedBox(width: DS.s8)],
+                                Text(name, style: DS.rowTitle.copyWith(fontSize: 15, fontWeight: _tab == id ? FontWeight.w600 : FontWeight.w400)),
+                              ],
                             ),
                           ),
-                      ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -1881,15 +1826,130 @@ class _HomeEditorState extends State<_HomeEditor> {
   }
 }
 
-/// The editor's preview: the real home screen (Classic or Tiles) at full phone size, scaled to
-/// fit, not touchable. It follows every setting live.
-class _HomePreview extends StatelessWidget {
-  const _HomePreview({required this.prefs, required this.theme});
+/// Any look setting as an editor (like the Home screen editor): ✕ · title · Done, your home
+/// screen live in the middle, this page's controls below. Changes apply as you make them.
+/// [view] previews a particular home ('classic' for its clock, top, layout…), else yours.
+Future<Object?> showEditor(BuildContext context, {required String title, required Prefs prefs, String? view, required WidgetBuilder builder}) =>
+    Navigator.of(context, rootNavigator: true).push<Object?>(
+      _editorRoute(
+        (_) => _EditorFrame(
+          title: title,
+          prefs: prefs,
+          view: view,
+          panel: Builder(builder: builder),
+        ),
+      ),
+    );
+
+PageRouteBuilder<Object?> _editorRoute(WidgetBuilder page) => PageRouteBuilder<Object?>(
+  transitionDuration: Motion.snapDuration,
+  reverseTransitionDuration: Motion.snapDuration,
+  pageBuilder: (context, _, _) => page(context),
+  transitionsBuilder: (_, a, _, child) => FadeTransition(
+    opacity: a,
+    child: SlideTransition(
+      position: Tween(begin: const Offset(0, .04), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      child: child,
+    ),
+  ),
+);
+
+/// The editor layout: ✕ · title · Done; the live preview; the controls panel; optional tabs.
+class _EditorFrame extends StatelessWidget {
+  const _EditorFrame({required this.title, required this.prefs, required this.panel, this.view, this.tabs, this.panelKey});
+  final String title;
   final Prefs prefs;
-  final OneTheme theme;
+  final Widget panel;
+  final String? view;
+  final Widget? tabs;
+  final Key? panelKey;
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    return Scaffold(
+      backgroundColor: DS.cardMuted,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
+              child: Row(
+                children: [
+                  Material(
+                    color: DS.card,
+                    shape: const CircleBorder(),
+                    // Back to where it was opened from (Settings, or the home screen).
+                    child: IconButton(
+                      tooltip: 'Back',
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                    ),
+                  ),
+                  const SizedBox(width: DS.s16),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: DS.rowTitle.copyWith(fontSize: 24, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+            // The live preview: your home screen, scaled down.
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: DS.s8),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: screen.width / screen.height,
+                    child: ListenableBuilder(
+                      listenable: prefs,
+                      builder: (context, _) => _HomePreview(prefs: prefs, view: view ?? prefs.homeView),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // This page's controls.
+            Container(
+              margin: EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, tabs == null ? DS.s12 : DS.s8),
+              height: screen.height * (tabs == null ? .4 : .34),
+              decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(DS.rCard)),
+              clipBehavior: Clip.antiAlias,
+              child: EditorScope(
+                child: SingleChildScrollView(
+                  key: panelKey,
+                  padding: const EdgeInsets.only(top: DS.s12, bottom: DS.s16),
+                  child: panel,
+                ),
+              ),
+            ),
+            ?tabs,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The editor's preview: the real home screen (Classic or Tiles) at full phone size, scaled to
+/// fit, not touchable. It follows every setting live.
+class _HomePreview extends StatelessWidget {
+  const _HomePreview({required this.prefs, required this.view});
+  final Prefs prefs;
+  final String view;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = OneTheme.current!;
     final phone = MediaQueryData.fromView(View.of(context)).copyWith(viewInsets: EdgeInsets.zero);
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1907,7 +1967,7 @@ class _HomePreview extends StatelessWidget {
                 data: phone,
                 child: ColoredBox(
                   color: Colors.black,
-                  child: prefs.homeView == 'tiles'
+                  child: view == 'tiles'
                       ? TilesHome(key: const ValueKey('preview-tiles'), prefs: prefs, theme: theme, preview: true)
                       : HomeScreen(key: const ValueKey('preview-classic'), prefs: prefs, theme: theme, preview: true),
                 ),
@@ -1966,10 +2026,11 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
 );
 
 /// Settings → Layout (2nd level): split + padding. Short sheet, so the home updates in view.
-Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
-  back: true,
-  height: drawerHeight(context, prefs),
+  title: 'Layout',
+  prefs: prefs,
+  view: 'classic',
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) => Column(
@@ -1990,10 +2051,10 @@ Future<Object?> _showLayoutSheet(BuildContext context, {required Prefs prefs}) =
 
 /// Settings → Wallpaper (2nd level): phone wallpaper or your own photo; for a photo, frame
 /// it (up/down, left/right, zoom, blur). Dim for both. Changes show live behind the sheet.
-Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
-  back: true,
-  height: drawerHeight(context, prefs),
+  title: 'Wallpaper',
+  prefs: prefs,
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) {
@@ -2062,10 +2123,11 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
 );
 
 /// Settings → Search (2nd level): where the bar sits, pull-down gesture, open the only match.
-Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
-  back: true,
-  height: drawerHeight(context, prefs),
+  title: 'Search',
+  prefs: prefs,
+  view: 'classic',
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) => Column(

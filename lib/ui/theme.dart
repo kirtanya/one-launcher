@@ -13,7 +13,11 @@ import 'palette.dart';
 /// - basic:    one of 8 fixed colours, in any style
 /// - original: One's own green look
 class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
+  /// The app's theme (the latest made): settings editors draw their home preview with it.
+  static OneTheme? current;
+
   OneTheme(this.prefs) {
+    current = this;
     prefs.addListener(_apply);
     WidgetsBinding.instance.addObserver(this); // "Auto" cards follow the phone's dark theme
     _apply();

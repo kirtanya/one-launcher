@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:one_launcher/home.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -133,7 +134,10 @@ void main() {
     await tester.drag(find.byType(Slider).first, const Offset(-60, 0));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1c2_clock_style.png'));
-    Navigator.of(tester.element(find.text('Weight')), rootNavigator: true).pop(); // close the whole sheet
+    // Back out of both editors (Clock style, then Top of home).
+    Navigator.of(tester.element(find.text('Weight')), rootNavigator: true)
+      ..pop()
+      ..pop();
     await tester.pumpAndSettle();
     await tester.fling(find.text('Screen time today'), const Offset(-250, 0), 1200);
     await tester.pumpAndSettle();
@@ -209,8 +213,8 @@ void main() {
     final before = tester.getTopLeft(find.text('WhatsApp').first).dy;
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
-    // Settings is a bottom sheet exactly as tall as the app drawer at rest (top 25%).
-    expect(tester.getTopLeft(find.text('Settings')).dy, closeTo(screenH * .25 + 36, 8), reason: 'sheet top = drawer top');
+    // Settings is full screen (its title right under the status bar).
+    expect(tester.getTopLeft(find.text('Settings')).dy, lessThan(screenH * .12), reason: 'full screen');
     // Grouped settings page; the sliders live one level down.
     for (final g in ['LOOK', 'HOME SCREEN', 'APPS & SEARCH', 'TV REMOTE', 'LAUNCHER']) {
       await tester.ensureVisible(find.text(g));
@@ -230,11 +234,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('50% · apps 50%'), findsOneWidget);
     // Padding slider: more room around the top widgets → the big figure moves inward.
-    final figureX = tester.getTopLeft(find.byType(FittedBox).first).dx;
+    // The big figure in the live preview (the editor's own FittedBox scales the whole preview).
+    final figure = find.descendant(of: find.byWidgetPredicate((w) => w is HomeScreen && w.preview), matching: find.byType(FittedBox)).first;
+    final figureX = tester.getTopLeft(figure).dx;
     await tester.drag(find.byType(Slider).at(1), const Offset(400, 0)); // padding
     await tester.pumpAndSettle();
     expect(find.text('40 pt'), findsOneWidget);
-    expect(tester.getTopLeft(find.byType(FittedBox).first).dx, greaterThan(figureX + 15), reason: 'padding applied live');
+    expect(tester.getTopLeft(figure).dx, greaterThan(figureX + 3), reason: 'padding applied live (in the scaled preview)');
     // Back → Settings again, then Wallpaper → dim.
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/6_split_setting.png'));
     await tester.tap(find.byTooltip('Back'));
@@ -254,7 +260,10 @@ void main() {
         .whereType<Color>()
         .where((c) => c.r == 0 && c.g == 0 && c.b == 0 && (c.a - .6).abs() < .01);
     expect(dim, isNotEmpty, reason: 'wallpaper dimmed to 60%');
-    Navigator.of(tester.element(find.text('Wallpaper dim')), rootNavigator: true).pop(); // close the whole sheet
+    // Close the Wallpaper editor, then Settings.
+    Navigator.of(tester.element(find.text('Wallpaper dim')), rootNavigator: true)
+      ..pop()
+      ..pop();
     await tester.pumpAndSettle();
     final after = tester.getTopLeft(find.text('WhatsApp').first).dy;
     expect(after, greaterThan(before + 100), reason: 'sheet moved down ($before → $after)');

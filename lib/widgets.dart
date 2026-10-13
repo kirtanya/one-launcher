@@ -387,6 +387,14 @@ class _SheetRow extends StatelessWidget {
   }
 }
 
+/// Marks a settings page shown in an editor (live preview above, controls below).
+class EditorScope extends InheritedWidget {
+  const EditorScope({super.key, required super.child});
+  static bool within(BuildContext context) => context.getInheritedWidgetOfExactType<EditorScope>() != null;
+  @override
+  bool updateShouldNotify(EditorScope old) => false;
+}
+
 class SheetHeader extends StatelessWidget {
   const SheetHeader({super.key, required this.title, this.subtitle, this.leading});
   final String title;
@@ -395,6 +403,10 @@ class SheetHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // In a settings editor the title is already in its top bar: keep just the subtitle.
+    if (leading == null && EditorScope.within(context)) {
+      return subtitle == null ? const SizedBox.shrink() : Text(subtitle!, style: DS.rowSub);
+    }
     return Row(
       children: [
         if (leading != null) ...[leading!, const SizedBox(width: DS.s16)],
