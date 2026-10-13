@@ -533,7 +533,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final glass = Glass.classic && Glass.blur > 0 && !Perf.lite.value;
     final drawer = Material(
       color: Glass.classic ? Glass.tinted(DS.canvas) : DS.canvas,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
       // Pull-to-search: the list slides down with the pull and a search pill grows in the gap.
       child: ListenableBuilder(
@@ -601,7 +601,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     );
     if (!glass) return drawer;
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(sigmaX: Glass.blur, sigmaY: Glass.blur),
         child: drawer,
@@ -796,7 +796,7 @@ class _FolderHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final names = apps.take(3).map((a) => a.label).join(', ') + (apps.length > 3 ? '…' : '');
-    const r = Radius.circular(DS.rCard);
+    final r = Radius.circular(DS.rCard);
     return AnimatedContainer(
       duration: Motion.snapDuration,
       curve: Motion.settle,
@@ -1014,7 +1014,7 @@ class _FolderBodyState extends State<_FolderBody> {
           : Container(
               decoration: BoxDecoration(
                 color: Glass.on(widget.tone == CardTone.muted ? DS.cardMuted : DS.card),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(DS.rCard)),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(DS.rCard)),
               ),
               padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
               child: Column(

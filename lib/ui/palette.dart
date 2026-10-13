@@ -21,6 +21,23 @@ class OnePalette {
   final Color hero, heroSoft, heroInk, heroMuted, heroDivider;
   final Color ink, inkMuted, inkFaint, hairline;
 
+  /// Metro (the Tiles view's language): black canvas, near-black panels, white type, the
+  /// [accent] as the one colour.
+  factory OnePalette.metro(Color accent) => OnePalette(
+    canvas: const Color(0xFF000000),
+    card: const Color(0xFF1B1B1B),
+    cardMuted: const Color(0xFF2A2A2A),
+    hero: accent,
+    heroSoft: accent.withValues(alpha: .28),
+    heroInk: const Color(0xFFFFFFFF),
+    heroMuted: const Color(0xB3FFFFFF),
+    heroDivider: const Color(0x40FFFFFF),
+    ink: const Color(0xFFFFFFFF),
+    inkMuted: const Color(0xFFA3A3A3),
+    inkFaint: const Color(0xFF6E6E6E),
+    hairline: const Color(0xFF383838),
+  );
+
   /// "One original": the look extracted from the first reference (see docs/DESIGN_STYLE.md).
   static const original = OnePalette(
     canvas: Color(0xFF1F1F1F),

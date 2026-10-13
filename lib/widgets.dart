@@ -1,9 +1,12 @@
+import 'dart:ui' as ui;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'apps.dart';
 import 'ui/ds.dart';
+import 'ui/perf.dart';
+import 'ui/glass.dart';
 import 'ui/motion.dart';
 
 /// App icon from Android, or a letter tile while loading / in the web demo.
@@ -206,52 +209,55 @@ Future<Object?> showOneSheetWith(
                   if (!didPop) goBack();
                 },
                 child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rCard)),
-                  // A Material (not a plain box) so rows keep their tap ripples.
-                  child: Material(
-                    color: DS.card,
-                    child: AnimatedContainer(
-                      duration: Motion.snapDuration,
-                      curve: Curves.easeOutCubic,
-                      constraints: full
-                          ? BoxConstraints.tightFor(height: screen)
-                          : height == null
-                          ? BoxConstraints(maxHeight: screen)
-                          : (fill || paged ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
-                      child: SafeArea(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
-                          child: Column(
-                            mainAxisSize: grow ? MainAxisSize.max : MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Drag handle (+ back arrow on a page below the first).
-                              SizedBox(
-                                height: showBack ? 52 : 36,
-                                child: Stack(
-                                  children: [
-                                    Center(
-                                      child: Container(
-                                        width: 32,
-                                        height: 4,
-                                        decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
-                                      ),
-                                    ),
-                                    if (showBack)
-                                      Positioned(
-                                        left: DS.s12,
-                                        top: DS.s4,
-                                        child: IconButton(
-                                          tooltip: 'Back',
-                                          icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
-                                          onPressed: goBack,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rCard)),
+                  // Metro + glass tiles: the sheet is a frosted pane too.
+                  child: _SheetGlass(
+                    // A Material (not a plain box) so rows keep their tap ripples.
+                    child: Material(
+                      color: DS.metro && Glass.tiles ? Glass.tinted(DS.card) : DS.card,
+                      child: AnimatedContainer(
+                        duration: Motion.snapDuration,
+                        curve: Curves.easeOutCubic,
+                        constraints: full
+                            ? BoxConstraints.tightFor(height: screen)
+                            : height == null
+                            ? BoxConstraints(maxHeight: screen)
+                            : (fill || paged ? BoxConstraints.tightFor(height: height) : BoxConstraints(maxHeight: height)),
+                        child: SafeArea(
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: DS.s12 + (keyboard ? MediaQuery.viewInsetsOf(ctx).bottom : 0)),
+                            child: Column(
+                              mainAxisSize: grow ? MainAxisSize.max : MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                // Drag handle (+ back arrow on a page below the first).
+                                SizedBox(
+                                  height: showBack ? 52 : 36,
+                                  child: Stack(
+                                    children: [
+                                      Center(
+                                        child: Container(
+                                          width: 32,
+                                          height: 4,
+                                          decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
                                         ),
                                       ),
-                                  ],
+                                      if (showBack)
+                                        Positioned(
+                                          left: DS.s12,
+                                          top: DS.s4,
+                                          child: IconButton(
+                                            tooltip: 'Back',
+                                            icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                                            onPressed: goBack,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              Flexible(fit: grow ? FlexFit.tight : FlexFit.loose, child: child!),
-                            ],
+                                Flexible(fit: grow ? FlexFit.tight : FlexFit.loose, child: child!),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -374,8 +380,9 @@ class _SheetRow extends StatelessWidget {
               const SizedBox(width: DS.s16),
               Expanded(
                 child: Text(
-                  a.label,
-                  style: DS.rowTitle.copyWith(color: color, fontWeight: FontWeight.w500),
+                  DS.cased(a.label),
+                  // Metro menus: larger, lighter, lowercase words.
+                  style: DS.rowTitle.copyWith(color: color, fontWeight: DS.metro ? FontWeight.w400 : FontWeight.w500, fontSize: DS.metro ? 19 : null),
                 ),
               ),
               if (a.trailing != null) a.trailing!,
@@ -414,7 +421,7 @@ class SheetHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: DS.title.copyWith(fontSize: 20)),
+              Text(DS.cased(title), style: DS.metro ? DS.title.copyWith(fontSize: 28) : DS.title.copyWith(fontSize: 20)),
               if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis)],
             ],
           ),
@@ -497,6 +504,21 @@ class _SheetSearchFieldState extends State<SheetSearchField> {
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
         ),
       ),
+    );
+  }
+}
+
+/// Metro sheets over glass tiles: blur what's behind (skipped with lighter effects).
+class _SheetGlass extends StatelessWidget {
+  const _SheetGlass({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!DS.metro || !Glass.tiles || Glass.blur <= 0 || Perf.lite.value) return child;
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: Glass.blur, sigmaY: Glass.blur),
+      child: child,
     );
   }
 }

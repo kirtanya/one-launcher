@@ -9,10 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
-import '../ui/components.dart';
-import '../search_dock.dart' show SearchDock;
 import '../search.dart';
-import '../app_drawer.dart' show searchResults;
+import '../system_settings.dart';
 import '../quick_actions.dart';
 import '../quick_chips.dart' show ShortcutIcon;
 import '../photo_wallpaper.dart';
@@ -21,6 +19,7 @@ import '../remote_sheet.dart';
 import '../sheets.dart';
 import '../top/header_fonts.dart';
 import '../ui/ds.dart';
+import '../ui/glass.dart';
 import '../ui/motion.dart';
 import '../ui/perf.dart';
 import '../ui/theme.dart';
@@ -370,12 +369,10 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   }
 
   Future<void> _recolour(TileSpec t) async {
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: DS.card,
-      showDragHandle: true,
+    final picked = await showOneSheetWith(
+      context,
       builder: (ctx) => _Palette(current: t.colour, app: t.colourPackage),
-    );
+    ) as String?;
     if (picked == null) return;
     await _save([for (final x in _tiles) x.id == t.id ? x.recoloured(picked == 'default' ? null : picked) : x]);
   }
@@ -932,7 +929,11 @@ class _StartPage extends StatelessWidget {
                     children: [
                       if (editing) ...[
                         FilledButton(
-                          style: FilledButton.styleFrom(backgroundColor: tileAccent(), foregroundColor: Colors.white, shape: const StadiumBorder()),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: tileAccent(),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
+                          ),
                           onPressed: onDone,
                           child: const Text('Done'),
                         ),
@@ -941,7 +942,7 @@ class _StartPage extends StatelessWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: DS.onWallpaper,
                             side: const BorderSide(color: DS.onWallpaper, width: 1.5),
-                            shape: const StadiumBorder(),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
                           ),
                           onPressed: () => addActionTile(context, prefs),
                           icon: const Icon(Icons.add_rounded),
@@ -2056,73 +2057,22 @@ class _TileSearchState extends State<_TileSearch> {
     if (q.trim().isNotEmpty && widget.prefs.searchIn.contains('google')) _run(() => Apps.instance.webSearch(q.trim()));
   }
 
-  /// Most-used apps (empty search): one row of icons.
-  Widget _recent() {
-    final byPkg = {for (final a in widget.apps) a.package: a};
-    final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
-    final apps = [for (final e in used.take(8)) byPkg[e.key]!];
-    if (apps.isEmpty) return const SizedBox.shrink();
-    return OneCard(
-      padding: const EdgeInsets.fromLTRB(DS.s8, DS.s12, DS.s8, DS.s8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: DS.s8),
-            child: Text('Your apps', style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
-          ),
-          const SizedBox(height: DS.s8),
-          SizedBox(
-            height: 84,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final a in apps)
-                  SizedBox(
-                    width: 76,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(DS.rMedia),
-                      onTap: () => widget.onLaunch(a),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 4),
-                          AppIcon(a, size: 48),
-                          const SizedBox(height: 6),
-                          Text(
-                            a.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: DS.iconLabel.copyWith(color: DS.ink),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final q = widget.text.text.trim();
-    final results = q.isEmpty
-        ? _recent()
-        : searchResults(
-            prefs: widget.prefs,
-            query: q,
-            apps: widget.apps,
-            shortcuts: _shortcuts,
-            onLaunch: widget.onLaunch,
-            onLongPress: (a) => showTileMenu(context, widget.prefs, a),
-            onWebSearch: (query, {play = false}) => _run(() => play ? Apps.instance.playSearch(query) : Apps.instance.webSearch(query)),
-            onRun: _run,
-          );
+    // Results in the app list's own language (docs/DESIGN_LANGUAGES.md): accent squares,
+    // big names, lowercase accent headers — the same sources as the classic search.
+    final results = _MetroResults(
+      query: q,
+      prefs: widget.prefs,
+      apps: widget.apps,
+      shortcuts: _shortcuts,
+      onLaunch: widget.onLaunch,
+      onLongPress: (a) => showTileMenu(context, widget.prefs, a),
+      onRun: _run,
+    );
 
     return AnimatedBuilder(
       animation: widget.anim,
@@ -2144,7 +2094,7 @@ class _TileSearchState extends State<_TileSearch> {
             Positioned(
               left: DS.gutter,
               right: DS.gutter,
-              top: pad.top + DS.s12 + 56 + DS.s12,
+              top: pad.top + DS.s12 + 52 + DS.s12,
               bottom: math.max(keyboard, pad.bottom) + DS.s8,
               child: Opacity(
                 opacity: t,
@@ -2160,48 +2110,230 @@ class _TileSearchState extends State<_TileSearch> {
           ],
         );
       },
-      // The classic home's search pill.
-      child: DecoratedBox(
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
-        child: Material(
-          color: DS.card,
-          shape: const StadiumBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: SizedBox(
-            height: 56,
-            child: Row(
-              children: [
-                const SizedBox(width: DS.s16),
-                Icon(Icons.search_rounded, color: DS.ink),
-                const SizedBox(width: DS.s12),
-                Expanded(
-                  child: TextField(
-                    controller: widget.text,
-                    focusNode: widget.focus,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: _submit,
-                    cursorColor: DS.ink,
-                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400),
-                    decoration: InputDecoration(
-                      hintText: 'Search ${widget.apps.length} apps & more',
-                      hintStyle: DS.rowTitle.copyWith(fontWeight: FontWeight.w400, color: DS.inkMuted),
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                    ),
+      // Metro search box: flat, the tile corners; frosted like the tiles when they're glass.
+      child: _MetroField(
+        child: SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              const SizedBox(width: DS.s12),
+              const Icon(Icons.search_rounded, color: Colors.white),
+              const SizedBox(width: DS.s12),
+              Expanded(
+                child: TextField(
+                  controller: widget.text,
+                  focusNode: widget.focus,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _submit,
+                  cursorColor: Colors.white,
+                  style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 18, fontWeight: FontWeight.w300),
+                  decoration: InputDecoration(
+                    hintText: 'search ${widget.apps.length} apps & more',
+                    hintStyle: const TextStyle(fontFamily: DS.font, color: Colors.white60, fontSize: 18, fontWeight: FontWeight.w300),
+                    border: InputBorder.none,
+                    isCollapsed: true,
                   ),
                 ),
-                // ✕: clears what's typed, or closes search when there's nothing.
-                IconButton(
-                  tooltip: q.isEmpty ? 'Close search' : 'Clear',
-                  icon: Icon(Icons.close_rounded, color: DS.ink),
-                  onPressed: () => q.isEmpty ? widget.onClose() : widget.text.clear(),
-                ),
-                const SizedBox(width: DS.s4),
-              ],
-            ),
+              ),
+              // ✕: clears what's typed, or closes search when there's nothing.
+              IconButton(
+                tooltip: q.isEmpty ? 'Close search' : 'Clear',
+                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                onPressed: () => q.isEmpty ? widget.onClose() : widget.text.clear(),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The Metro search box: a flat field with the tile corners — white at 14% over the wallpaper,
+/// or a frosted pane (edge + blur) when the tiles are glass.
+class _MetroField extends StatelessWidget {
+  const _MetroField({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(DS.rMedia);
+    final glass = Glass.tiles;
+    final box = DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: glass ? .1 + Glass.tint * .3 : .14),
+        borderRadius: radius,
+        border: glass && Glass.edge ? Border.all(color: Colors.white.withValues(alpha: .35)) : null,
+      ),
+      child: Material(type: MaterialType.transparency, child: child),
+    );
+    if (!glass || Glass.blur <= 0 || Perf.lite.value) return box;
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: Glass.blur, sigmaY: Glass.blur),
+        child: box,
+      ),
+    );
+  }
+}
+
+/// Tiles search results, in the app list's language: lowercase accent headers, rows of an
+/// accent square + a big name. Empty → "your apps" (most used). Typing → best match (bigger),
+/// apps, app shortcuts, settings, web — from Settings → Search → Search in.
+class _MetroResults extends StatelessWidget {
+  const _MetroResults({
+    required this.query,
+    required this.prefs,
+    required this.apps,
+    required this.shortcuts,
+    required this.onLaunch,
+    required this.onLongPress,
+    required this.onRun,
+  });
+  final String query;
+  final Prefs prefs;
+  final List<AppEntry> apps;
+  final List<AppShortcut>? shortcuts;
+  final ValueChanged<AppEntry> onLaunch, onLongPress;
+  final void Function(Future<void> Function() action) onRun;
+
+  Widget _header(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, DS.s16, 0, DS.s8),
+    child: Text(
+      text,
+      style: TextStyle(fontFamily: DS.font, color: tileAccent(), fontSize: 20, fontWeight: FontWeight.w300),
+    ),
+  );
+
+  Widget _row({required Widget lead, required String title, String? sub, required VoidCallback onTap, VoidCallback? onLongPress, double size = 44}) => InkWell(
+    onTap: onTap,
+    onLongPress: onLongPress,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(width: size, height: size, decoration: listSquare(prefs, tileAccent(), prefs.tileRadius * .5), alignment: Alignment.center, child: lead),
+          const SizedBox(width: DS.s16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: size > 50 ? 24 : 18, fontWeight: FontWeight.w300),
+                ),
+                if (sub != null)
+                  Text(
+                    sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: DS.font, color: Colors.white60, fontSize: 13),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _app(AppEntry a, {bool best = false}) => Builder(
+    builder: (rowContext) => _row(
+      size: best ? 64 : 44,
+      lead: TileGlyph(app: a, size: best ? 40 : 28),
+      title: a.label,
+      sub: best ? 'open' : null,
+      onTap: () {
+        Apps.instance.markLaunchFrom(rowContext);
+        onLaunch(a);
+      },
+      onLongPress: () => onLongPress(a),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = prefs.searchIn;
+    if (query.isEmpty) {
+      final byPkg = {for (final a in apps) a.package: a};
+      final used = prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
+      final top = [for (final e in used.take(6)) byPkg[e.key]!];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (top.isNotEmpty) ...[_header('your apps'), for (final a in top) _app(a)],
+        ],
+      );
+    }
+    final found = sources.contains('apps') ? searchApps(apps, query) : const <AppEntry>[];
+    final cuts = [
+      for (final sc in sources.contains('shortcuts') ? (shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
+        if (matchesQuery(query, [sc.label, sc.app])) sc,
+    ].take(5).toList();
+    final sets = sources.contains('settings')
+        ? [
+            for (final st in systemSettings)
+              if (matchesQuery(query, [st.title, st.keywords])) st,
+          ].take(4).toList()
+        : const <SystemSetting>[];
+    final web = sources.contains('google'), play = sources.contains('play');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (found.isEmpty && cuts.isEmpty && sets.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, DS.s16, 0, 0),
+            child: Text(
+              'nothing on your phone matches “$query”',
+              style: const TextStyle(fontFamily: DS.font, color: Colors.white70, fontSize: 20, fontWeight: FontWeight.w300),
+            ),
+          ),
+        if (found.isNotEmpty) ...[
+          _header('best match'),
+          _app(found.first, best: true),
+          if (found.length > 1) ...[_header('apps'), for (final a in found.skip(1).take(8)) _app(a)],
+        ],
+        if (cuts.isNotEmpty) ...[
+          _header('app shortcuts'),
+          for (final sc in cuts)
+            _row(
+              lead: ShortcutIcon(id: sc.id, size: 26, color: Colors.white),
+              title: sc.label,
+              sub: sc.work ? '${sc.app} · work' : sc.app.toLowerCase(),
+              onTap: () => onRun(() => Apps.instance.quickAction(sc.id)),
+            ),
+        ],
+        if (sets.isNotEmpty) ...[
+          _header('settings'),
+          for (final st in sets)
+            _row(
+              lead: Icon(st.icon, color: Colors.white),
+              title: st.title,
+              onTap: () => onRun(() => Apps.instance.openSetting(st.action)),
+            ),
+        ],
+        if (web || play) ...[
+          _header('web'),
+          if (web)
+            _row(
+              lead: const Icon(Icons.travel_explore_rounded, color: Colors.white),
+              title: 'search the web',
+              sub: '“$query”',
+              onTap: () => onRun(() => Apps.instance.webSearch(query)),
+            ),
+          if (play)
+            _row(
+              lead: const Icon(Icons.shop_outlined, color: Colors.white),
+              title: 'find apps on play store',
+              sub: '“$query”',
+              onTap: () => onRun(() => Apps.instance.playSearch(query)),
+            ),
+        ],
+        const SizedBox(height: DS.s16),
+      ],
     );
   }
 }

@@ -1186,8 +1186,14 @@ class _Chip extends StatelessWidget {
     return Pressable(
       scale: .94,
       child: Material(
-        color: selected ? DS.ink : Colors.transparent,
-        shape: StadiumBorder(side: BorderSide(color: selected ? DS.ink : DS.hairline)),
+        // Classic: an ink pill. Metro: a flat box, the accent when chosen.
+        color: selected ? (DS.metro ? DS.hero : DS.ink) : Colors.transparent,
+        shape: DS.metro
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(DS.rMedia),
+                side: BorderSide(color: selected ? DS.hero : DS.inkFaint, width: 1.5),
+              )
+            : StadiumBorder(side: BorderSide(color: selected ? DS.ink : DS.hairline)),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -1197,7 +1203,7 @@ class _Chip extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: 10),
               child: Text(
                 label,
-                style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: selected ? DS.card : DS.ink),
+                style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: selected ? (DS.metro ? Colors.white : DS.card) : DS.ink),
               ),
             ),
           ),
@@ -1476,7 +1482,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s12),
-                child: Text('Settings', style: DS.title.copyWith(fontSize: 28)),
+                // Metro: the big light lowercase page title.
+                child: Text(DS.cased('Settings'), style: DS.title.copyWith(fontSize: DS.metro ? 44 : 28)),
               ),
               SheetSearchField(hint: 'Search settings', onChanged: (v) => setQuery(() => query = v)),
               if (q.isNotEmpty) ...[
@@ -1790,43 +1797,70 @@ class _HomeEditorState extends State<_HomeEditor> {
           panelKey: ValueKey(_tab), // each tab opens at its top
           panel: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _section(context)),
           // Tabs, like Pixel's Style · Colour · Size.
-          tabs: Container(
-            margin: const EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, DS.s12),
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(32)),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final (id, icon, name) in _tabs)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Material(
-                        color: _tab == id ? DS.cardMuted : Colors.transparent,
-                        shape: const StadiumBorder(),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _tab = id);
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_tab == id) ...[Icon(icon, size: 20, color: DS.ink), const SizedBox(width: DS.s8)],
-                                Text(name, style: DS.rowTitle.copyWith(fontSize: 15, fontWeight: _tab == id ? FontWeight.w600 : FontWeight.w400)),
-                              ],
+          // Metro: a pivot — lowercase words, the current one bright, the rest dim.
+          tabs: DS.metro
+              ? SizedBox(
+                  height: 52,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                    child: Row(
+                      children: [
+                        for (final (id, _, name) in _tabs)
+                          InkWell(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _tab = id);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(0, DS.s8, DS.s20, DS.s8),
+                              child: Text(
+                                name.toLowerCase(),
+                                style: TextStyle(fontFamily: DS.font, fontSize: 24, fontWeight: FontWeight.w300, color: _tab == id ? DS.ink : DS.inkFaint),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
-                ],
-              ),
-            ),
-          ),
+                  ),
+                )
+              : Container(
+                  margin: const EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, DS.s12),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(32)),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (id, icon, name) in _tabs)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Material(
+                              color: _tab == id ? DS.cardMuted : Colors.transparent,
+                              shape: const StadiumBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _tab = id);
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_tab == id) ...[Icon(icon, size: 20, color: DS.ink), const SizedBox(width: DS.s8)],
+                                      Text(name, style: DS.rowTitle.copyWith(fontSize: 15, fontWeight: _tab == id ? FontWeight.w600 : FontWeight.w400)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
         );
       },
     );
@@ -1875,7 +1909,7 @@ class _EditorFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
     return Scaffold(
-      backgroundColor: DS.cardMuted,
+      backgroundColor: DS.metro ? DS.canvas : DS.cardMuted,
       body: SafeArea(
         child: Column(
           children: [
@@ -1884,7 +1918,7 @@ class _EditorFrame extends StatelessWidget {
               child: Row(
                 children: [
                   Material(
-                    color: DS.card,
+                    color: DS.metro ? Colors.transparent : DS.card,
                     shape: const CircleBorder(),
                     // Back to where it was opened from (Settings, or the home screen).
                     child: IconButton(
@@ -1896,16 +1930,21 @@ class _EditorFrame extends StatelessWidget {
                   const SizedBox(width: DS.s16),
                   Expanded(
                     child: Text(
-                      title,
+                      DS.cased(title),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: DS.rowTitle.copyWith(fontSize: 24, fontWeight: FontWeight.w500),
+                      style: DS.metro ? DS.title : DS.rowTitle.copyWith(fontSize: 24, fontWeight: FontWeight.w500),
                     ),
                   ),
                   FilledButton(
-                    style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
+                    // Classic: an ink pill. Metro: a flat accent box.
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DS.metro ? DS.hero : DS.ink,
+                      foregroundColor: DS.metro ? Colors.white : DS.card,
+                      shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
+                    ),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Done'),
+                    child: Text(DS.cased('Done')),
                   ),
                 ],
               ),
@@ -2252,18 +2291,25 @@ class _Group extends StatelessWidget {
           if (title != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s8),
-              child: Text(
-                title!.toUpperCase(),
-                style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
-              ),
+              // Classic: small caps label. Metro: the accent, lowercase, light.
+              child: DS.metro
+                  ? Text(title!.toLowerCase(), style: DS.eyebrow)
+                  : Text(
+                      title!.toUpperCase(),
+                      style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
+                    ),
             ),
           ClipRRect(
             borderRadius: BorderRadius.circular(DS.rMedia),
             child: Material(
-              color: DS.cardMuted,
+              // Metro groups have no box: rows sit straight on the page, no dividers.
+              color: DS.metro ? Colors.transparent : DS.cardMuted,
               child: Column(
                 children: [
-                  for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, thickness: 1, indent: 72, endIndent: DS.s16, color: DS.hairline), r],
+                  for (final (i, r) in rows.indexed) ...[
+                    if (i > 0 && !DS.metro) Divider(height: 1, thickness: 1, indent: 72, endIndent: DS.s16, color: DS.hairline),
+                    r,
+                  ],
                 ],
               ),
             ),
@@ -2345,10 +2391,11 @@ class _SwitchRow extends StatelessWidget {
               ),
               Switch(
                 value: value,
-                activeThumbColor: DS.card,
-                activeTrackColor: DS.ink,
+                // Metro: the accent when on.
+                activeThumbColor: DS.metro ? Colors.white : DS.card,
+                activeTrackColor: DS.metro ? DS.hero : DS.ink,
                 inactiveThumbColor: DS.inkFaint,
-                inactiveTrackColor: DS.card,
+                inactiveTrackColor: DS.metro ? Colors.transparent : DS.card,
                 onChanged: onChanged,
               ),
             ],
@@ -2368,7 +2415,8 @@ class _IconDisc extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 40,
     height: 40,
-    decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(12)),
+    // Metro: an accent tile (the tile corner setting) instead of a rounded disc.
+    decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 12)),
     child: Icon(icon, size: 21, color: DS.heroInk),
   );
 }

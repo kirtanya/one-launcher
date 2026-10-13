@@ -56,14 +56,15 @@ class _OneLauncherState extends State<OneLauncher> {
 
   void _themedIcons() {
     final p = widget.prefs;
-    final glass = (p.classicStyle == 'glass', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen);
-    if (AppIcon.themed == p.themedIcons && glass == (Glass.classic, Glass.blur, Glass.tint, Glass.edge, Glass.sheen)) return;
+    final glass = (p.classicStyle == 'glass', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
+    if (AppIcon.themed == p.themedIcons && glass == (Glass.classic, Glass.blur, Glass.tint, Glass.edge, Glass.sheen, Glass.tiles)) return;
     AppIcon.themed = p.themedIcons;
     Glass.classic = glass.$1;
     Glass.blur = glass.$2;
     Glass.tint = glass.$3;
     Glass.edge = glass.$4;
     Glass.sheen = glass.$5;
+    Glass.tiles = glass.$6;
     _repaint(); // every icon and surface, including const ones
   }
 
@@ -100,6 +101,20 @@ class _OneLauncherState extends State<OneLauncher> {
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.dark(primary: DS.ink, surface: DS.card),
         textSelectionTheme: TextSelectionThemeData(cursorColor: DS.ink, selectionHandleColor: DS.ink, selectionColor: DS.hero),
+        // Dialogs, snackbars and text buttons speak the active design language too
+        // (docs/DESIGN_LANGUAGES.md): Classic cards / Metro flat panels with the accent.
+        dialogTheme: DialogThemeData(
+          backgroundColor: DS.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
+          titleTextStyle: DS.title.copyWith(fontSize: DS.metro ? 28 : 20),
+          contentTextStyle: DS.rowSub,
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: DS.metro ? DS.hero : DS.ink,
+          contentTextStyle: TextStyle(fontFamily: DS.font, color: DS.metro ? Colors.white : DS.card, fontSize: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
+        ),
+        textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: DS.metro ? DS.hero : DS.ink)),
         // Sparkle ripples run a shader; budget GPUs get the plain ripple.
         splashFactory: Perf.lite.value ? InkRipple.splashFactory : InkSparkle.splashFactory,
       ),

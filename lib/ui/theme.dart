@@ -12,6 +12,13 @@ import 'palette.dart';
 /// - system:   the phone's Material You colours (from the wallpaper), in any style
 /// - basic:    one of 8 fixed colours, in any style
 /// - original: One's own green look
+/// The Metro accent from a theme colour: saturated enough to read as a colour, dark enough
+/// for white type on it (the same rule as Start's tiles).
+Color metroAccent(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withSaturation(hsl.saturation < .5 ? .5 : hsl.saturation).withLightness(.38).toColor();
+}
+
 class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
   /// The app's theme (the latest made): settings editors draw their home preview with it.
   static OneTheme? current;
@@ -141,10 +148,16 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
   void _apply() {
     final source = prefs.themeSource == 'system' && !hasSystem ? 'original' : prefs.themeSource;
     final dark = darkCards;
-    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark';
+    final metro = prefs.homeView == 'tiles';
+    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$metro|${prefs.tileRadius}';
     if (key == _key) return;
     _key = key;
-    DS.palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
+    final palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
+    // The Tiles view speaks Metro everywhere (docs/DESIGN_LANGUAGES.md): its own palette from
+    // the theme's colour, corners from the tile setting.
+    DS.metro = metro;
+    DS.metroRadius = prefs.tileRadius;
+    DS.palette = metro ? OnePalette.metro(metroAccent(palette.hero)) : palette;
     notifyListeners();
   }
 

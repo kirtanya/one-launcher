@@ -41,6 +41,11 @@ final _png = Uint8List.fromList(const [
   120, 156, 99, 248, 15, 4, 0, 9, 251, 3, 253, 251, 94, 107, 43, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ]);
 
+// The Tiles view speaks Metro (lowercase labels and titles): match text regardless of case.
+Finder ci(String text) => find.byWidgetPredicate((w) => w is Text && w.data != null && w.data!.toLowerCase() == text.toLowerCase(), description: 'text "$text" (any case)');
+Finder ciContains(String text) =>
+    find.byWidgetPredicate((w) => w is Text && w.data != null && w.data!.toLowerCase().contains(text.toLowerCase()), description: 'text containing "$text" (any case)');
+
 List<TileSpec> _tiles(Prefs p) => [for (final m in p.tiles!) TileSpec.fromJson(m)];
 
 void main() {
@@ -62,13 +67,13 @@ void main() {
     expect(find.byType(TilesHome), findsOneWidget);
     expect(prefs.tiles, isNotNull, reason: 'starting tiles laid out on first open');
     expect(_tiles(prefs).first.id, 'clock');
-    expect(find.text('Amazon'), findsOneWidget, reason: 'medium tile shows its name');
+    expect(ci('Amazon'), findsOneWidget, reason: 'medium tile shows its name');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/30_tiles_start.png'));
 
     // Long-press a tile → edit mode with its controls.
-    await tester.longPress(find.text('Amazon'));
+    await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
-    expect(find.text('Done'), findsOneWidget);
+    expect(ci('Done'), findsOneWidget);
     await tester.tap(find.byTooltip('Resize'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).firstWhere((t) => t.id == 'app:com.amazon').size, 'w', reason: 'medium → wide');
@@ -81,9 +86,9 @@ void main() {
     await tester.tap(find.byTooltip('Unpin'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).any((t) => t.id == 'app:com.amazon'), isFalse);
-    await tester.tap(find.text('Done'));
+    await tester.tap(ci('Done'));
     await tester.pumpAndSettle();
-    expect(find.text('Done'), findsNothing);
+    expect(ci('Done'), findsNothing);
 
     // The arrow → all apps, A–Z with letter tiles; long-press → Pin to Start.
     await tester.tap(find.byTooltip('All apps'));
@@ -91,9 +96,9 @@ void main() {
     expect(find.text('a'), findsOneWidget, reason: 'letter tile');
     expect(find.byIcon(Icons.work_rounded), findsOneWidget, reason: 'work app’s glyph badged (full-colour icons carry Android’s badge)');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/32_tiles_all_apps.png'));
-    await tester.longPress(find.text('Amazon'));
+    await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Pin to Start'));
+    await tester.tap(ci('Pin to Start'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).last.id, 'app:com.amazon', reason: 'pinned at the end of Start');
     // Letter tile → A–Z jump grid.
@@ -108,72 +113,72 @@ void main() {
     // tabs of controls below.
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Home view'));
+    await tester.tap(ci('Home view'));
     await tester.pumpAndSettle();
-    expect(find.text('Home screen'), findsOneWidget, reason: 'the editor');
+    expect(ci('Home screen'), findsOneWidget, reason: 'the editor');
     expect(find.byWidgetPredicate((w) => w is TilesHome && w.preview), findsOneWidget, reason: 'live preview of Start');
     Future<void> tab(String name) async {
-      await tester.ensureVisible(find.text(name).last); // the tab bar scrolls sideways
+      await tester.ensureVisible(ci(name).last); // the tab bar scrolls sideways
       await tester.pumpAndSettle();
-      await tester.tap(find.text(name).last);
+      await tester.tap(ci(name).last);
       await tester.pumpAndSettle();
     }
 
     // View: themed icons.
-    await tester.tap(find.text('Themed icons'));
+    await tester.tap(ci('Themed icons'));
     await tester.pumpAndSettle();
     expect(prefs.themedIcons, isTrue);
     expect(AppIcon.themed, isTrue);
     // Layout: corner roundness, columns.
     await tab('Layout');
-    await tester.ensureVisible(find.text('Corner roundness'));
+    await tester.ensureVisible(ci('Corner roundness'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Slider).first, const Offset(200, 0));
     await tester.pumpAndSettle();
     expect(prefs.tileRadius, greaterThan(8));
-    await tester.ensureVisible(find.text('6 · more tiles'));
+    await tester.ensureVisible(ci('6 · more tiles'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('6 · more tiles'));
+    await tester.tap(ci('6 · more tiles'));
     await tester.pumpAndSettle();
     expect(prefs.tileColumns, 6);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/33_home_view_settings.png'));
     // Look: colours.
     await tab('Look');
-    await tester.ensureVisible(find.text('Each app’s colour'));
+    await tester.ensureVisible(ci('Each app’s colour'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Each app’s colour'));
+    await tester.tap(ci('Each app’s colour'));
     await tester.pumpAndSettle();
     expect(prefs.tileColours, 'colourful');
     // Motion: the Start animation.
     await tab('Motion');
-    await tester.tap(find.text('Zoom').first); // the Start animation's (All apps has one too)
+    await tester.tap(ci('Zoom').first); // the Start animation's (All apps has one too)
     await tester.pumpAndSettle();
     expect(prefs.tileAnim, 'zoom');
     // Clock: the clock tile's own font (the classic one keeps its own).
     await tab('Clock');
     // The presets scroll sideways (Classic first): bring Bubble into view.
-    await tester.scrollUntilVisible(find.text('Bubble'), 120, scrollable: find.ancestor(of: find.text('Classic'), matching: find.byType(Scrollable)).first);
-    await tester.ensureVisible(find.text('Bubble'));
+    await tester.scrollUntilVisible(ci('Bubble'), 120, scrollable: find.ancestor(of: ci('Classic'), matching: find.byType(Scrollable)).first);
+    await tester.ensureVisible(ci('Bubble'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Bubble'));
+    await tester.tap(ci('Bubble'));
     await tester.pumpAndSettle();
     expect(prefs.tileClockWeight, 900);
     expect(prefs.clockWeight, 300, reason: 'the classic clock keeps its own style');
     // Layout → Reset Start.
     await tab('Layout');
-    await tester.ensureVisible(find.text('Reset Start'));
+    await tester.ensureVisible(ci('Reset Start'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reset Start'));
+    await tester.tap(ci('Reset Start'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs)[2].id, 'app:com.amazon', reason: 'starting tiles again (Amazon back after the clock + chips, not last)');
     // View → Classic: the preview switches, and so does home.
     await tab('View');
-    await tester.tap(find.text('Classic'));
+    await tester.tap(ci('Classic'));
     await tester.pumpAndSettle();
     expect(prefs.homeView, 'classic');
     expect(find.byWidgetPredicate((w) => w is HomeScreen && w.preview), findsOneWidget, reason: 'preview follows');
-    expect(find.text('Layout'), findsNothing, reason: 'tile tabs only for Tiles');
-    await tester.tap(find.text('Done'));
+    expect(ci('Layout'), findsNothing, reason: 'tile tabs only for Tiles');
+    await tester.tap(ci('Done'));
     await tester.pumpAndSettle();
     expect(find.byType(TilesHome), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -185,7 +190,7 @@ void main() {
     final before = [for (final t in _tiles(prefs)) t.id];
     expect(before.take(3), ['clock', 'chips', 'app:com.amazon']);
     // Pick Amazon (medium, top-left under the clock) up and drop it at the bottom right.
-    final g = await tester.startGesture(tester.getCenter(find.text('Amazon')));
+    final g = await tester.startGesture(tester.getCenter(ci('Amazon')));
     await tester.pump(const Duration(milliseconds: 700)); // long-press picks it up
     for (var i = 0; i < 12; i++) {
       await g.moveBy(const Offset(30, 40));
@@ -196,23 +201,23 @@ void main() {
     final after = [for (final t in _tiles(prefs)) t.id];
     expect(after.indexOf('app:com.amazon'), greaterThan(1), reason: 'moved later on Start: $after');
     expect(after.toSet(), before.toSet(), reason: 'same tiles, new order');
-    expect(find.text('Done'), findsOneWidget, reason: 'dragging enters edit mode');
+    expect(ci('Done'), findsOneWidget, reason: 'dragging enters edit mode');
     // Back leaves edit mode — and the tile's controls go with it (they used to linger).
     expect(find.byTooltip('Resize'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('Done'), findsNothing);
+    expect(ci('Done'), findsNothing);
     expect(find.byTooltip('Resize'), findsNothing, reason: 'no edit controls outside edit mode');
-    await tester.longPress(find.text('Amazon'));
+    await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
     // Edit mode → Add tile → a quick action as a small tile; tapping it runs the action.
-    await tester.tap(find.text('Add tile'));
+    await tester.tap(ci('Add tile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Flashlight').last); // the picker's (the chips row has one too)
+    await tester.tap(ci('Flashlight').last); // the picker's (the chips row has one too)
     await tester.pumpAndSettle();
     expect(_tiles(prefs).last.id, 'qa:b:torch');
     expect(_tiles(prefs).last.size, 's');
-    await tester.tap(find.text('Done'));
+    await tester.tap(ci('Done'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 1));
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/34_tiles_action.png'));
@@ -221,14 +226,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:torch'), isNotEmpty);
     // Our own TV remote as a tile: opens the remote sheet (not a phone action).
-    await tester.longPress(find.text('Amazon'));
+    await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Add tile'));
+    await tester.tap(ci('Add tile'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('TV remote'));
-    await tester.tap(find.text('TV remote'));
+    await tester.ensureVisible(ci('TV remote'));
+    await tester.tap(ci('TV remote'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
+    await tester.tap(ci('Done'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).last.id, 'qa:b:remote');
     calls.clear();
@@ -244,19 +249,19 @@ void main() {
     await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue, reason: 'search focused');
-    expect(find.text('Search 7 apps & more'), findsOneWidget, reason: 'the classic home’s search pill');
-    expect(find.text('Search the web'), findsNothing, reason: 'results only once typing');
+    expect(ci('Search 7 apps & more'), findsOneWidget, reason: 'the classic home’s search pill');
+    expect(ci('Search the web'), findsNothing, reason: 'results only once typing');
     await tester.enterText(find.byType(TextField), 'ma'); // several matches (one would just open)
     await tester.pumpAndSettle();
     // The classic home's results: best match with Open, the other apps in a row, then the web.
-    expect(find.text('Open'), findsOneWidget, reason: 'best match: Maps');
-    expect(find.text('Maps'), findsWidgets);
-    expect(find.text('Search the web'), findsOneWidget);
+    expect(ci('Open'), findsOneWidget, reason: 'best match: Maps');
+    expect(ci('Maps'), findsWidgets);
+    expect(ci('Search the web'), findsOneWidget);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/36_tiles_search.png'));
     // ✕ clears; ✕ again (empty) closes.
     await tester.tap(find.byTooltip('Clear'));
     await tester.pumpAndSettle();
-    expect(find.text('Search the web'), findsNothing);
+    expect(ci('Search the web'), findsNothing);
     await tester.tap(find.byTooltip('Close search'));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'closed');
@@ -283,20 +288,20 @@ void main() {
     final calls = <MethodCall>[];
     final prefs = await _setUp(tester, {'homeView': 'tiles'}, calls: calls);
     expect(find.byType(QuickChip), findsNothing, reason: 'drawn as tiles, not classic chips');
-    expect(find.text('Set timer'), findsOneWidget);
+    expect(ci('Set timer'), findsOneWidget);
     // Each chip is a tile filling the row's height — no extra space above or below.
-    final timer = tester.getRect(find.ancestor(of: find.text('Set timer'), matching: find.byType(Material)).first);
-    final amazon = tester.getRect(find.ancestor(of: find.text('Amazon'), matching: find.byType(Material)).first);
+    final timer = tester.getRect(find.ancestor(of: ci('Set timer'), matching: find.byType(Material)).first);
+    final amazon = tester.getRect(find.ancestor(of: ci('Amazon'), matching: find.byType(Material)).first);
     final smallTile = amazon.height / 2 - 3; // a medium tile is two rows
     expect(timer.height, lessThan(smallTile * .7), reason: 'chips are shorter than app tiles');
     expect(timer.height, greaterThanOrEqualTo(44), reason: 'still easy to tap');
     // Tap a chip → runs it.
-    await tester.tap(find.text('Set timer'));
+    await tester.tap(ci('Set timer'));
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:timer'), isNotEmpty);
 
     // Long-press the row (on a chip) and drag it down past the apps → the whole group moves.
-    final g = await tester.startGesture(tester.getCenter(find.text('Flashlight')));
+    final g = await tester.startGesture(tester.getCenter(ci('Flashlight')));
     await tester.pump(const Duration(milliseconds: 700));
     for (var i = 0; i < 14; i++) {
       await g.moveBy(const Offset(0, 40));
@@ -306,13 +311,13 @@ void main() {
     await tester.pumpAndSettle();
     final ids = [for (final t in _tiles(prefs)) t.id];
     expect(ids.indexOf('chips'), greaterThan(2), reason: 'row moved down: $ids');
-    expect(find.text('Set timer'), findsOneWidget, reason: 'still one row with its chips');
+    expect(ci('Set timer'), findsOneWidget, reason: 'still one row with its chips');
     // Edit mode: the row offers Customise (arrange / add inside), not resize or colour.
     expect(find.byTooltip('Customise quick actions'), findsWidgets);
     expect(find.byTooltip('Resize'), findsNothing);
     await tester.tap(find.byTooltip('Customise quick actions').first);
     await tester.pumpAndSettle();
-    expect(find.text('Quick actions'), findsWidgets, reason: 'the same customise sheet as the classic view');
+    expect(ci('Quick actions'), findsWidgets, reason: 'the same customise sheet as the classic view');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/35_tiles_chips_customise.png'));
   });
 
@@ -340,34 +345,34 @@ void main() {
     final folder = _tiles(prefs).where((t) => t.isFolder).single;
     expect(folder.items.toSet(), {'com.maps', 'com.camera'});
     expect(_tiles(prefs).any((t) => t.id == 'app:com.camera' || t.id == 'app:com.maps'), isFalse);
-    await tester.tap(find.text('Done'));
+    await tester.tap(ci('Done'));
     await tester.pumpAndSettle();
     // Tap → opens inline (its apps as small tiles); long-press one → move it out → folder of one = app tile again.
     final before = find.byType(TileGlyph).evaluate().length;
-    await tester.tap(find.text('Folder'));
+    await tester.tap(ci('Folder'));
     await tester.pumpAndSettle();
     expect(find.byType(TileGlyph).evaluate().length, before + 2, reason: 'folder open inline');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/37_tiles_folder_open.png'));
     final panel = find.byWidgetPredicate((w) => w.runtimeType.toString() == '_FolderPanel');
     await tester.longPress(find.descendant(of: panel, matching: find.byType(TileGlyph)).first); // first app inside
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Move out of folder'));
+    await tester.tap(ci('Move out of folder'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).any((t) => t.isFolder), isFalse, reason: 'one app left → back to a tile');
 
     // Badges + live tile: Amazon gets 3 notifications → a badge, and its tile flips to them.
     await push('notifCounts', {'com.amazon': 3});
     await tester.pumpAndSettle();
-    expect(find.text('3'), findsWidgets, reason: 'badge');
+    expect(ci('3'), findsWidgets, reason: 'badge');
     await tester.pump(const Duration(seconds: 10));
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('new notifications'), findsOneWidget, reason: 'live tile flipped');
+    expect(ci('new notifications'), findsOneWidget, reason: 'live tile flipped');
     await tester.pump(const Duration(seconds: 10)); // flips back
     await tester.pump(const Duration(seconds: 1));
 
     // Turnstile: tap Amazon → Start swings away, then the app opens.
     calls.clear();
-    await tester.tap(find.text('Amazon'));
+    await tester.tap(ci('Amazon'));
     await tester.pump(const Duration(milliseconds: 100));
     expect(calls.where((c) => c.method == 'launch'), isEmpty, reason: 'not yet — tiles swinging away');
     await tester.pump(const Duration(milliseconds: 500));
@@ -382,8 +387,8 @@ void main() {
     await tester.tapAt(empty);
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'lockScreen'), isNotEmpty);
-    expect(find.text('Open Accessibility settings'), findsOneWidget);
-    await tester.tap(find.text('Open Accessibility settings'));
+    expect(ci('Open Accessibility settings'), findsOneWidget);
+    await tester.tap(ci('Open Accessibility settings'));
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'openAccessibility'), isNotEmpty);
 
@@ -400,22 +405,22 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Home view'));
+    await tester.tap(ci('Home view'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Look').last);
+    await tester.tap(ci('Look').last);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Glass'));
+    await tester.ensureVisible(ci('Glass'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Glass'));
+    await tester.tap(ci('Glass'));
     await tester.pumpAndSettle();
     expect(prefs.tileStyle, 'glass');
     expect(find.byType(BackdropFilter), findsWidgets, reason: 'tiles frost what is behind them');
-    await tester.ensureVisible(find.text('Sheen'));
+    await tester.ensureVisible(ci('Sheen'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Sheen'));
+    await tester.tap(ci('Sheen'));
     await tester.pumpAndSettle();
     expect(prefs.glassSheen, isFalse);
-    await tester.ensureVisible(find.text('Tint'));
+    await tester.ensureVisible(ci('Tint'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Slider).at(1), const Offset(-400, 0)); // tint → none
     await tester.pumpAndSettle();
@@ -429,8 +434,8 @@ void main() {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));
     await tester.pumpAndSettle();
-    expect(find.text('Turn it back on in Settings → TV remote'), findsOneWidget);
-    await tester.tap(find.text('Hide remote button'));
+    expect(ci('Turn it back on in Settings → TV remote'), findsOneWidget);
+    await tester.tap(ci('Hide remote button'));
     await tester.pumpAndSettle();
     expect(prefs.remoteButton, isFalse);
     expect(find.byTooltip('TV remote'), findsNothing);

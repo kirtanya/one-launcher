@@ -10,6 +10,7 @@ import 'perf.dart';
 /// with glass tiles. Kept in sync with prefs by the app (see main.dart).
 abstract final class Glass {
   static bool classic = false;
+  static bool tiles = false; // glass tiles: Metro sheets and search frost too
   static double blur = 18, tint = .25;
   static bool edge = true, sheen = true;
 
