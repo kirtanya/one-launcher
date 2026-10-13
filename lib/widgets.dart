@@ -112,9 +112,12 @@ Widget withWorkBadge(AppEntry app, double size, Widget icon) {
 
 /// One option in a bottom sheet: icon + label, full-width 56pt row.
 class SheetAction {
-  const SheetAction(this.icon, this.label, this.onTap, {this.danger = false, this.enabled = true, this.trailing});
+  const SheetAction(this.icon, this.label, this.onTap, {this.danger = false, this.enabled = true, this.trailing, this.yours = false});
   final IconData icon;
   final String label;
+
+  /// The label is the user's own content (a contact, a shortcut's name): never re-cased.
+  final bool yours;
   final VoidCallback onTap;
   final bool danger;
   final bool enabled;
@@ -214,7 +217,7 @@ Future<Object?> showOneSheetWith(
                   child: _SheetGlass(
                     // A Material (not a plain box) so rows keep their tap ripples.
                     child: Material(
-                      color: DS.metro && Glass.tiles ? Glass.tinted(DS.card) : DS.card,
+                      color: DS.metro && Glass.tiles ? DS.card.withValues(alpha: .88) : DS.card,
                       child: AnimatedContainer(
                         duration: Motion.snapDuration,
                         curve: Curves.easeOutCubic,
@@ -380,7 +383,7 @@ class _SheetRow extends StatelessWidget {
               const SizedBox(width: DS.s16),
               Expanded(
                 child: Text(
-                  DS.cased(a.label),
+                  a.yours ? a.label : DS.cased(a.label),
                   // Metro menus: larger, lighter, lowercase words.
                   style: DS.rowTitle.copyWith(color: color, fontWeight: DS.metro ? FontWeight.w400 : FontWeight.w500, fontSize: DS.metro ? 19 : null),
                 ),
@@ -403,8 +406,11 @@ class EditorScope extends InheritedWidget {
 }
 
 class SheetHeader extends StatelessWidget {
-  const SheetHeader({super.key, required this.title, this.subtitle, this.leading});
+  const SheetHeader({super.key, required this.title, this.subtitle, this.leading, this.yours = false});
   final String title;
+
+  /// The title is the user's own content (an app or folder name): never re-cased.
+  final bool yours;
   final String? subtitle;
   final Widget? leading;
 
@@ -421,7 +427,7 @@ class SheetHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(DS.cased(title), style: DS.metro ? DS.title.copyWith(fontSize: 28) : DS.title.copyWith(fontSize: 20)),
+              Text(yours ? title : DS.cased(title), style: DS.metro ? DS.title.copyWith(fontSize: 28) : DS.title.copyWith(fontSize: 20)),
               if (subtitle != null) ...[const SizedBox(height: 2), Text(subtitle!, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis)],
             ],
           ),

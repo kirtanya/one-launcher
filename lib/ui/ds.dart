@@ -71,9 +71,14 @@ class DS {
       // Metro: big, light, tight.
       ? TextStyle(fontFamily: font, fontSize: 30, fontWeight: FontWeight.w300, height: 1.1, letterSpacing: -0.6, color: ink)
       : TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: -0.4, color: ink);
+
+  /// The accent as text: Metro lightens it so words stay readable on black or a dark wallpaper
+  /// (fills keep the full accent).
+  static Color get accentText => metro ? HSLColor.fromColor(hero).withLightness(.72).toColor() : ink;
+
   static TextStyle get eyebrow => metro
-      // Metro section headers: the accent, lowercase, light.
-      ? TextStyle(fontFamily: font, fontSize: 18, fontWeight: FontWeight.w400, color: hero)
+      // Metro section headers: the accent (lightened for reading), lowercase, light.
+      ? TextStyle(fontFamily: font, fontSize: 18, fontWeight: FontWeight.w400, color: accentText)
       : TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w500, color: ink);
   static TextStyle get rowTitle => TextStyle(fontFamily: font, fontSize: 16, fontWeight: FontWeight.w600, color: ink);
   static TextStyle get rowSub => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkMuted);

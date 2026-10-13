@@ -137,6 +137,9 @@ List<(TileSpec, int, int)> packTiles(List<TileSpec> tiles, {int cols = 4}) {
 }
 
 /// The tiles' accent: the theme's accent made deep and saturated enough to carry white glyphs.
+/// The accent as text (headers, letters): lighter, so it reads on black or a dark wallpaper.
+Color tileAccentText() => HSLColor.fromColor(tileAccent()).withLightness(.72).toColor();
+
 Color tileAccent() {
   final h = HSLColor.fromColor(DS.hero);
   return h.withSaturation(math.max(h.saturation, .5)).withLightness(.38).toColor();
@@ -329,7 +332,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
 
   void _folderMenu(TileSpec f) => showOneSheet(
     context,
-    header: SheetHeader(title: f.name ?? 'Folder', subtitle: '${f.items.length} apps'),
+    header: SheetHeader(title: f.name ?? 'Folder', subtitle: '${f.items.length} apps', yours: true),
     actions: [
       SheetAction(Icons.edit_outlined, 'Rename', () {
         Navigator.pop(context);
@@ -1651,7 +1654,7 @@ class _FolderPanel extends StatelessWidget {
                   HapticFeedback.mediumImpact();
                   showOneSheet(
                     context,
-                    header: SheetHeader(title: apps[p]!.label, leading: AppIcon(apps[p]!, size: 40)),
+                    header: SheetHeader(title: apps[p]!.label, leading: AppIcon(apps[p]!, size: 40), yours: true),
                     actions: [
                       SheetAction(Icons.drive_file_move_outline, 'Move out of folder', () {
                         Navigator.pop(context);
@@ -1842,13 +1845,13 @@ class _ActionTile extends StatelessWidget {
 Future<List<SheetAction>> appShortcutActions(BuildContext context, AppEntry a) async {
   final all = await Apps.instance.shortcuts() ?? const <AppShortcut>[];
   final pkg = a.package.split('@').first;
+  // The app's top four, as Android itself shows (a messaging app can have dozens of contacts).
   return [
-    for (final sc in all)
-      if (sc.package == pkg && sc.work == a.work)
-        SheetAction(Icons.bolt_rounded, sc.label, () {
-          Navigator.pop(context);
-          Apps.instance.quickAction(sc.id);
-        }),
+    for (final sc in all.where((sc) => sc.package == pkg && sc.work == a.work).take(4))
+      SheetAction(yours: true, Icons.bolt_rounded, sc.label, () {
+        Navigator.pop(context);
+        Apps.instance.quickAction(sc.id);
+      }),
   ];
 }
 
@@ -1858,7 +1861,7 @@ Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) async {
   if (!context.mounted) return;
   showOneSheet(
     context,
-    header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40)),
+    header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40), yours: true),
     actions: [
       ...shortcuts,
       SheetAction(Icons.info_outline_rounded, 'App info', () {
@@ -2202,7 +2205,7 @@ class _MetroResults extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(4, DS.s16, 0, DS.s8),
     child: Text(
       text,
-      style: TextStyle(fontFamily: DS.font, color: tileAccent(), fontSize: 20, fontWeight: FontWeight.w300),
+      style: TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 20, fontWeight: FontWeight.w300),
     ),
   );
 
@@ -2630,7 +2633,7 @@ class _AppListPageState extends State<_AppListPage> {
     if (!mounted) return;
     showOneSheet(
       context,
-      header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40)),
+      header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40), yours: true),
       actions: [
         ...shortcuts,
         SheetAction(pinned ? Icons.push_pin : Icons.push_pin_outlined, pinned ? 'Unpin from Start' : 'Pin to Start', () {
@@ -2718,12 +2721,12 @@ class _AppListPageState extends State<_AppListPage> {
                                 alignment: Alignment.bottomLeft,
                                 padding: const EdgeInsets.fromLTRB(6, 0, 0, 2),
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: accent, width: 2),
+                                  border: Border.all(color: tileAccentText(), width: 2),
                                   borderRadius: BorderRadius.circular(small),
                                 ),
                                 child: Text(
                                   r.toLowerCase(),
-                                  style: TextStyle(fontFamily: DS.font, color: accent, fontSize: 24, fontWeight: FontWeight.w500),
+                                  style: TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 24, fontWeight: FontWeight.w500),
                                 ),
                               ),
                             ),
