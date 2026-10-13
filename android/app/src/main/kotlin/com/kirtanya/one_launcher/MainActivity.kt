@@ -93,6 +93,7 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "one_launcher/apps")
         // Android app widgets shown in the top carousel.
         flutterEngine.platformViewsController.registry.registerViewFactory(WidgetHost.VIEW_TYPE, widgets.factory)
+        MediaListener.onCounts = { counts -> if (::channel.isInitialized) channel.invokeMethod("notifCounts", counts) }
         channel.setMethodCallHandler { call, result ->
             if (widgets.handle(call, result)) return@setMethodCallHandler
             if (backups.handle(call, result)) return@setMethodCallHandler
@@ -105,6 +106,17 @@ class MainActivity : FlutterActivity() {
                     main.post { result.success(apps) }
                 }
                 // Themed (monochrome) icon for Tiles: the app's own one-colour glyph, white.
+                // Tiles view: badge counts, the next alarm (live Clock tile), double-tap to lock.
+                "notifCounts" -> result.success(MediaListener.instance?.counts() ?: emptyMap<String, Int>())
+                "nextAlarm" -> {
+                    val next = (getSystemService(ALARM_SERVICE) as android.app.AlarmManager).nextAlarmClock
+                    result.success(next?.let { mapOf("at" to it.triggerTime, "package" to it.showIntent?.creatorPackage) })
+                }
+                "lockScreen" -> result.success(LockService.instance?.lock() ?: false)
+                "openAccessibility" -> {
+                    startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(true)
+                }
                 "getMonoIcon" -> {
                     val pkg = call.argument<String>("package")!!
                     worker.execute {

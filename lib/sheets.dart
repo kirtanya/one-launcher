@@ -1652,6 +1652,25 @@ Future<Object?> _showHomeView(BuildContext context, {required Prefs prefs}) {
                   onChanged: (x) => prefs.setTileLook(radius: x),
                 ),
               ),
+              // Lumia-style interactions, each on or off.
+              _Group('Interactions', [
+                for (final (id, icon, title, sub) in const [
+                  ('tilt', Icons.touch_app_outlined, 'Tilt on press', 'Tiles lean toward your finger'),
+                  ('live', Icons.flip_rounded, 'Live tiles', 'Flip to what’s playing, new notifications, next alarm'),
+                  ('turnstile', Icons.door_sliding_outlined, 'Turnstile on launch', 'Start swings away as an app opens'),
+                  ('window', Icons.wallpaper_rounded, 'Wallpaper through tiles', 'The wallpaper shows only inside tiles'),
+                  ('folders', Icons.folder_copy_outlined, 'Folders on Start', 'Hold a tile over another to make a folder'),
+                  ('badges', Icons.mark_chat_unread_outlined, 'Notification badges', 'Unread counts on tiles · needs Notification access'),
+                  ('lock', Icons.lock_outline_rounded, 'Double-tap to lock', 'Empty space · needs an Accessibility switch'),
+                  ('shortcuts', Icons.bolt_rounded, 'Shortcuts on tiles', 'App shortcuts in tile and app menus'),
+                ])
+                  _SwitchRow(icon, title, sub, prefs.fx(id), (v) {
+                    prefs.setFx(id, v);
+                    // Badges and live tiles read notification counts: ask for access if needed.
+                    if (v && (id == 'badges' || id == 'live') && Apps.instance.media.value?['granted'] != true) Apps.instance.openNotificationAccess();
+                    if (v && id == 'badges') Apps.instance.refreshNotifCounts();
+                  }),
+              ]),
               _Group(null, [
                 _NavRow(Icons.add_box_outlined, 'Add a quick action tile', 'Flashlight, timer, app shortcuts…', () => addActionTile(ctx, prefs)),
                 _NavRow(

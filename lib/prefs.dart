@@ -548,6 +548,20 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tiles interactions the user switches on or off (Settings → Home view → Interactions):
+  /// tilt (press tilts the tile), live (tiles flip to live content), turnstile (Start swings
+  /// away on launch), window (wallpaper only through the tiles), folders, badges, lock
+  /// (double-tap empty space), shortcuts (app shortcuts on tiles).
+  static const tileFxDefaults = {'tilt', 'live', 'turnstile', 'folders', 'badges', 'shortcuts'};
+  Set<String> get tileFx => (_sp.getStringList('tileFx') ?? tileFxDefaults.toList()).toSet();
+  bool fx(String name) => tileFx.contains(name);
+  Future<void> setFx(String name, bool on) async {
+    final set = tileFx;
+    on ? set.add(name) : set.remove(name);
+    await _sp.setStringList('tileFx', set.toList());
+    notifyListeners();
+  }
+
   /// Themed icons (like Pixel's): apps with a one-colour icon show it in the theme's colours.
   bool get themedIcons => _sp.getBool('themedIcons') ?? false;
   Future<void> setThemedIcons(bool v) async {

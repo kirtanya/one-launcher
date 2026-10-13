@@ -296,6 +296,83 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/35_tiles_chips_customise.png'));
   });
 
+  testWidgets('Tiles interactions: folders, badges + live tile, turnstile launch, shortcuts, double-tap lock, wallpaper through tiles', (tester) async {
+    final calls = <MethodCall>[];
+    final prefs = await _setUp(tester, {'homeView': 'tiles', 'tileFx': ['tilt', 'live', 'turnstile', 'folders', 'badges', 'shortcuts', 'lock']}, calls: calls);
+    Apps.instance.init();
+    Future<void> push(String method, Object args) =>
+        tester.binding.defaultBinaryMessenger.handlePlatformMessage('one_launcher/apps', const StandardMethodCodec().encodeMethodCall(MethodCall(method, args)), (_) {});
+
+    // Folders: hold Camera over the middle of Maps → a folder of the two.
+    final from = tester.getCenter(find.byType(TileGlyph).at(1)); // Camera (small, right of Amazon)
+    final to = tester.getCenter(find.byType(TileGlyph).at(2)); // Maps
+    final g = await tester.startGesture(from);
+    await tester.pump(const Duration(milliseconds: 700));
+    for (var i = 1; i <= 6; i++) {
+      await g.moveTo(Offset.lerp(from, to, i / 6)!);
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    await tester.pump(const Duration(milliseconds: 500)); // hold
+    await g.moveBy(const Offset(1, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    await g.up();
+    await tester.pumpAndSettle();
+    final folder = _tiles(prefs).where((t) => t.isFolder).single;
+    expect(folder.items.toSet(), {'com.maps', 'com.camera'});
+    expect(_tiles(prefs).any((t) => t.id == 'app:com.camera' || t.id == 'app:com.maps'), isFalse);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    // Tap → opens inline (its apps as small tiles); long-press one → move it out → folder of one = app tile again.
+    final before = find.byType(TileGlyph).evaluate().length;
+    await tester.tap(find.text('Folder'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TileGlyph).evaluate().length, before + 2, reason: 'folder open inline');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/37_tiles_folder_open.png'));
+    final panel = find.byWidgetPredicate((w) => w.runtimeType.toString() == '_FolderPanel');
+    await tester.longPress(find.descendant(of: panel, matching: find.byType(TileGlyph)).first); // first app inside
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move out of folder'));
+    await tester.pumpAndSettle();
+    expect(_tiles(prefs).any((t) => t.isFolder), isFalse, reason: 'one app left → back to a tile');
+
+    // Badges + live tile: Amazon gets 3 notifications → a badge, and its tile flips to them.
+    await push('notifCounts', {'com.amazon': 3});
+    await tester.pumpAndSettle();
+    expect(find.text('3'), findsWidgets, reason: 'badge');
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('new notifications'), findsOneWidget, reason: 'live tile flipped');
+    await tester.pump(const Duration(seconds: 10)); // flips back
+    await tester.pump(const Duration(seconds: 1));
+
+    // Turnstile: tap Amazon → Start swings away, then the app opens.
+    calls.clear();
+    await tester.tap(find.text('Amazon'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(calls.where((c) => c.method == 'launch'), isEmpty, reason: 'not yet — tiles swinging away');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(calls.where((c) => c.method == 'launch'), isNotEmpty);
+    await tester.pump(const Duration(seconds: 2)); // nothing opened (test) → Start comes back
+    await tester.pumpAndSettle();
+
+    // Double-tap empty space → lock; not allowed yet → explains + opens Accessibility settings.
+    final empty = tester.getBottomLeft(find.byType(SingleChildScrollView).first) + const Offset(30, -60);
+    await tester.tapAt(empty);
+    await tester.pump(const Duration(milliseconds: 60));
+    await tester.tapAt(empty);
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'lockScreen'), isNotEmpty);
+    expect(find.text('Open Accessibility settings'), findsOneWidget);
+    await tester.tap(find.text('Open Accessibility settings'));
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'openAccessibility'), isNotEmpty);
+
+    // Wallpaper through tiles (switch on) → black around the tiles.
+    await prefs.setFx('window', true);
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/38_tiles_window.png'));
+  });
+
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));

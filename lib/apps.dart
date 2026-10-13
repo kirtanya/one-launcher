@@ -63,6 +63,41 @@ class Apps {
   /// speed, canPrev, canNext, plus 'at' = when we received it (to move the progress bar).
   final media = ValueNotifier<Map?>(null);
 
+  /// Unread (clearable) notifications per app id — badges on Start tiles. Needs Notification access.
+  final notifCounts = ValueNotifier<Map<String, int>>(const {});
+
+  Future<void> refreshNotifCounts() async {
+    if (isDemo) return;
+    try {
+      final m = await _ch.invokeMapMethod<String, int>('notifCounts');
+      if (m != null) notifCounts.value = m;
+    } catch (_) {}
+  }
+
+  /// The next alarm (live Clock tile): when, and which app set it.
+  Future<(DateTime, String?)?> nextAlarm() async {
+    if (isDemo) return null;
+    try {
+      final m = await _ch.invokeMapMethod<String, Object?>('nextAlarm');
+      if (m == null) return null;
+      return (DateTime.fromMillisecondsSinceEpoch((m['at'] as num).toInt()), m['package'] as String?);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Double-tap to lock: true when the screen went off; false = the lock service isn't on yet.
+  Future<bool> lockScreen() async {
+    if (isDemo) return false;
+    try {
+      return await _ch.invokeMethod<bool>('lockScreen') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> openAccessibility() => _call('openAccessibility');
+
   /// Flashlight on? (pushed by Android when it changes, from anywhere.)
   final torchOn = ValueNotifier<bool>(false);
 
@@ -82,6 +117,8 @@ class Apps {
           torchOn.value = call.arguments == true;
         case 'tvState':
           TvRemote.instance.onEvent(call.arguments as Map);
+        case 'notifCounts':
+          notifCounts.value = Map<String, int>.from(call.arguments as Map);
         case 'mediaChanged':
           media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }

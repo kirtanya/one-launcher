@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lock_service_description">Lets One Launcher turn the screen off when you double-tap empty space on the Tiles home screen. It does not read anything on your screen.</string>
+</resources>

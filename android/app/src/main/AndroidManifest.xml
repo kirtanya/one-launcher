@@ -48,7 +48,7 @@
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
-        <!-- Now playing: Notification access lets us see the music session (notifications are ignored). -->
+        <!-- Now playing + tile badges: Notification access lets us see the music session and count each app's notifications (content is never read). -->
         <service
             android:name=".MediaListener"
             android:label="One Launcher · music controls"
@@ -57,6 +57,19 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+        <!-- Double-tap to lock (Tiles view, opt-in): only the lock-screen action, reads nothing. -->
+        <service
+            android:name=".LockService"
+            android:label="One Launcher · double-tap to lock"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lock_service" />
         </service>
         <meta-data
             android:name="flutterEmbedding"

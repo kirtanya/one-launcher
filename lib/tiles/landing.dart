@@ -9,8 +9,21 @@ import '../ui/perf.dart';
 /// entrance from that moment, each after its own small delay.
 class Landing extends ChangeNotifier {
   DateTime at = DateTime(0);
+
+  /// Leaving (turnstile on launch): everything swings away, [last] (the tapped one) after the rest.
+  bool exiting = false;
+  String? last;
+
   void play() {
     at = DateTime.now();
+    exiting = false;
+    notifyListeners();
+  }
+
+  void exit({String? last}) {
+    at = DateTime.now();
+    exiting = true;
+    this.last = last;
     notifyListeners();
   }
 }
@@ -32,6 +45,7 @@ class Landed extends StatefulWidget {
     required this.delay,
     required this.child,
     this.reveal = false,
+    this.id,
     this.scroll,
     this.top = 0,
     this.bottom = 0,
@@ -41,6 +55,7 @@ class Landed extends StatefulWidget {
   final Duration delay;
   final Widget child;
   final bool reveal;
+  final String? id; // for the exit: the tapped tile goes last
   final ScrollController? scroll;
   final double top, bottom;
 
@@ -103,6 +118,16 @@ class _LandedState extends State<Landed> with SingleTickerProviderStateMixin {
 
   void _sync() {
     _wait?.cancel();
+    final l = widget.landing;
+    if (l.exiting) {
+      if (Perf.lite.value) return;
+      // Swing away (turnstile), column by column; the tapped tile last.
+      final delay = widget.id != null && widget.id == l.last ? const Duration(milliseconds: 260) : widget.delay * .6;
+      _wait = Timer(delay, () {
+        if (mounted) _c.animateBack(0, duration: const Duration(milliseconds: 260), curve: Curves.easeIn);
+      });
+      return;
+    }
     if (_off) {
       _c.value = 1;
       return;
@@ -127,7 +152,7 @@ class _LandedState extends State<Landed> with SingleTickerProviderStateMixin {
     builder: (context, child) {
       final t = Curves.easeOutCubic.transform(_c.value), u = 1 - t;
       // Same tree at every frame (Opacity + Transform), so the child never remounts.
-      final (Matrix4 m, Alignment at) = switch (widget.style) {
+      final (Matrix4 m, Alignment at) = switch (widget.landing.exiting ? 'turnstile' : widget.style) {
         'turnstile' => (
           Matrix4.identity()
             ..setEntry(3, 2, .0012)
@@ -140,7 +165,7 @@ class _LandedState extends State<Landed> with SingleTickerProviderStateMixin {
         _ => (Matrix4.identity(), Alignment.center),
       };
       return Opacity(
-        opacity: widget.style == 'none' ? 1 : t.clamp(0, 1),
+        opacity: widget.style == 'none' && !widget.landing.exiting ? 1 : t.clamp(0, 1),
         child: Transform(transform: m, alignment: at, child: child),
       );
     },

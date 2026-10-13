@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,6 +18,7 @@ import '../sheets.dart';
 import '../top/header_fonts.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
+import '../ui/perf.dart';
 import '../ui/theme.dart';
 import '../widgets.dart';
 import 'landing.dart';
@@ -35,8 +37,14 @@ class TilesHome extends StatefulWidget {
 
 /// One tile on Start: an app or a live tile ('clock'), small 1×1 / medium 2×2 / wide 4×2.
 class TileSpec {
-  const TileSpec(this.id, this.size, [this.colour]);
+  const TileSpec(this.id, this.size, [this.colour, this.name, this.items = const []]);
   final String id, size;
+
+  /// Folders: their name and apps (packages); the open folder's panel carries the same apps.
+  final String? name;
+  final List<String> items;
+  bool get isFolder => id.startsWith('folder:');
+  bool get isPanel => id.startsWith('panel:');
 
   /// Its own colour: null = the Start default, 'accent', 'app' (the icon's colour) or an ARGB hex.
   final String? colour;
@@ -61,12 +69,16 @@ class TileSpec {
   bool get isChips => id == 'chips';
 
   /// Its cells on a [cols]-column grid (the chips row is always full width, one row high).
-  (int, int) spanIn(int cols) => isChips ? (cols, 1) : span;
+  (int, int) spanIn(int cols) => isChips ? (cols, 1) : (isPanel ? (cols, math.max(1, (items.length / cols).ceil())) : span);
 
-  Map<String, dynamic> toJson() => {'id': id, 'size': size, 'colour': ?colour};
-  static TileSpec fromJson(Map<String, dynamic> m) => TileSpec(m['id'] as String, m['size'] as String? ?? 'm', m['colour'] as String?);
-  TileSpec resized(String s) => TileSpec(id, s, colour);
-  TileSpec recoloured(String? c) => TileSpec(id, size, c);
+  Map<String, dynamic> toJson() => {'id': id, 'size': size, 'colour': ?colour, 'name': ?name, if (items.isNotEmpty) 'items': items};
+  static TileSpec fromJson(Map<String, dynamic> m) => TileSpec(m['id'] as String, m['size'] as String? ?? 'm', m['colour'] as String?, m['name'] as String?, [
+    for (final x in m['items'] as List? ?? const []) x as String,
+  ]);
+  TileSpec resized(String s) => TileSpec(id, s, colour, name, items);
+  TileSpec recoloured(String? c) => TileSpec(id, size, c, name, items);
+  TileSpec withItems(List<String> list) => TileSpec(id, size, colour, name, list);
+  TileSpec renamed(String n) => TileSpec(id, size, colour, n, items);
 }
 
 /// Colours a tile can take (edit mode → palette), besides the accent and the app's own.
@@ -83,7 +95,8 @@ Future<Color> tileColour(TileSpec t, Prefs prefs) async {
     'app' => t.colourPackage != null ? await iconColour(t.colourPackage!) : tileAccent(),
     _ => Color(int.tryParse(mode, radix: 16) ?? tileAccent().toARGB32()),
   };
-  return c.withValues(alpha: prefs.tileOpacity);
+  // Wallpaper through tiles: the colour is only a light tint over the wallpaper.
+  return c.withValues(alpha: prefs.fx('window') ? math.min(prefs.tileOpacity, .22) : prefs.tileOpacity);
 }
 
 /// Places tiles on a 4-column grid in order, each at the first free spot it fits — small tiles
@@ -194,6 +207,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     final apps = await Apps.instance.list();
     if (!mounted) return;
     setState(() => _apps = apps);
+    Apps.instance.refreshNotifCounts();
     if (prefs.tiles == null && apps.isNotEmpty) await prefs.setTiles([for (final t in _defaults()) t.toJson()]);
   }
 
@@ -226,7 +240,97 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
 
   Future<void> _save(List<TileSpec> tiles) => prefs.setTiles([for (final t in tiles) t.toJson()]);
 
-  bool isPinned(String package) => _tiles.any((t) => t.isApp && t.package == package);
+  bool isPinned(String package) => _tiles.any((t) => (t.isApp && t.package == package) || (t.isFolder && t.items.contains(package)));
+
+  String? _openFolder; // the folder open inline on Start
+
+  /// Dropped onto the middle of a tile (Folders on Start): onto an app → a new folder of the
+  /// two, onto a folder → into it.
+  Future<void> _toFolder(String dragged, String target) async {
+    final list = [..._tiles];
+    final di = list.indexWhere((t) => t.id == dragged), ti = list.indexWhere((t) => t.id == target);
+    if (di < 0 || ti < 0 || !list[di].isApp) return;
+    final d = list[di], t = list[ti];
+    if (t.isFolder) {
+      list[ti] = t.withItems([...t.items, d.package]);
+    } else if (t.isApp) {
+      list[ti] = TileSpec('folder:${DateTime.now().millisecondsSinceEpoch}', t.size == 's' ? 'm' : t.size, t.colour, 'Folder', [t.package, d.package]);
+    } else {
+      return;
+    }
+    list.removeAt(di);
+    HapticFeedback.heavyImpact();
+    setState(() => _selected = list.firstWhere((x) => x.isFolder && x.items.contains(d.package)).id);
+    await _save(list);
+  }
+
+  /// Out of a folder: the app goes back on Start right after it; a folder left with one app
+  /// turns back into that app's tile.
+  Future<void> _outOfFolder(String folderId, String package) async {
+    final list = [..._tiles];
+    final fi = list.indexWhere((t) => t.id == folderId);
+    if (fi < 0) return;
+    final f = list[fi];
+    final rest = f.items.where((x) => x != package).toList();
+    if (rest.length <= 1) {
+      list[fi] = TileSpec('app:${rest.isEmpty ? package : rest.first}', f.size, f.colour);
+      if (rest.isNotEmpty) list.insert(fi + 1, TileSpec('app:$package', 's'));
+      if (_openFolder == folderId) _openFolder = null;
+    } else {
+      list[fi] = f.withItems(rest);
+      list.insert(fi + 1, TileSpec('app:$package', 's'));
+    }
+    HapticFeedback.selectionClick();
+    await _save(list);
+  }
+
+  Future<void> _renameFolder(TileSpec f) async {
+    final text = TextEditingController(text: f.name ?? 'Folder');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Folder name'),
+        content: TextField(controller: text, autofocus: true, onSubmitted: (v) => Navigator.pop(ctx, v)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, text.text), child: const Text('Save')),
+        ],
+      ),
+    );
+    text.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    await _save([for (final t in _tiles) t.id == f.id ? t.renamed(name.trim()) : t]);
+  }
+
+  /// Ungroup: the folder's apps become small tiles where it was.
+  Future<void> _ungroup(TileSpec f) async {
+    final list = <TileSpec>[];
+    for (final t in _tiles) {
+      if (t.id == f.id) {
+        list.addAll([for (final p in f.items) TileSpec('app:$p', 's')]);
+      } else {
+        list.add(t);
+      }
+    }
+    if (_openFolder == f.id) _openFolder = null;
+    if (_selected == f.id) _selected = null;
+    await _save(list);
+  }
+
+  void _folderMenu(TileSpec f) => showOneSheet(
+    context,
+    header: SheetHeader(title: f.name ?? 'Folder', subtitle: '${f.items.length} apps'),
+    actions: [
+      SheetAction(Icons.edit_outlined, 'Rename', () {
+        Navigator.pop(context);
+        _renameFolder(f);
+      }),
+      SheetAction(Icons.folder_off_outlined, 'Ungroup', () {
+        Navigator.pop(context);
+        _ungroup(f);
+      }),
+    ],
+  );
 
   Future<void> _pin(AppEntry a) async {
     HapticFeedback.mediumImpact();
@@ -281,6 +385,20 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     Apps.instance.launch(a.package);
   }
 
+  /// From a Start tile: with Interactions → Turnstile, Start swings away first (the tapped
+  /// tile last), then the app opens; coming back plays the landing.
+  Future<void> _launchFromStart(AppEntry a) async {
+    if (!prefs.fx('turnstile') || Perf.lite.value) return _launch(a);
+    startLanding.exit(last: 'app:${a.package}');
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (!mounted) return;
+    _launch(a);
+    // If nothing opened (we're still in front), bring Start back.
+    Future<void>.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed && startLanding.exiting) startLanding.play();
+    });
+  }
+
   void _home() {
     Navigator.of(context).popUntil((r) => r.isFirst);
     setState(() {
@@ -331,6 +449,30 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     if (_start.hasClients) _start.animateTo(0, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
+  /// Double-tap empty space (Interactions → Double-tap to lock): screen off. The first time,
+  /// explain and open Accessibility settings, where Android lets the user allow it.
+  Future<void> _lock() async {
+    if (await Apps.instance.lockScreen() || !mounted) return;
+    HapticFeedback.mediumImpact();
+    showOneSheet(
+      context,
+      header: const SheetHeader(
+        title: 'Double-tap to lock',
+        subtitle: 'Android needs you to allow “One Launcher · double-tap to lock” in Accessibility settings. It only turns the screen off — it reads nothing on screen.',
+      ),
+      actions: [
+        SheetAction(Icons.accessibility_new_rounded, 'Open Accessibility settings', () {
+          Navigator.pop(context);
+          Apps.instance.openAccessibility();
+        }),
+        SheetAction(Icons.toggle_off_outlined, 'Turn double-tap to lock off', () {
+          Navigator.pop(context);
+          prefs.setFx('lock', false);
+        }),
+      ],
+    );
+  }
+
   void _settings() {
     HapticFeedback.mediumImpact();
     showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme);
@@ -356,10 +498,28 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
         body: Stack(
           fit: StackFit.expand,
           children: [
-            IgnorePointer(child: PhotoWallpaper(prefs: prefs, fullScreen: true)), // Start shows the whole screen
-            // Tiles want calm behind them: the wallpaper dims more than on the classic view.
+            // Start shows the whole screen. Wallpaper through tiles: it drifts slower than the tiles
+            // as Start scrolls (parallax) — zoomed a little so it has room to move.
             IgnorePointer(
-              child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + .35).clamp(0.0, .85))),
+              child: prefs.fx('window')
+                  ? AnimatedBuilder(
+                      animation: _start,
+                      builder: (context, child) => Transform.translate(
+                        offset: Offset(0, (-(_start.hasClients ? _start.offset : 0) * .15).clamp(-MediaQuery.sizeOf(context).height * .2, 0)),
+                        child: child,
+                      ),
+                      child: Transform.scale(
+                        scale: 1.25,
+                        alignment: Alignment.topCenter,
+                        child: PhotoWallpaper(prefs: prefs, fullScreen: true),
+                      ),
+                    )
+                  : PhotoWallpaper(prefs: prefs, fullScreen: true),
+            ),
+            // Tiles want calm behind them: the wallpaper dims more than on the classic view (less
+            // when it only shows through the tiles).
+            IgnorePointer(
+              child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + (prefs.fx('window') ? 0 : .35)).clamp(0.0, .85))),
             ),
             PageView(
               controller: _pages,
@@ -377,13 +537,19 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                     editing: _editing,
                     selected: _selected,
                     prefs: prefs,
-                    onLaunch: _launch,
+                    onLaunch: _launchFromStart,
                     onOpenClock: () {
                       final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
                       if (clock != null) _launch(clock);
                     },
+                    openFolder: _openFolder,
+                    onFolder: _toFolder,
+                    onOutOfFolder: _outOfFolder,
+                    onFolderMenu: _folderMenu,
+                    onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
                     onEdit: (id) => setState(() {
                       if (!_editing) HapticFeedback.mediumImpact();
+                      _openFolder = null; // editing works on closed folders
                       _editing = true;
                       _selected = id;
                     }),
@@ -397,20 +563,25 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                     onMove: _move,
                     onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
                     onSettings: _settings,
+                    onDoubleTap: _lock,
                   ),
                 ),
                 NotificationListener<ScrollNotification>(
                   onNotification: _onStartScroll, // pull down on the list: search too
-                  child: _AppListPage(
-                    onSearch: _openSearch,
-                    apps: _apps,
-                    prefs: prefs,
-                    isPinned: isPinned,
-                    onLaunch: _launch,
-                    onPin: _pin,
-                    onUnpin: (a) => _unpin('app:${a.package}'),
-                    onSettings: _settings,
-                    onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                  // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
+                  child: ColoredBox(
+                    color: prefs.fx('window') ? Colors.black : Colors.transparent,
+                    child: _AppListPage(
+                      onSearch: _openSearch,
+                      apps: _apps,
+                      prefs: prefs,
+                      isPinned: isPinned,
+                      onLaunch: _launch,
+                      onPin: _pin,
+                      onUnpin: (a) => _unpin('app:${a.package}'),
+                      onSettings: _settings,
+                      onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                    ),
                   ),
                 ),
               ],
@@ -453,8 +624,19 @@ class _StartPage extends StatelessWidget {
     required this.onMove,
     required this.onAllApps,
     required this.onSettings,
+    required this.onDoubleTap,
+    required this.openFolder,
+    required this.onFolder,
+    required this.onOutOfFolder,
+    required this.onFolderMenu,
+    required this.onToggleFolder,
   });
 
+  final String? openFolder;
+  final Future<void> Function(String dragged, String target) onFolder;
+  final Future<void> Function(String folder, String package) onOutOfFolder;
+  final ValueChanged<TileSpec> onFolderMenu;
+  final ValueChanged<String> onToggleFolder;
   final List<TileSpec> tiles;
   final Map<String, AppEntry> apps;
   final ScrollController scroll;
@@ -462,14 +644,15 @@ class _StartPage extends StatelessWidget {
   final Prefs prefs;
   final String? selected;
   final ValueChanged<AppEntry> onLaunch;
-  final VoidCallback onOpenClock, onDone, onAllApps, onSettings;
+  final VoidCallback onOpenClock, onDone, onAllApps, onSettings, onDoubleTap;
   final ValueChanged<String> onEdit, onUnpin;
   final ValueChanged<TileSpec> onResize, onRecolour;
   final Future<void> Function(String dragged, String target) onMove;
 
   static const gap = 6.0, side = 12.0;
   static final _grid = GlobalKey();
-  static var _lastMove = DateTime(0);
+  static String? _mergePending;
+  static Timer? _mergeTimer;
 
   /// While a tile is dragged: the cell under its centre decides where it goes — onto a tile
   /// takes that tile's place (the rest reflow), empty space after the last tile = the end.
@@ -493,11 +676,45 @@ class _StartPage extends StatelessWidget {
       target = '';
     }
     if (target == d.data) return;
-    final now = DateTime.now();
-    if (now.difference(_lastMove) < const Duration(milliseconds: 220)) return; // let the reflow settle
-    _lastMove = now;
-    onMove(d.data, target);
+    // Folders: the dragged app's centre over the middle of an app or folder → make / join a
+    // folder (no reflow while it's there).
+    final over = placed.where((x) => x.$1.id == target).firstOrNull;
+    if (prefs.fx('folders') && dragged.$1.isApp && over != null && (over.$1.isApp || over.$1.isFolder)) {
+      final (sw, sh) = over.$1.spanIn(cols);
+      final r = Rect.fromLTWH(over.$2 * (unit + gap), over.$3 * (unit + gap), sw * unit + (sw - 1) * gap, sh * unit + (sh - 1) * gap);
+      if (r.deflate(math.min(r.width, r.height) * .25).contains(p)) {
+        _pending = null;
+        _pendingTimer?.cancel();
+        // Held there a moment → it will become a folder (the outline shows it).
+        if (_mergePending != target) {
+          _mergePending = target;
+          _mergeTimer?.cancel();
+          final t0 = target;
+          _mergeTimer = Timer(const Duration(milliseconds: 300), () {
+            if (_mergePending == t0) mergeTarget.value = t0;
+          });
+        }
+        return;
+      }
+    }
+    _mergePending = null;
+    _mergeTimer?.cancel();
+    mergeTarget.value = null;
+    // Make room only once the finger rests on the tile's edge a moment (as on Lumia) — passing
+    // over it on the way to its middle (a folder) or elsewhere moves nothing.
+    if (_pending == target) return;
+    _pending = target;
+    _pendingTimer?.cancel();
+    final dragged0 = d.data, target0 = target;
+    _pendingTimer = Timer(const Duration(milliseconds: 260), () {
+      if (_pending != target0 || mergeTarget.value != null) return;
+      _pending = null;
+      onMove(dragged0, target0);
+    });
   }
+
+  static String? _pending;
+  static Timer? _pendingTimer;
 
   @override
   Widget build(BuildContext context) {
@@ -506,10 +723,20 @@ class _StartPage extends StatelessWidget {
       builder: (context, c) {
         final cols = prefs.tileColumns;
         final unit = (c.maxWidth - 2 * side - (cols - 1) * gap) / cols;
-        final placed = packTiles(tiles, cols: cols);
+        final shown = [
+          for (final t in tiles) ...[
+            t,
+            if (t.isFolder && t.id == openFolder)
+              TileSpec('panel:${t.id}', 'm', t.colour, t.name, [
+                for (final p in t.items)
+                  if (apps.containsKey(p)) p,
+              ]),
+          ],
+        ];
+        final placed = packTiles(shown, cols: cols);
         final rows = placed.fold<int>(0, (m, p) => math.max(m, p.$3 + p.$1.spanIn(cols).$2));
         final height = rows == 0 ? 0.0 : rows * unit + (rows - 1) * gap;
-        return GestureDetector(
+        final start = GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: editing ? onDone : null,
           onLongPress: editing ? null : onSettings, // long-press empty space: settings, like the classic view
@@ -517,120 +744,189 @@ class _StartPage extends StatelessWidget {
             controller: scroll,
             physics: const AlwaysScrollableScrollPhysics(), // pull down to search even when Start fits
             padding: EdgeInsets.fromLTRB(side, pad.top + DS.s24, side, pad.bottom + DS.s24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                DragTarget<String>(
-                  onWillAcceptWithDetails: (_) => true,
-                  onMove: (d) => _hover(d, placed, unit, cols),
-                  builder: (context, _, _) => SizedBox(
-                    key: _grid,
-                    height: height,
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        for (final (t, col, row) in placed)
-                          AnimatedPositioned(
-                            key: ValueKey(t.id),
-                            duration: Motion.snapDuration,
-                            curve: Motion.settle,
-                            left: col * (unit + gap),
-                            top: row * (unit + gap),
-                            width: t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
-                            height: t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
-                            child: Landed(
-                              landing: startLanding,
-                              style: prefs.tileAnim,
-                              // Lumia's sweep: column by column, a little later each row.
-                              delay: Duration(milliseconds: 40 * col + 22 * row),
-                              // Long Start: tiles below the fold come in as you scroll to them.
-                              scroll: scroll,
-                              top: pad.top + DS.s24 + row * (unit + gap),
-                              bottom: pad.top + DS.s24 + (row + t.spanIn(cols).$2) * (unit + gap),
-                              child: _EditableTile(
-                                prefs: prefs,
-                                tile: t,
-                                editing: editing,
-                                selected: selected == t.id,
-                                onEdit: () => onEdit(t.id),
-                                onUnpin: () => onUnpin(t.id),
-                                onResize: () => onResize(t),
-                                onRecolour: () => onRecolour(t),
-                                child: t.isApp
-                                    ? _AppTile(
-                                        app: apps[t.package]!,
-                                        tile: t,
+            child: _EmptySpace(
+              minHeight: c.maxHeight - pad.top - pad.bottom - 2 * DS.s24,
+              onDoubleTap: prefs.fx('lock') ? onDoubleTap : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DragTarget<String>(
+                    onWillAcceptWithDetails: (_) => true,
+                    onMove: (d) => _hover(d, placed, unit, cols),
+                    onLeave: (_) {
+                      _mergePending = null;
+                      _mergeTimer?.cancel();
+                      mergeTarget.value = null;
+                      _pending = null;
+                      _pendingTimer?.cancel();
+                    },
+                    onAcceptWithDetails: (d) {
+                      _pending = null;
+                      _pendingTimer?.cancel();
+                      _mergePending = null;
+                      _mergeTimer?.cancel();
+                      final m = mergeTarget.value;
+                      mergeTarget.value = null;
+                      if (m != null) onFolder(d.data, m);
+                    },
+                    builder: (context, _, _) => SizedBox(
+                      key: _grid,
+                      height: height,
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          for (final (t, col, row) in placed)
+                            AnimatedPositioned(
+                              key: ValueKey(t.id),
+                              duration: Motion.snapDuration,
+                              curve: Motion.settle,
+                              left: col * (unit + gap),
+                              top: row * (unit + gap),
+                              width: t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
+                              height: t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
+                              child: t.isPanel
+                                  ? Landed(
+                                      landing: startLanding,
+                                      style: 'cascade',
+                                      reveal: true, // opens with a little drop-in
+                                      delay: Duration.zero,
+                                      child: _FolderPanel(
+                                        panel: t,
+                                        apps: apps,
+                                        unit: unit,
                                         prefs: prefs,
-                                        onTap: editing ? () => onEdit(t.id) : () => onLaunch(apps[t.package]!),
-                                      )
-                                    : t.isChips
-                                    // No box around the group: each chip is a tile of its own. In edit
-                                    // mode a tap selects the group (long-press anywhere on it moves it).
-                                    ? GestureDetector(
-                                        behavior: HitTestBehavior.opaque,
-                                        onTap: editing ? () => onEdit(t.id) : null,
-                                        child: IgnorePointer(
-                                          ignoring: editing,
-                                          child: _ChipsRowTile(tile: t, prefs: prefs),
-                                        ),
-                                      )
-                                    : t.isAction
-                                    ? _ActionTile(tile: t, prefs: prefs, onTap: editing ? () => onEdit(t.id) : null)
-                                    : _ClockTile(tile: t, prefs: prefs, onTap: editing ? () => onEdit(t.id) : onOpenClock),
-                              ),
+                                        onLaunch: onLaunch,
+                                        onOut: (p) => onOutOfFolder(t.id.substring(6), p),
+                                      ),
+                                    )
+                                  : Landed(
+                                      landing: startLanding,
+                                      style: prefs.tileAnim,
+                                      // Lumia's sweep: column by column, a little later each row.
+                                      delay: Duration(milliseconds: 40 * col + 22 * row),
+                                      id: t.id,
+                                      // Long Start: tiles below the fold come in as you scroll to them.
+                                      scroll: scroll,
+                                      top: pad.top + DS.s24 + row * (unit + gap),
+                                      bottom: pad.top + DS.s24 + (row + t.spanIn(cols).$2) * (unit + gap),
+                                      child: _EditableTile(
+                                        prefs: prefs,
+                                        tile: t,
+                                        editing: editing,
+                                        selected: selected == t.id,
+                                        onEdit: () => onEdit(t.id),
+                                        onUnpin: () => onUnpin(t.id),
+                                        onResize: () => onResize(t),
+                                        onRecolour: () => onRecolour(t),
+                                        onMore: t.isApp ? () => showTileMenu(context, prefs, apps[t.package]!) : (t.isFolder ? () => onFolderMenu(t) : null),
+                                        child: t.isFolder
+                                            ? _FolderTile(
+                                                tile: t,
+                                                apps: apps,
+                                                prefs: prefs,
+                                                open: openFolder == t.id,
+                                                onTap: editing ? () => onEdit(t.id) : () => onToggleFolder(t.id),
+                                              )
+                                            : t.isApp
+                                            ? _AppTile(
+                                                app: apps[t.package]!,
+                                                tile: t,
+                                                prefs: prefs,
+                                                onTap: editing ? () => onEdit(t.id) : () => onLaunch(apps[t.package]!),
+                                              )
+                                            : t.isChips
+                                            // No box around the group: each chip is a tile of its own. In edit
+                                            // mode a tap selects the group (long-press anywhere on it moves it).
+                                            ? GestureDetector(
+                                                behavior: HitTestBehavior.opaque,
+                                                onTap: editing ? () => onEdit(t.id) : null,
+                                                child: IgnorePointer(
+                                                  ignoring: editing,
+                                                  child: _ChipsRowTile(tile: t, prefs: prefs),
+                                                ),
+                                              )
+                                            : t.isAction
+                                            ? _ActionTile(tile: t, prefs: prefs, onTap: editing ? () => onEdit(t.id) : null)
+                                            : _ClockTile(tile: t, prefs: prefs, onTap: editing ? () => onEdit(t.id) : onOpenClock),
+                                      ),
+                                    ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: DS.s16),
-                Row(
-                  children: [
-                    if (editing) ...[
-                      FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: tileAccent(), foregroundColor: Colors.white, shape: const StadiumBorder()),
-                        onPressed: onDone,
-                        child: const Text('Done'),
-                      ),
-                      const SizedBox(width: DS.s8),
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: DS.onWallpaper,
-                          side: const BorderSide(color: DS.onWallpaper, width: 1.5),
-                          shape: const StadiumBorder(),
+                  const SizedBox(height: DS.s16),
+                  Row(
+                    children: [
+                      if (editing) ...[
+                        FilledButton(
+                          style: FilledButton.styleFrom(backgroundColor: tileAccent(), foregroundColor: Colors.white, shape: const StadiumBorder()),
+                          onPressed: onDone,
+                          child: const Text('Done'),
                         ),
-                        onPressed: () => addActionTile(context, prefs),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add tile'),
-                      ),
-                    ],
-                    const Spacer(),
-                    // The Lumia arrow: all apps (or swipe left).
-                    Tooltip(
-                      message: 'All apps',
-                      child: Pressable(
-                        scale: .9,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: onAllApps,
-                          child: Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: DS.onWallpaper, width: 2),
+                        const SizedBox(width: DS.s8),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: DS.onWallpaper,
+                            side: const BorderSide(color: DS.onWallpaper, width: 1.5),
+                            shape: const StadiumBorder(),
+                          ),
+                          onPressed: () => addActionTile(context, prefs),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Add tile'),
+                        ),
+                      ],
+                      const Spacer(),
+                      // The Lumia arrow: all apps (or swipe left).
+                      Tooltip(
+                        message: 'All apps',
+                        child: Pressable(
+                          scale: .9,
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: onAllApps,
+                            child: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: DS.onWallpaper, width: 2),
+                              ),
+                              child: const Icon(Icons.arrow_forward_rounded, color: DS.onWallpaper),
                             ),
-                            child: const Icon(Icons.arrow_forward_rounded, color: DS.onWallpaper),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
+        );
+        if (!prefs.fx('window')) return start;
+        // Wallpaper through tiles: black everywhere except the tiles, which become windows onto
+        // the wallpaper (holes follow the scroll).
+        final holes = [
+          for (final (t, col, row) in placed)
+            Rect.fromLTWH(
+              side + col * (unit + gap),
+              pad.top + DS.s24 + row * (unit + gap),
+              t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
+              t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
+            ),
+        ];
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            IgnorePointer(
+              child: AnimatedBuilder(
+                animation: scroll,
+                builder: (context, _) => CustomPaint(painter: _Holes(holes, scroll.hasClients ? scroll.offset : 0, prefs.tileRadius)),
+              ),
+            ),
+            start,
+          ],
         );
       },
     );
@@ -650,7 +946,10 @@ class _EditableTile extends StatelessWidget {
     required this.onRecolour,
     required this.prefs,
     required this.child,
+    this.onMore,
   });
+
+  final VoidCallback? onMore; // app tiles: ⋯ (shortcuts, info, uninstall)
 
   final Prefs prefs;
   final TileSpec tile;
@@ -660,11 +959,24 @@ class _EditableTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = AnimatedScale(
-      duration: Motion.snapDuration,
-      curve: Motion.settle,
-      scale: editing && !selected ? .9 : 1,
+    final body = ValueListenableBuilder<String?>(
+      valueListenable: mergeTarget,
       child: AnimatedOpacity(duration: Motion.snapDuration, opacity: editing && !selected ? .75 : 1, child: child),
+      // A tile about to take the dragged one into a folder grows and gets a white outline.
+      builder: (context, merge, inner) => AnimatedScale(
+        duration: Motion.snapDuration,
+        curve: Motion.settle,
+        scale: merge == tile.id ? 1.06 : (editing && !selected ? .9 : 1),
+        child: Container(
+          foregroundDecoration: merge == tile.id
+              ? BoxDecoration(
+                  border: Border.all(color: Colors.white, width: 3),
+                  borderRadius: BorderRadius.circular(prefs.tileRadius),
+                )
+              : null,
+          child: inner,
+        ),
+      ),
     );
     // One tree in both modes: entering edit mode mid long-press must not rebuild the tile away
     // under the finger.
@@ -688,6 +1000,7 @@ class _EditableTile extends StatelessWidget {
               HapticFeedback.mediumImpact();
               if (!editing) onEdit();
             },
+            onDragEnd: (_) => mergeTarget.value = null,
             child: body,
           ),
           if (editing && selected) ...[
@@ -696,6 +1009,12 @@ class _EditableTile extends StatelessWidget {
               top: -8,
               child: _EditButton(icon: Icons.push_pin_outlined, tooltip: 'Unpin', onTap: onUnpin),
             ),
+            if (onMore != null)
+              Positioned(
+                left: -8,
+                top: -8,
+                child: _EditButton(icon: Icons.more_horiz_rounded, tooltip: 'More', onTap: onMore!),
+              ),
             if (tile.isChips) ...[
               Positioned(
                 right: 36,
@@ -770,33 +1089,222 @@ class _AppTile extends StatelessWidget {
       _ => 48.0,
     };
     return Builder(
-      builder: (tileContext) => _TileFace(
-        tile: tile,
-        prefs: prefs,
-        onTap: () {
+      builder: (tileContext) {
+        void tap() {
           Apps.instance.markLaunchFrom(tileContext);
           onTap();
-        },
-        child: Stack(
-          children: [
-            Center(
-              child: prefs.tileIcons == 'icon' ? AppIcon(app, size: glyph) : TileGlyph(app: app, size: glyph),
-            ),
-            if (tile.size != 's' && prefs.tileLabels)
+        }
+
+        final front = _TileFace(
+          tile: tile,
+          prefs: prefs,
+          onTap: tap,
+          child: Stack(
+            children: [
+              Center(
+                child: prefs.tileIcons == 'icon' ? AppIcon(app, size: glyph) : TileGlyph(app: app, size: glyph),
+              ),
               Positioned(
-                left: 8,
-                bottom: 6,
-                right: 8,
-                child: Text(
-                  app.label,
+                right: 6,
+                top: 6,
+                child: _Badge(id: app.package, prefs: prefs),
+              ),
+              if (tile.size != 's' && prefs.tileLabels)
+                Positioned(
+                  left: 8,
+                  bottom: 6,
+                  right: 8,
+                  child: Text(
+                    app.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ),
+            ],
+          ),
+        );
+        // Live tiles: medium and bigger tiles flip now and then to what's live for the app.
+        if (tile.size == 's' || !prefs.fx('live')) return front;
+        return _LiveFlip(
+          app: app,
+          front: front,
+          back: (content) => _TileFace(tile: tile, prefs: prefs, onTap: tap, child: content),
+        );
+      },
+    );
+  }
+}
+
+/// A live tile: every few seconds it flips (Lumia's vertical flip) to the back — music playing
+/// in this app (art + song), its unread notifications, or the next alarm on the Clock tile —
+/// and back again. With nothing live it just stays the icon.
+class _LiveFlip extends StatefulWidget {
+  const _LiveFlip({required this.app, required this.front, required this.back});
+  final AppEntry app;
+  final Widget front;
+  final Widget Function(Widget content) back;
+
+  @override
+  State<_LiveFlip> createState() => _LiveFlipState();
+}
+
+class _LiveFlipState extends State<_LiveFlip> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 650));
+  Timer? _timer;
+  (DateTime, String?)? _alarm;
+
+  bool get _isClock => widget.app.label.toLowerCase() == 'clock' || widget.app.package.contains('deskclock');
+
+  @override
+  void initState() {
+    super.initState();
+    Apps.instance.media.addListener(_changed);
+    Apps.instance.notifCounts.addListener(_changed);
+    if (_isClock) Apps.instance.nextAlarm().then((a) => mounted ? setState(() => _alarm = a) : null);
+    // Each tile on its own beat, so they don't all flip at once.
+    final beat = Duration(milliseconds: 5200 + (widget.app.package.hashCode.abs() % 9) * 450);
+    _timer = Timer.periodic(beat, (_) => _flip());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    Apps.instance.media.removeListener(_changed);
+    Apps.instance.notifCounts.removeListener(_changed);
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    if (!mounted) return;
+    if (_content() == null && _c.value > 0) _c.reverse();
+    setState(() {});
+  }
+
+  void _flip() {
+    if (!mounted || Perf.lite.value || TickerMode.valuesOf(context).enabled == false) return;
+    if (_c.value == 0) {
+      if (_content() != null) _c.forward();
+    } else {
+      _c.reverse();
+    }
+  }
+
+  /// What the back shows now, or null when nothing's live for this app.
+  Widget? _content() {
+    const white = Colors.white;
+    final m = Apps.instance.media.value;
+    if (m != null && m['package'] == widget.app.package && (m['title'] as String? ?? '').isNotEmpty) {
+      final art = m['art'] as Uint8List?;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (art != null) Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xB3000000)]),
+            ),
+          ),
+          Positioned(
+            left: 8,
+            right: 8,
+            bottom: 6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  m['title'] as String,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                  style: const TextStyle(fontFamily: DS.font, color: white, fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                if ((m['artist'] as String? ?? '').isNotEmpty)
+                  Text(
+                    m['artist'] as String,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: DS.font, color: Colors.white70, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+    final n = Apps.instance.notifCounts.value[widget.app.package] ?? 0;
+    if (n > 0) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: FittedBox(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '$n',
+                  style: const TextStyle(fontFamily: DS.font, color: white, fontWeight: FontWeight.w300),
                 ),
               ),
+            ),
+            Text(
+              n == 1 ? 'new notification' : 'new notifications',
+              style: const TextStyle(fontFamily: DS.font, color: white, fontSize: 12),
+            ),
+            Text(
+              widget.app.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontFamily: DS.font, color: white, fontSize: 13, fontWeight: FontWeight.w500),
+            ),
           ],
         ),
-      ),
+      );
+    }
+    final a = _alarm;
+    if (a != null) {
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      final t = a.$1;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.alarm_rounded, color: white, size: 22),
+            const Spacer(),
+            Text(
+              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontFamily: DS.font, color: white, fontSize: 26, fontWeight: FontWeight.w400),
+            ),
+            Text(
+              'Next alarm · ${days[t.weekday - 1]}',
+              style: const TextStyle(fontFamily: DS.font, color: Colors.white70, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = _content();
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final a = Curves.easeInOutCubic.transform(_c.value) * math.pi;
+        final showBack = a > math.pi / 2 && content != null;
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, .0012)
+            ..rotateX(showBack ? a - math.pi : a),
+          child: showBack ? widget.back(content) : widget.front,
+        );
+      },
     );
   }
 }
@@ -810,8 +1318,8 @@ class _TileFace extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Pressable(
-    scale: .95,
+  Widget build(BuildContext context) => TilePress(
+    prefs: prefs,
     child: FutureBuilder<Color>(
       future: tileColour(tile, prefs),
       builder: (context, snap) => Material(
@@ -822,6 +1330,261 @@ class _TileFace extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// How a tile reacts to a press: Lumia's tilt (it leans toward the finger and sinks a little)
+/// when Interactions → Tilt is on, else the usual gentle squish.
+class TilePress extends StatefulWidget {
+  const TilePress({super.key, required this.prefs, required this.child});
+  final Prefs prefs;
+  final Widget child;
+
+  @override
+  State<TilePress> createState() => _TilePressState();
+}
+
+class _TilePressState extends State<TilePress> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 90), reverseDuration: const Duration(milliseconds: 260));
+  Offset _at = Offset.zero; // press point, −1…1 from the centre
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.prefs.fx('tilt')) return Pressable(scale: .95, child: widget.child);
+    return LayoutBuilder(
+      builder: (context, box) => Listener(
+        onPointerDown: (e) {
+          _at = Offset((e.localPosition.dx / box.maxWidth * 2 - 1).clamp(-1, 1), (e.localPosition.dy / box.maxHeight * 2 - 1).clamp(-1, 1));
+          _c.forward();
+        },
+        // The tile may have rebuilt away under the finger (long-press → edit): only if still here.
+        onPointerUp: (_) => mounted ? _c.reverse() : null,
+        onPointerCancel: (_) => mounted ? _c.reverse() : null,
+        child: AnimatedBuilder(
+          animation: _c,
+          child: widget.child,
+          builder: (context, child) {
+            final t = Curves.easeOut.transform(_c.value);
+            // Bigger tiles tilt less (as on Lumia); the press point sinks most.
+            final k = .32 * t * (90 / math.max(90, math.min(box.maxWidth, box.maxHeight))).clamp(.45, 1.0);
+            final m = Matrix4.identity()
+              ..setEntry(3, 2, .0015)
+              ..rotateX(_at.dy * k)
+              ..rotateY(-_at.dx * k);
+            return Transform(transform: m..scaleByDouble(1 - .04 * t, 1 - .04 * t, 1, 1), alignment: Alignment.center, child: child);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// The Start page's content, at least a screen tall: its empty space (between and below tiles)
+/// takes the double-tap to lock — tiles themselves never wait on it.
+class _EmptySpace extends StatelessWidget {
+  const _EmptySpace({required this.minHeight, required this.onDoubleTap, required this.child});
+  final double minHeight;
+  final VoidCallback? onDoubleTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(minHeight: math.max(0, minHeight)),
+    child: Stack(
+      children: [
+        if (onDoubleTap != null)
+          Positioned.fill(
+            child: GestureDetector(behavior: HitTestBehavior.opaque, onDoubleTap: onDoubleTap),
+          ),
+        child,
+      ],
+    ),
+  );
+}
+
+/// The tile a dragged app is held over to make (or join) a folder — it shows an outline.
+final mergeTarget = ValueNotifier<String?>(null);
+
+/// A folder on Start: up to four of its apps in a little grid, its name, and the count of
+/// unread notifications inside. Tap opens it inline (Lumia / Windows 10 Mobile).
+class _FolderTile extends StatelessWidget {
+  const _FolderTile({required this.tile, required this.apps, required this.prefs, required this.open, required this.onTap});
+  final TileSpec tile;
+  final Map<String, AppEntry> apps;
+  final Prefs prefs;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final inside = [
+      for (final p in tile.items)
+        if (apps[p] != null) apps[p]!,
+    ];
+    final small = tile.size == 's';
+    final glyph = switch (tile.size) {
+      's' => 14.0,
+      'l' => 52.0,
+      'w' => 30.0,
+      _ => 26.0,
+    };
+    return _TileFace(
+      tile: tile,
+      prefs: prefs,
+      onTap: onTap,
+      child: Stack(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(small ? 8 : 12),
+            child: Wrap(
+              spacing: small ? 4 : 8,
+              runSpacing: small ? 4 : 8,
+              children: [for (final a in inside.take(4)) TileGlyph(app: a, size: glyph)],
+            ),
+          ),
+          if (!small && prefs.tileLabels)
+            Positioned(
+              left: 8,
+              right: 8,
+              bottom: 6,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      tile.name ?? 'Folder',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                  Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: Colors.white, size: 18),
+                ],
+              ),
+            ),
+          if (prefs.fx('badges'))
+            Positioned(
+              right: 6,
+              top: 6,
+              child: ValueListenableBuilder<Map<String, int>>(
+                valueListenable: Apps.instance.notifCounts,
+                builder: (context, counts, _) {
+                  final n = inside.fold<int>(0, (sum, a) => sum + (counts[a.package] ?? 0));
+                  return n == 0 ? const SizedBox.shrink() : _Badge(id: '', prefs: prefs, count: n);
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// An open folder: its apps as small tiles across the full width, right under the folder
+/// (the tiles below move down). Long-press an app to take it out.
+class _FolderPanel extends StatelessWidget {
+  const _FolderPanel({required this.panel, required this.apps, required this.unit, required this.prefs, required this.onLaunch, required this.onOut});
+  final TileSpec panel;
+  final Map<String, AppEntry> apps;
+  final double unit;
+  final Prefs prefs;
+  final ValueChanged<AppEntry> onLaunch;
+  final ValueChanged<String> onOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: .08), borderRadius: BorderRadius.circular(prefs.tileRadius)),
+      child: Wrap(
+        spacing: _StartPage.gap,
+        runSpacing: _StartPage.gap,
+        children: [
+          for (final p in panel.items)
+            SizedBox.square(
+              dimension: unit,
+              child: GestureDetector(
+                onLongPress: () {
+                  HapticFeedback.mediumImpact();
+                  showOneSheet(
+                    context,
+                    header: SheetHeader(title: apps[p]!.label, leading: AppIcon(apps[p]!, size: 40)),
+                    actions: [
+                      SheetAction(Icons.drive_file_move_outline, 'Move out of folder', () {
+                        Navigator.pop(context);
+                        onOut(p);
+                      }),
+                      SheetAction(Icons.info_outline_rounded, 'App info', () {
+                        Navigator.pop(context);
+                        Apps.instance.appInfo(p);
+                      }),
+                    ],
+                  );
+                },
+                child: _AppTile(app: apps[p]!, tile: TileSpec('app:$p', 's', panel.colour), prefs: prefs, onTap: () => onLaunch(apps[p]!)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Black with tile-shaped holes (Wallpaper through tiles).
+class _Holes extends CustomPainter {
+  _Holes(this.rects, this.offset, this.radius);
+  final List<Rect> rects;
+  final double offset, radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRect(Offset.zero & size);
+    for (final r in rects) {
+      final at = r.shift(Offset(0, -offset));
+      if (at.bottom < 0 || at.top > size.height) continue;
+      path.addRRect(RRect.fromRectAndRadius(at, Radius.circular(radius)));
+    }
+    canvas.drawPath(path, Paint()..color = const Color(0xFF000000));
+  }
+
+  @override
+  bool shouldRepaint(_Holes o) => o.offset != offset || o.radius != radius || !listEquals(o.rects, rects);
+}
+
+/// Unread-notification count on a tile's corner (Interactions → Notification badges).
+class _Badge extends StatelessWidget {
+  const _Badge({required this.id, required this.prefs, this.count});
+  final String id; // the app id ("pkg" / "pkg@profile")
+  final Prefs prefs;
+  final int? count; // given (a folder's total) instead of looked up
+
+  @override
+  Widget build(BuildContext context) {
+    if (!prefs.fx('badges')) return const SizedBox.shrink();
+    return ValueListenableBuilder<Map<String, int>>(
+      valueListenable: Apps.instance.notifCounts,
+      builder: (context, counts, _) {
+        final n = count ?? counts[id] ?? 0;
+        if (n == 0) return const SizedBox.shrink();
+        return Container(
+          constraints: const BoxConstraints(minWidth: 22),
+          height: 22,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(11)),
+          child: Text(
+            n > 99 ? '99+' : '$n',
+            style: TextStyle(fontFamily: DS.font, color: tileAccent(), fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Edit mode → palette: the Start default, accent, the app's own colour, or a Material colour.
@@ -935,6 +1698,41 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
+/// The app's own shortcuts (New message, Scan QR…) as sheet rows (Interactions → Shortcuts).
+Future<List<SheetAction>> appShortcutActions(BuildContext context, AppEntry a) async {
+  final all = await Apps.instance.shortcuts() ?? const <AppShortcut>[];
+  final pkg = a.package.split('@').first;
+  return [
+    for (final sc in all)
+      if (sc.package == pkg && sc.work == a.work)
+        SheetAction(Icons.bolt_rounded, sc.label, () {
+          Navigator.pop(context);
+          Apps.instance.quickAction(sc.id);
+        }),
+  ];
+}
+
+/// Edit mode → ⋯ on an app tile: its shortcuts, App info, Uninstall.
+Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) async {
+  final shortcuts = prefs.fx('shortcuts') ? await appShortcutActions(context, a) : const <SheetAction>[];
+  if (!context.mounted) return;
+  showOneSheet(
+    context,
+    header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40)),
+    actions: [
+      ...shortcuts,
+      SheetAction(Icons.info_outline_rounded, 'App info', () {
+        Navigator.pop(context);
+        Apps.instance.appInfo(a.package);
+      }),
+      SheetAction(Icons.delete_outline_rounded, 'Uninstall', () {
+        Navigator.pop(context);
+        Apps.instance.uninstall(a.package);
+      }, danger: true),
+    ],
+  );
+}
+
 /// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
 Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
   HapticFeedback.selectionClick();
@@ -961,8 +1759,8 @@ class _ChipsRowTile extends StatelessWidget {
     Widget chip(String id, bool on) {
       final builtIn = builtInActions[id];
       final label = builtIn?.$1 ?? labels[id]!.split('|').first;
-      return Pressable(
-        scale: .95,
+      return TilePress(
+        prefs: prefs,
         child: FutureBuilder<Color>(
           future: tileColour(tile, prefs),
           builder: (context, snap) => Material(
@@ -1465,13 +2263,16 @@ class _AppListPageState extends State<_AppListPage> {
     return out;
   }
 
-  void _menu(AppEntry a) {
+  Future<void> _menu(AppEntry a) async {
     HapticFeedback.mediumImpact();
     final pinned = widget.isPinned(a.package);
+    final shortcuts = widget.prefs.fx('shortcuts') ? await appShortcutActions(context, a) : const <SheetAction>[];
+    if (!mounted) return;
     showOneSheet(
       context,
       header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40)),
       actions: [
+        ...shortcuts,
         SheetAction(pinned ? Icons.push_pin : Icons.push_pin_outlined, pinned ? 'Unpin from Start' : 'Pin to Start', () {
           Navigator.pop(context);
           pinned ? widget.onUnpin(a) : widget.onPin(a);
