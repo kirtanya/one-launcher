@@ -224,12 +224,41 @@ void main() {
     Navigator.of(tester.element(find.byType(BottomSheet)), rootNavigator: true).pop();
     await tester.pumpAndSettle();
 
-    // Pull down past the top → all apps with the search box focused.
+    // Pull down past the top → the search bar comes down from the top, focused; no results yet.
+    expect(find.byType(TextField), findsNothing, reason: 'no search bar until searching');
     await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.focusNode!.hasFocus, isTrue, reason: 'search focused');
-    expect(find.text('Search 7 apps'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue, reason: 'search focused');
+    expect(find.text('Search 7 apps & the web'), findsOneWidget);
+    expect(find.textContaining('Search the web'), findsNothing, reason: 'results only once typing');
+    await tester.enterText(find.byType(TextField), 'sla');
+    await tester.pumpAndSettle();
+    expect(find.text('Search the web for “sla”'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/36_tiles_search.png'));
+    // ✕ clears; ✕ again (empty) closes.
+    await tester.tap(find.byTooltip('Clear'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Search the web'), findsNothing);
+    await tester.tap(find.byTooltip('Close search'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'closed');
+    // Back closes it too; and going to all apps does.
+    await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'Back closes search');
+    // All apps: just a search icon; it opens the same bar.
+    await tester.tap(find.byTooltip('All apps'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byTooltip('Search apps'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
   });
 
   testWidgets('Tiles: the quick-actions row is one full-width group — no box, moves as one, customise inside', (tester) async {
