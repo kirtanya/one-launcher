@@ -27,9 +27,13 @@ import 'landing.dart';
 /// swipe to the left — every app A–Z. The layout and navigation follow the Lumia launcher; the
 /// colours are the theme's (Material).
 class TilesHome extends StatefulWidget {
-  const TilesHome({super.key, required this.prefs, required this.theme});
+  const TilesHome({super.key, required this.prefs, required this.theme, this.preview = false});
   final Prefs prefs;
   final OneTheme theme;
+
+  /// A live miniature for the Home screen editor (doesn't take the home button, Back or app
+  /// changes from the real home screen).
+  final bool preview;
 
   @override
   State<TilesHome> createState() => _TilesHomeState();
@@ -160,13 +164,15 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     prefs.addListener(_rebuild);
-    showTilesStart.addListener(_showStart);
-    Apps.instance.onAppsChanged = _load;
-    Apps.instance.onHomePressed = _home;
+    if (!widget.preview) {
+      WidgetsBinding.instance.addObserver(this);
+      showTilesStart.addListener(_showStart);
+      Apps.instance.onAppsChanged = _load;
+      Apps.instance.onHomePressed = _home;
+      startLanding.play();
+    }
     _load();
-    startLanding.play();
   }
 
   /// Plays the landing animation of whichever page shows.
@@ -243,6 +249,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   bool isPinned(String package) => _tiles.any((t) => (t.isApp && t.package == package) || (t.isFolder && t.items.contains(package)));
 
   String? _openFolder; // the folder open inline on Start
+  final _gridKey = GlobalKey();
 
   /// Dropped onto the middle of a tile (Folders on Start): onto an app → a new folder of the
   /// two, onto a folder → into it.
@@ -481,8 +488,9 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: widget.preview,
       onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
         if (_searching) return _closeSearch();
         if (_editing) {
           return setState(() {
@@ -545,6 +553,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                         if (clock != null) _launch(clock);
                       },
                       openFolder: _openFolder,
+                      gridKey: _gridKey,
                       onFolder: _toFolder,
                       onOutOfFolder: _outOfFolder,
                       onFolderMenu: _folderMenu,
@@ -664,6 +673,7 @@ class _StartPage extends StatelessWidget {
     required this.onSettings,
     required this.onDoubleTap,
     required this.openFolder,
+    required this.gridKey,
     required this.onFolder,
     required this.onOutOfFolder,
     required this.onFolderMenu,
@@ -688,14 +698,14 @@ class _StartPage extends StatelessWidget {
   final Future<void> Function(String dragged, String target) onMove;
 
   static const gap = 6.0, side = 12.0;
-  static final _grid = GlobalKey();
+  final GlobalKey gridKey; // the grid's box (each Start has its own: the editor shows a second)
   static String? _mergePending;
   static Timer? _mergeTimer;
 
   /// While a tile is dragged: the cell under its centre decides where it goes — onto a tile
   /// takes that tile's place (the rest reflow), empty space after the last tile = the end.
   void _hover(DragTargetDetails<String> d, List<(TileSpec, int, int)> placed, double unit, int cols, _Rows rows) {
-    final box = _grid.currentContext?.findRenderObject() as RenderBox?;
+    final box = gridKey.currentContext?.findRenderObject() as RenderBox?;
     final dragged = placed.where((p) => p.$1.id == d.data).firstOrNull;
     if (box == null || dragged == null) return;
     final (w, h) = (dragged.$1.spanIn(cols).$1 * (unit + gap), rows.span(dragged.$3, dragged.$1.spanIn(cols).$2) + gap);
@@ -809,7 +819,7 @@ class _StartPage extends StatelessWidget {
                       if (m != null) onFolder(d.data, m);
                     },
                     builder: (context, _, _) => SizedBox(
-                      key: _grid,
+                      key: gridKey,
                       height: height,
                       child: Stack(
                         clipBehavior: Clip.none,

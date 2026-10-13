@@ -11,7 +11,8 @@ import 'photo_wallpaper.dart';
 import 'quick_actions.dart';
 import 'tv_remote.dart';
 import 'tiles/landing.dart';
-import 'tiles/tiles_home.dart' show showTilesStart, addActionTile;
+import 'home.dart' show HomeScreen;
+import 'tiles/tiles_home.dart' show TilesHome, addActionTile;
 import 'remote_sheet.dart';
 import 'top/header_fonts.dart';
 import 'ui/palette.dart';
@@ -1330,9 +1331,9 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
               prefs.homeView == 'tiles' ? 'Tiles · Start + all apps A–Z' : 'Classic · clock on top, apps below',
               keywords: 'tiles lumia windows start grid classic layout view face',
               open: (c) {
-                // Its own short, lightly shaded sheet: the home behind shows every change live.
+                // A full-screen editor with your home screen live in the middle.
                 SheetHost.close(c);
-                _showHomeView(context, prefs: prefs);
+                showHomeEditor(context, prefs: prefs, theme: theme);
               },
             ),
             _Setting(
@@ -1497,286 +1498,427 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
   );
 }
 
-/// Settings → Look → Home view: Classic or Tiles, and everything about the tiles. A short,
-/// lightly shaded sheet over Start (scrolled to the top) so each change shows live behind it.
-Future<Object?> _showHomeView(BuildContext context, {required Prefs prefs}) {
-  showTilesStart.ping();
-  return showOneSheetWith(
-    context,
-    height: MediaQuery.sizeOf(context).height * .5,
-    barrier: const Color(0x14000000),
-    builder: (ctx) => ListenableBuilder(
-      listenable: prefs,
-      builder: (ctx, _) {
-        final tiles = prefs.homeView == 'tiles';
-        Widget option(String id, IconData icon, String title, String sub) {
-          final on = prefs.homeView == id;
-          return Expanded(
-            child: Material(
-              color: on ? DS.hero : DS.cardMuted,
-              borderRadius: BorderRadius.circular(DS.rMedia),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  prefs.setHomeView(id);
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(DS.s16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(icon, size: 32, color: on ? DS.heroInk : DS.ink),
-                      const SizedBox(height: DS.s12),
-                      Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
-                      const SizedBox(height: 2),
-                      Text(sub, style: DS.rowSub.copyWith(fontSize: 12, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        }
-
-        Widget label(String t) => Padding(
-          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s20, DS.s24, DS.s8),
-          child: Text(t, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-        );
-        Widget chips(List<(String, String)> options, String current, ValueChanged<String> pick) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
-          child: Wrap(
-            spacing: DS.s8,
-            runSpacing: DS.s8,
-            children: [
-              for (final (id, name) in options)
-                _Chip(
-                  label: name,
-                  selected: current == id,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    pick(id);
-                  },
-                ),
-            ],
-          ),
-        );
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
-              child: SheetHeader(title: 'Home view', subtitle: 'The face of your launcher'),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-              child: IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    option('classic', Icons.view_agenda_outlined, 'Classic', 'Clock on top, app drawer with folders below'),
-                    const SizedBox(width: DS.s12),
-                    option('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
-                  ],
-                ),
-              ),
-            ),
-            _Group(null, [
-              _SwitchRow(
-                Icons.format_color_fill_rounded,
-                'Themed icons',
-                'One-colour icons in your theme’s colours, like Pixel',
-                prefs.themedIcons,
-                prefs.setThemedIcons,
-              ),
-            ]),
-            if (tiles) ...[
-              // Solid or glass (frosted wallpaper behind each tile), and how the glass looks.
-              label('Tile look'),
-              chips(const [('solid', 'Solid'), ('glass', 'Glass')], prefs.tileStyle, (v) => prefs.setGlass(style: v)),
-              if (prefs.tileStyle == 'glass') ...[
-                for (final (name, low, high, value, max, set) in [
-                  ('Frost', 'Clear', 'Frosted', prefs.glassBlur, 40.0, (double x) => prefs.setGlass(blur: x)),
-                  ('Tint', 'None', 'Strong', prefs.glassTint, .7, (double x) => prefs.setGlass(tint: x)),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s16, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(name, style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
-                        Row(
-                          children: [
-                            SizedBox(width: 56, child: Text(low, style: DS.rowSub.copyWith(fontSize: 12))),
-                            Expanded(
-                              child: Slider(
-                                value: value,
-                                max: max,
-                                divisions: 14,
-                                activeColor: DS.ink,
-                                inactiveColor: DS.cardMuted,
-                                thumbColor: DS.ink,
-                                onChanged: set,
-                              ),
-                            ),
-                            SizedBox(
-                              width: 56,
-                              child: Text(high, textAlign: TextAlign.right, style: DS.rowSub.copyWith(fontSize: 12)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                _Group(null, [
-                  _SwitchRow(
-                    Icons.crop_square_rounded,
-                    'Bright edge',
-                    'A thin light border, like a glass pane',
-                    prefs.glassEdge,
-                    (v) => prefs.setGlass(edge: v),
-                  ),
-                  _SwitchRow(Icons.gradient_rounded, 'Sheen', 'A soft light across the top corner', prefs.glassSheen, (v) => prefs.setGlass(sheen: v)),
-                ]),
-                if (prefs.wallpaperPhoto == null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, 0),
-                    child: Text(
-                      'Frost blurs “Your photo” wallpaper (Settings → Wallpaper). With the phone’s own wallpaper, glass shows the tint and highlights only.',
-                      style: DS.rowSub.copyWith(fontSize: 13),
-                    ),
-                  ),
-              ],
-              label('Tile colours'),
-              chips(const [('accent', 'Accent'), ('colourful', 'Each app’s colour')], prefs.tileColours, prefs.setTileColours),
-              label('Columns'),
-              chips(const [('4', '4 · bigger tiles'), ('6', '6 · more tiles')], '${prefs.tileColumns}', (v) => prefs.setTileLook(columns: int.parse(v))),
-              label('Start animation'),
-              chips(landingStyles, prefs.tileAnim, (v) {
-                prefs.setLandingAnims(tiles: v);
-                startLanding.play(); // show it right away, behind the sheet
-              }),
-              label('All apps animation'),
-              chips(landingStyles, prefs.listAnim, (v) => prefs.setLandingAnims(list: v)),
-              label('Icons'),
-              chips(const [('glyph', 'Themed glyphs'), ('icon', 'App icons')], prefs.tileIcons, (v) => prefs.setTileLook(icons: v)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s20, DS.s24, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text('Tile transparency', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-                    ),
-                    Text(prefs.tileOpacity >= .99 ? 'Solid' : '${((1 - prefs.tileOpacity) * 100).round()}% see-through', style: DS.rowSub),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DS.s12),
-                child: Slider(
-                  value: (1 - prefs.tileOpacity).clamp(0, .7),
-                  max: .7,
-                  divisions: 14,
-                  activeColor: DS.ink,
-                  inactiveColor: DS.cardMuted,
-                  thumbColor: DS.ink,
-                  onChanged: (x) => prefs.setTileLook(opacity: 1 - x),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, 0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text('Corner roundness', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-                    ),
-                    Text(prefs.tileRadius == 0 ? 'Square' : '${prefs.tileRadius.round()} dp', style: DS.rowSub),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DS.s12),
-                child: Slider(
-                  value: prefs.tileRadius,
-                  max: 32,
-                  divisions: 16,
-                  activeColor: DS.ink,
-                  inactiveColor: DS.cardMuted,
-                  thumbColor: DS.ink,
-                  onChanged: (x) => prefs.setTileLook(radius: x),
-                ),
-              ),
-              // Lumia-style interactions, each on or off.
-              _Group('Interactions', [
-                for (final (id, icon, title, sub) in const [
-                  ('tilt', Icons.touch_app_outlined, 'Tilt on press', 'Tiles lean toward your finger'),
-                  ('live', Icons.flip_rounded, 'Live tiles', 'Flip to what’s playing, new notifications, next alarm'),
-                  ('turnstile', Icons.door_sliding_outlined, 'Turnstile on launch', 'Start swings away as an app opens'),
-                  ('window', Icons.wallpaper_rounded, 'Wallpaper through tiles', 'The wallpaper shows only inside tiles'),
-                  ('folders', Icons.folder_copy_outlined, 'Folders on Start', 'Hold a tile over another to make a folder'),
-                  ('badges', Icons.mark_chat_unread_outlined, 'Notification badges', 'Unread counts on tiles · needs Notification access'),
-                  ('lock', Icons.lock_outline_rounded, 'Double-tap to lock', 'Empty space · needs an Accessibility switch'),
-                  ('shortcuts', Icons.bolt_rounded, 'Shortcuts on tiles', 'App shortcuts in tile and app menus'),
-                ])
-                  _SwitchRow(icon, title, sub, prefs.fx(id), (v) {
-                    prefs.setFx(id, v);
-                    // Badges and live tiles read notification counts: ask for access if needed.
-                    if (v && (id == 'badges' || id == 'live') && Apps.instance.media.value?['granted'] != true) Apps.instance.openNotificationAccess();
-                    if (v && id == 'badges') Apps.instance.refreshNotifCounts();
-                  }),
-              ]),
-              _Group(null, [
-                _NavRow(Icons.add_box_outlined, 'Add a quick action tile', 'Flashlight, timer, app shortcuts…', () => addActionTile(ctx, prefs)),
-                _NavRow(
-                  Icons.schedule_rounded,
-                  'Clock tile style',
-                  'Its own font — apart from the classic clock',
-                  () => _showTileClockStyle(ctx, prefs: prefs),
-                ),
-                _SwitchRow(Icons.label_outline_rounded, 'Names on tiles', 'On medium and bigger tiles', prefs.tileLabels, (v) => prefs.setTileLook(labels: v)),
-                _NavRow(Icons.restart_alt_rounded, 'Reset Start', 'Back to the starting tiles', () {
-                  HapticFeedback.mediumImpact();
-                  prefs.resetTiles();
-                }),
-              ]),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0),
-                child: Text(
-                  'On Start, long-press a tile to resize, recolour, unpin or drag it. In all apps, long-press an app to pin it.',
-                  style: DS.rowSub.copyWith(fontSize: 13),
-                ),
-              ),
-            ],
-            const SizedBox(height: DS.s16),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-/// Home view → Clock tile style (page): the same font controls as the classic clock, saved
-/// separately for the Tiles view.
-Future<Object?> _showTileClockStyle(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
-  context,
-  builder: (ctx) => ListenableBuilder(
-    listenable: prefs,
-    builder: (ctx, _) => Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
-          child: SheetHeader(title: 'Clock tile style', subtitle: 'Only for Tiles · the classic clock keeps its own'),
-        ),
-        _ClockStyleEditor(prefs: prefs, tile: true),
-        const SizedBox(height: DS.s12),
-      ],
+/// Settings → Look → Home view: a full-screen editor (like Pixel's wallpaper & style): your
+/// home screen live in the middle, the controls below in tabs. Every change applies at once.
+Future<void> showHomeEditor(BuildContext context, {required Prefs prefs, required OneTheme theme}) => Navigator.of(context, rootNavigator: true).push(
+  PageRouteBuilder<void>(
+    transitionDuration: Motion.snapDuration,
+    reverseTransitionDuration: Motion.snapDuration,
+    pageBuilder: (_, _, _) => _HomeEditor(prefs: prefs, theme: theme),
+    transitionsBuilder: (_, a, _, child) => FadeTransition(
+      opacity: a,
+      child: SlideTransition(
+        position: Tween(begin: const Offset(0, .04), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+        child: child,
+      ),
     ),
   ),
 );
+
+class _HomeEditor extends StatefulWidget {
+  const _HomeEditor({required this.prefs, required this.theme});
+  final Prefs prefs;
+  final OneTheme theme;
+
+  @override
+  State<_HomeEditor> createState() => _HomeEditorState();
+}
+
+class _HomeEditorState extends State<_HomeEditor> {
+  String _tab = 'view';
+  Prefs get prefs => widget.prefs;
+  bool get _tiles => prefs.homeView == 'tiles';
+
+  List<(String, IconData, String)> get _tabs => _tiles
+      ? const [
+          ('view', Icons.space_dashboard_outlined, 'View'),
+          ('layout', Icons.grid_view_rounded, 'Layout'),
+          ('look', Icons.palette_outlined, 'Look'),
+          ('clock', Icons.schedule_rounded, 'Clock'),
+          ('motion', Icons.animation_rounded, 'Motion'),
+          ('touch', Icons.touch_app_outlined, 'Interactions'),
+        ]
+      : const [('view', Icons.space_dashboard_outlined, 'View'), ('look', Icons.palette_outlined, 'Look'), ('clock', Icons.schedule_rounded, 'Clock')];
+
+  // ---- small building blocks ----
+
+  Widget _label(String t, [String? value]) => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(t, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+        ),
+        if (value != null) Text(value, style: DS.rowSub),
+      ],
+    ),
+  );
+
+  Widget _chips(List<(String, String)> options, String current, ValueChanged<String> pick) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+    child: Wrap(
+      spacing: DS.s8,
+      runSpacing: DS.s8,
+      children: [
+        for (final (id, name) in options)
+          _Chip(
+            label: name,
+            selected: current == id,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              pick(id);
+            },
+          ),
+      ],
+    ),
+  );
+
+  Widget _slider(double value, double max, int steps, ValueChanged<double> set, {String? low, String? high}) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+    child: Row(
+      children: [
+        if (low != null)
+          Padding(
+            padding: const EdgeInsets.only(left: DS.s12),
+            child: Text(low, style: DS.rowSub.copyWith(fontSize: 12)),
+          ),
+        Expanded(
+          child: Slider(
+            value: value.clamp(0, max),
+            max: max,
+            divisions: steps,
+            activeColor: DS.ink,
+            inactiveColor: DS.cardMuted,
+            thumbColor: DS.ink,
+            onChanged: set,
+          ),
+        ),
+        if (high != null)
+          Padding(
+            padding: const EdgeInsets.only(right: DS.s12),
+            child: Text(high, style: DS.rowSub.copyWith(fontSize: 12)),
+          ),
+      ],
+    ),
+  );
+
+  Widget _hint(String t) => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, 0),
+    child: Text(t, style: DS.rowSub.copyWith(fontSize: 13)),
+  );
+
+  Widget _viewCard(String id, IconData icon, String title, String sub) {
+    final on = prefs.homeView == id;
+    return Expanded(
+      child: Material(
+        color: on ? DS.hero : DS.cardMuted,
+        borderRadius: BorderRadius.circular(DS.rMedia),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            prefs.setHomeView(id);
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(DS.s16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, size: 32, color: on ? DS.heroInk : DS.ink),
+                const SizedBox(height: DS.s12),
+                Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
+                const SizedBox(height: 2),
+                Text(sub, style: DS.rowSub.copyWith(fontSize: 12, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---- tabs ----
+
+  List<Widget> _section(BuildContext context) => switch (_tab) {
+    'view' => [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, 0),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _viewCard('classic', Icons.view_agenda_outlined, 'Classic', 'Clock on top, app drawer with folders below'),
+              const SizedBox(width: DS.s12),
+              _viewCard('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
+            ],
+          ),
+        ),
+      ),
+      _Group(null, [
+        _SwitchRow(
+          Icons.format_color_fill_rounded,
+          'Themed icons',
+          'One-colour icons in your theme’s colours, like Pixel',
+          prefs.themedIcons,
+          prefs.setThemedIcons,
+        ),
+      ]),
+    ],
+    'layout' => [
+      _label('Columns'),
+      _chips(const [('4', '4 · bigger tiles'), ('6', '6 · more tiles')], '${prefs.tileColumns}', (v) => prefs.setTileLook(columns: int.parse(v))),
+      _label('Icons'),
+      _chips(const [('glyph', 'Themed glyphs'), ('icon', 'App icons')], prefs.tileIcons, (v) => prefs.setTileLook(icons: v)),
+      _label('Corner roundness', prefs.tileRadius == 0 ? 'Square' : '${prefs.tileRadius.round()} dp'),
+      _slider(prefs.tileRadius, 32, 16, (x) => prefs.setTileLook(radius: x)),
+      _Group(null, [
+        _SwitchRow(Icons.label_outline_rounded, 'Names on tiles', 'On medium and bigger tiles', prefs.tileLabels, (v) => prefs.setTileLook(labels: v)),
+        _NavRow(Icons.add_box_outlined, 'Add a quick action tile', 'Quick actions row, flashlight, timer, app shortcuts…', () => addActionTile(context, prefs)),
+        _NavRow(Icons.restart_alt_rounded, 'Reset Start', 'Back to the starting tiles', () {
+          HapticFeedback.mediumImpact();
+          prefs.resetTiles();
+        }),
+      ]),
+      _hint('On Start, long-press a tile to resize, recolour, unpin or drag it. In all apps, long-press an app to pin it.'),
+    ],
+    'look' when _tiles => [
+      _label('Tile look'),
+      _chips(const [('solid', 'Solid'), ('glass', 'Glass')], prefs.tileStyle, (v) => prefs.setGlass(style: v)),
+      if (prefs.tileStyle == 'glass') ...[
+        _label('Frost'),
+        _slider(
+          prefs.glassBlur,
+          40,
+          16,
+          (x) => prefs.setGlass(blur: x),
+          low: 'Clear',
+          high: 'Frosted',
+        ),
+        _label('Tint'),
+        _slider(
+          prefs.glassTint,
+          .7,
+          14,
+          (x) => prefs.setGlass(tint: x),
+          low: 'None',
+          high: 'Strong',
+        ),
+        _Group(null, [
+          _SwitchRow(Icons.crop_square_rounded, 'Bright edge', 'A thin light border, like a glass pane', prefs.glassEdge, (v) => prefs.setGlass(edge: v)),
+          _SwitchRow(Icons.gradient_rounded, 'Sheen', 'A soft light across the top corner', prefs.glassSheen, (v) => prefs.setGlass(sheen: v)),
+        ]),
+        if (prefs.wallpaperPhoto == null)
+          _hint('Frost blurs “Your photo” wallpaper (Settings → Wallpaper). With the phone’s own wallpaper, glass shows the tint and highlights only.'),
+      ],
+      _label('Tile colours'),
+      _chips(const [('accent', 'Accent'), ('colourful', 'Each app’s colour')], prefs.tileColours, prefs.setTileColours),
+      _label('Tile transparency', prefs.tileOpacity >= .99 ? 'Solid' : '${((1 - prefs.tileOpacity) * 100).round()}% see-through'),
+      _slider(1 - prefs.tileOpacity, .7, 14, (x) => prefs.setTileLook(opacity: 1 - x)),
+      _Group(null, [
+        _NavRow(
+          Icons.wallpaper_rounded,
+          'Wallpaper',
+          prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper',
+          () => _showWallpaperSheet(context, prefs: prefs),
+        ),
+      ]),
+    ],
+    'look' => [
+      _Group(null, [
+        _NavRow(Icons.palette_outlined, 'Colours & style', 'Theme, accent, cards', () => showColoursSheet(context, prefs: prefs, theme: widget.theme)),
+        _NavRow(
+          Icons.wallpaper_rounded,
+          'Wallpaper',
+          prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper',
+          () => _showWallpaperSheet(context, prefs: prefs),
+        ),
+      ]),
+    ],
+    'clock' => [
+      _hint(_tiles ? 'The clock tile’s own style — the classic clock keeps its own.' : 'The classic clock’s style — the Tiles clock tile keeps its own.'),
+      const SizedBox(height: DS.s8),
+      _ClockStyleEditor(prefs: prefs, tile: _tiles),
+    ],
+    'motion' => [
+      _label('Start animation'),
+      _chips(landingStyles, prefs.tileAnim, (v) {
+        prefs.setLandingAnims(tiles: v);
+        startLanding.play(); // play it in the preview
+      }),
+      _label('All apps animation'),
+      _chips(landingStyles, prefs.listAnim, (v) => prefs.setLandingAnims(list: v)),
+      _Group(null, [_NavRow(Icons.replay_rounded, 'Play the landing', 'See Start come in again', startLanding.play)]),
+    ],
+    _ => [
+      _Group(null, [
+        for (final (id, icon, title, sub) in const [
+          ('tilt', Icons.touch_app_outlined, 'Tilt on press', 'Tiles lean toward your finger'),
+          ('live', Icons.flip_rounded, 'Live tiles', 'Flip to what’s playing, new notifications, next alarm'),
+          ('turnstile', Icons.door_sliding_outlined, 'Turnstile on launch', 'Start swings away as an app opens'),
+          ('window', Icons.wallpaper_rounded, 'Wallpaper through tiles', 'The wallpaper shows only inside tiles'),
+          ('folders', Icons.folder_copy_outlined, 'Folders on Start', 'Hold a tile over another to make a folder'),
+          ('badges', Icons.mark_chat_unread_outlined, 'Notification badges', 'Unread counts on tiles · needs Notification access'),
+          ('lock', Icons.lock_outline_rounded, 'Double-tap to lock', 'Empty space · needs an Accessibility switch'),
+          ('shortcuts', Icons.bolt_rounded, 'Shortcuts on tiles', 'App shortcuts in tile and app menus'),
+        ])
+          _SwitchRow(icon, title, sub, prefs.fx(id), (v) {
+            prefs.setFx(id, v);
+            // Badges and live tiles read notification counts: ask for access if needed.
+            if (v && (id == 'badges' || id == 'live') && Apps.instance.media.value?['granted'] != true) Apps.instance.openNotificationAccess();
+            if (v && id == 'badges') Apps.instance.refreshNotifCounts();
+          }),
+      ]),
+    ],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) {
+        if (!_tabs.any((t) => t.$1 == _tab)) _tab = 'view';
+        final screen = MediaQuery.sizeOf(context);
+        return Scaffold(
+          backgroundColor: DS.cardMuted,
+          body: SafeArea(
+            child: Column(
+              children: [
+                // ✕ · title · Done
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
+                  child: Row(
+                    children: [
+                      Material(
+                        color: DS.card,
+                        shape: const CircleBorder(),
+                        child: IconButton(
+                          tooltip: 'Close',
+                          onPressed: () => Navigator.pop(context),
+                          icon: Icon(Icons.close_rounded, color: DS.ink),
+                        ),
+                      ),
+                      const SizedBox(width: DS.s16),
+                      Expanded(
+                        child: Text('Home screen', style: DS.rowTitle.copyWith(fontSize: 24, fontWeight: FontWeight.w500)),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Done'),
+                      ),
+                    ],
+                  ),
+                ),
+                // The live preview: your home screen, scaled down.
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: DS.s8),
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: screen.width / screen.height,
+                        child: _HomePreview(prefs: prefs, theme: widget.theme),
+                      ),
+                    ),
+                  ),
+                ),
+                // The controls for the chosen tab.
+                Container(
+                  margin: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
+                  height: screen.height * .34,
+                  decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(DS.rCard)),
+                  clipBehavior: Clip.antiAlias,
+                  // Built in full (the panel is short): every control exists, scrolled to or not.
+                  child: SingleChildScrollView(
+                    key: ValueKey(_tab), // each tab opens at its top
+                    padding: const EdgeInsets.only(bottom: DS.s16),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _section(context)),
+                  ),
+                ),
+                // Tabs, like Pixel's Style · Colour · Size.
+                Container(
+                  margin: const EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, DS.s12),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: DS.card, borderRadius: BorderRadius.circular(32)),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final (id, icon, name) in _tabs)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Material(
+                              color: _tab == id ? DS.cardMuted : Colors.transparent,
+                              shape: const StadiumBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child: InkWell(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _tab = id);
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (_tab == id) ...[Icon(icon, size: 20, color: DS.ink), const SizedBox(width: DS.s8)],
+                                      Text(name, style: DS.rowTitle.copyWith(fontSize: 15, fontWeight: _tab == id ? FontWeight.w600 : FontWeight.w400)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The editor's preview: the real home screen (Classic or Tiles) at full phone size, scaled to
+/// fit, not touchable. It follows every setting live.
+class _HomePreview extends StatelessWidget {
+  const _HomePreview({required this.prefs, required this.theme});
+  final Prefs prefs;
+  final OneTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final phone = MediaQueryData.fromView(View.of(context)).copyWith(viewInsets: EdgeInsets.zero);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(DS.rCard),
+        border: Border.all(color: DS.hairline, width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(DS.rCard),
+        child: IgnorePointer(
+          child: FittedBox(
+            fit: BoxFit.contain,
+            child: SizedBox.fromSize(
+              size: phone.size,
+              child: MediaQuery(
+                data: phone,
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: prefs.homeView == 'tiles'
+                      ? TilesHome(key: const ValueKey('preview-tiles'), prefs: prefs, theme: theme, preview: true)
+                      : HomeScreen(key: const ValueKey('preview-classic'), prefs: prefs, theme: theme, preview: true),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Settings → Your TV (page): remote button on/off, the paired TV, forget it, open the remote.
 Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, required BuildContext home}) => showOneSheetWith(

@@ -27,9 +27,13 @@ import 'ui/perf.dart';
 /// bottom half = the app view as a sheet. Swipe the sheet up and the clock
 /// scales down and fades away; swipe down to bring it back.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.prefs, required this.theme});
+  const HomeScreen({super.key, required this.prefs, required this.theme, this.preview = false});
   final Prefs prefs;
   final OneTheme theme;
+
+  /// A live miniature for the Home screen editor: draws as normal but doesn't take the home
+  /// button, app changes or Back from the real home screen.
+  final bool preview;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -168,11 +172,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     prefs.addListener(_rebuild);
-    Apps.instance.onAppsChanged = _loadApps;
-    Apps.instance.onHomePressed = _goHome;
-    Apps.instance.onPermissionsChanged = () => _refresh.value++;
+    if (!widget.preview) {
+      WidgetsBinding.instance.addObserver(this);
+      Apps.instance.onAppsChanged = _loadApps;
+      Apps.instance.onHomePressed = _goHome;
+      Apps.instance.onPermissionsChanged = () => _refresh.value++;
+    }
     _sheet.addListener(() {
       _expanded.value = ((_sheet.size - _rest) / (1 - _rest)).clamp(0.0, 1.0);
       // A tick when the sheet snaps home: full screen, or back to rest.
@@ -410,8 +416,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: widget.preview,
       onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
         if (_searching) return _stopSearch();
         if (_expanded.value > 0) _collapse();
       },

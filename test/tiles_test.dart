@@ -104,61 +104,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('q'), findsNothing, reason: 'closed after jumping');
 
-    // Settings → Home view → Classic.
+    // Settings → Home view: a full-screen editor — the home screen live in the middle,
+    // tabs of controls below.
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Home view'));
     await tester.pumpAndSettle();
-    expect(find.text('Tile colours'), findsOneWidget, reason: 'tile options while on Tiles');
-    expect(find.text('Each app’s colour'), findsOneWidget, reason: 'its own short sheet over Start');
-    await tester.ensureVisible(find.text('Corner roundness'));
-    await tester.pumpAndSettle();
-    await tester.drag(find.byType(Slider).last, const Offset(200, 0)); // corner roundness
-    await tester.pumpAndSettle();
-    expect(prefs.tileRadius, greaterThan(8));
-    await tester.ensureVisible(find.text('Themed icons'));
+    expect(find.text('Home screen'), findsOneWidget, reason: 'the editor');
+    expect(find.byWidgetPredicate((w) => w is TilesHome && w.preview), findsOneWidget, reason: 'live preview of Start');
+    Future<void> tab(String name) async {
+      await tester.ensureVisible(find.text(name).last); // the tab bar scrolls sideways
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(name).last);
+      await tester.pumpAndSettle();
+    }
+
+    // View: themed icons.
     await tester.tap(find.text('Themed icons'));
     await tester.pumpAndSettle();
     expect(prefs.themedIcons, isTrue);
     expect(AppIcon.themed, isTrue);
-    // Landing animations + the clock tile's own font.
-    await tester.ensureVisible(find.text('Start animation'));
+    // Layout: corner roundness, columns.
+    await tab('Layout');
+    await tester.ensureVisible(find.text('Corner roundness'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Zoom').first);
+    await tester.drag(find.byType(Slider).first, const Offset(200, 0));
+    await tester.pumpAndSettle();
+    expect(prefs.tileRadius, greaterThan(8));
+    await tester.ensureVisible(find.text('6 · more tiles'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('6 · more tiles'));
+    await tester.pumpAndSettle();
+    expect(prefs.tileColumns, 6);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/33_home_view_settings.png'));
+    // Look: colours.
+    await tab('Look');
+    await tester.ensureVisible(find.text('Each app’s colour'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Each app’s colour'));
+    await tester.pumpAndSettle();
+    expect(prefs.tileColours, 'colourful');
+    // Motion: the Start animation.
+    await tab('Motion');
+    await tester.tap(find.text('Zoom').first); // the Start animation's (All apps has one too)
     await tester.pumpAndSettle();
     expect(prefs.tileAnim, 'zoom');
-    await tester.ensureVisible(find.text('Clock tile style'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Clock tile style'));
-    await tester.pumpAndSettle();
+    // Clock: the clock tile's own font (the classic one keeps its own).
+    await tab('Clock');
+    // The presets scroll sideways (Classic first): bring Bubble into view.
+    await tester.scrollUntilVisible(find.text('Bubble'), 120, scrollable: find.ancestor(of: find.text('Classic'), matching: find.byType(Scrollable)).first);
     await tester.ensureVisible(find.text('Bubble'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bubble'));
     await tester.pumpAndSettle();
     expect(prefs.tileClockWeight, 900);
     expect(prefs.clockWeight, 300, reason: 'the classic clock keeps its own style');
-    await tester.pageBack();
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Each app’s colour'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Each app’s colour'));
-    await tester.tap(find.text('6 · more tiles'));
-    await tester.pumpAndSettle();
-    expect(prefs.tileColours, 'colourful');
-    expect(prefs.tileColumns, 6);
+    // Layout → Reset Start.
+    await tab('Layout');
     await tester.ensureVisible(find.text('Reset Start'));
     await tester.pumpAndSettle();
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/33_home_view_settings.png'));
     await tester.tap(find.text('Reset Start'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs)[2].id, 'app:com.amazon', reason: 'starting tiles again (Amazon back after the clock + chips, not last)');
-    await tester.ensureVisible(find.text('Classic'));
-    await tester.pumpAndSettle();
+    // View → Classic: the preview switches, and so does home.
+    await tab('View');
     await tester.tap(find.text('Classic'));
     await tester.pumpAndSettle();
     expect(prefs.homeView, 'classic');
-    expect(find.text('Tile colours'), findsNothing);
-    Navigator.of(tester.element(find.text('Classic')), rootNavigator: true).pop();
+    expect(find.byWidgetPredicate((w) => w is HomeScreen && w.preview), findsOneWidget, reason: 'preview follows');
+    expect(find.text('Layout'), findsNothing, reason: 'tile tabs only for Tiles');
+    await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.byType(TilesHome), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -383,6 +398,8 @@ void main() {
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Home view'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Look').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Glass'));
     await tester.pumpAndSettle();
