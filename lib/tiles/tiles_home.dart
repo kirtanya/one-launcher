@@ -9,6 +9,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../ui/components.dart';
+import '../search_dock.dart' show SearchDock;
+import '../search.dart';
+import '../app_drawer.dart' show searchResults;
 import '../quick_actions.dart';
 import '../quick_chips.dart' show ShortcutIcon;
 import '../photo_wallpaper.dart';
@@ -531,77 +535,96 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
               IgnorePointer(
                 child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + (prefs.fx('window') ? 0 : .35)).clamp(0.0, .85))),
               ),
-              PageView(
-                controller: _pages,
-                onPageChanged: (i) {
-                  _closeSearch(); // going between Start and all apps ends a search
-                  (i == 0 ? startLanding : listLanding).play();
-                },
-                children: [
-                  NotificationListener<ScrollNotification>(
-                    onNotification: _onStartScroll,
-                    child: _StartPage(
-                      tiles: _tiles,
-                      apps: {for (final a in _apps) a.package: a},
-                      scroll: _start,
-                      editing: _editing,
-                      selected: _selected,
-                      prefs: prefs,
-                      onLaunch: _launchFromStart,
-                      onOpenClock: () {
-                        final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
-                        if (clock != null) _launch(clock);
-                      },
-                      openFolder: _openFolder,
-                      gridKey: _gridKey,
-                      onFolder: _toFolder,
-                      onOutOfFolder: _outOfFolder,
-                      onFolderMenu: _folderMenu,
-                      onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
-                      onEdit: (id) => setState(() {
-                        if (!_editing) HapticFeedback.mediumImpact();
-                        _openFolder = null; // editing works on closed folders
-                        _editing = true;
-                        _selected = id;
-                      }),
-                      onDone: () => setState(() {
-                        _editing = false;
-                        _selected = null;
-                      }),
-                      onUnpin: _unpin,
-                      onResize: _resize,
-                      onRecolour: _recolour,
-                      onMove: _move,
-                      onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
-                      onSettings: _settings,
-                      onDoubleTap: _lock,
-                    ),
-                  ),
-                  NotificationListener<ScrollNotification>(
-                    onNotification: _onStartScroll, // pull down on the list: search too
-                    // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
-                    child: ColoredBox(
-                      color: prefs.fx('window') ? Colors.black : Colors.transparent,
-                      child: _AppListPage(
-                        onSearch: _openSearch,
-                        apps: _apps,
-                        prefs: prefs,
-                        isPinned: isPinned,
-                        onLaunch: _launch,
-                        onPin: _pin,
-                        onUnpin: (a) => _unpin('app:${a.package}'),
-                        onSettings: _settings,
-                        onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+              // Search doesn't cover the page: the page itself steps back (fades, sinks a
+              // little) as the search pill comes down and the results take its place.
+              AnimatedBuilder(
+                animation: _search,
+                builder: (context, page) {
+                  final t = Curves.easeOutCubic.transform(_search.value);
+                  return IgnorePointer(
+                    ignoring: t > 0,
+                    child: Opacity(
+                      opacity: (1 - t * 1.4).clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(0, 40 * t),
+                        child: Transform.scale(scale: 1 - .06 * t, child: page),
                       ),
                     ),
-                  ),
-                ],
+                  );
+                },
+                child: PageView(
+                  controller: _pages,
+                  onPageChanged: (i) {
+                    _closeSearch(); // going between Start and all apps ends a search
+                    (i == 0 ? startLanding : listLanding).play();
+                  },
+                  children: [
+                    NotificationListener<ScrollNotification>(
+                      onNotification: _onStartScroll,
+                      child: _StartPage(
+                        tiles: _tiles,
+                        apps: {for (final a in _apps) a.package: a},
+                        scroll: _start,
+                        editing: _editing,
+                        selected: _selected,
+                        prefs: prefs,
+                        onLaunch: _launchFromStart,
+                        onOpenClock: () {
+                          final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
+                          if (clock != null) _launch(clock);
+                        },
+                        openFolder: _openFolder,
+                        gridKey: _gridKey,
+                        onFolder: _toFolder,
+                        onOutOfFolder: _outOfFolder,
+                        onFolderMenu: _folderMenu,
+                        onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
+                        onEdit: (id) => setState(() {
+                          if (!_editing) HapticFeedback.mediumImpact();
+                          _openFolder = null; // editing works on closed folders
+                          _editing = true;
+                          _selected = id;
+                        }),
+                        onDone: () => setState(() {
+                          _editing = false;
+                          _selected = null;
+                        }),
+                        onUnpin: _unpin,
+                        onResize: _resize,
+                        onRecolour: _recolour,
+                        onMove: _move,
+                        onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
+                        onSettings: _settings,
+                        onDoubleTap: _lock,
+                      ),
+                    ),
+                    NotificationListener<ScrollNotification>(
+                      onNotification: _onStartScroll, // pull down on the list: search too
+                      // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
+                      child: ColoredBox(
+                        color: prefs.fx('window') ? Colors.black : Colors.transparent,
+                        child: _AppListPage(
+                          onSearch: _openSearch,
+                          apps: _apps,
+                          prefs: prefs,
+                          isPinned: isPinned,
+                          onLaunch: _launch,
+                          onPin: _pin,
+                          onUnpin: (a) => _unpin('app:${a.package}'),
+                          onSettings: _settings,
+                          onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               _TileSearch(
                 anim: _search,
                 text: _searchText,
                 focus: _searchFocus,
                 apps: _apps,
+                prefs: prefs,
                 onClose: _closeSearch,
                 onLaunch: (a) {
                   _closeSearch();
@@ -1849,6 +1872,24 @@ Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) async {
   );
 }
 
+/// A filled square in the app list (icon backs, jump letters) in the tile look: glass tiles →
+/// a tinted pane with the bright edge and sheen.
+BoxDecoration listSquare(Prefs prefs, Color colour, double radius) {
+  if (prefs.tileStyle != 'glass') return BoxDecoration(color: colour, borderRadius: BorderRadius.circular(radius));
+  final tint = colour.withValues(alpha: (.3 + prefs.glassTint).clamp(.25, .92));
+  return BoxDecoration(
+    borderRadius: BorderRadius.circular(radius),
+    border: prefs.glassEdge ? Border.all(color: Colors.white.withValues(alpha: .35)) : null,
+    // A gradient replaces the fill: the tint, lit at the corners when Sheen is on.
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: prefs.glassSheen ? [Color.alphaBlend(const Color(0x38FFFFFF), tint), tint, tint, Color.alphaBlend(const Color(0x14FFFFFF), tint)] : [tint, tint],
+      stops: prefs.glassSheen ? const [0, .45, .75, 1] : null,
+    ),
+  );
+}
+
 /// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
 Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
   HapticFeedback.selectionClick();
@@ -1944,15 +1985,26 @@ class _ChipsRowTile extends StatelessWidget {
   }
 }
 
-/// Tiles search: the bar slides down from the top over a dim wallpaper; results appear once
-/// you type (apps, then the web and Play Store). ✕ clears, or closes when empty; tapping the
-/// dim area, Back, or swiping between pages closes it too.
+/// Tiles search, styled like the classic home's: the search pill slides down from the top over
+/// a dimmed screen. Empty → your most-used apps; typing → the same results as the classic home
+/// (best match with Open, other apps in a row, shortcuts, phone settings, the web, Play Store —
+/// from Settings → Search → Search in). Enter opens the best match. ✕ clears, or closes when
+/// empty; tapping the dim area, Back, or swiping between pages closes it too.
 class _TileSearch extends StatefulWidget {
-  const _TileSearch({required this.anim, required this.text, required this.focus, required this.apps, required this.onClose, required this.onLaunch});
+  const _TileSearch({
+    required this.anim,
+    required this.text,
+    required this.focus,
+    required this.apps,
+    required this.prefs,
+    required this.onClose,
+    required this.onLaunch,
+  });
   final Animation<double> anim;
   final TextEditingController text;
   final FocusNode focus;
   final List<AppEntry> apps;
+  final Prefs prefs;
   final VoidCallback onClose;
   final ValueChanged<AppEntry> onLaunch;
 
@@ -1961,6 +2013,9 @@ class _TileSearch extends StatefulWidget {
 }
 
 class _TileSearchState extends State<_TileSearch> {
+  List<AppShortcut>? _shortcuts; // loaded once per search
+  String _last = '';
+
   @override
   void initState() {
     super.initState();
@@ -1973,116 +2028,177 @@ class _TileSearchState extends State<_TileSearch> {
     super.dispose();
   }
 
-  void _typed() => setState(() {});
+  void _typed() {
+    final q = widget.text.text.trim();
+    if (q == _last) return;
+    _last = q;
+    if (q.isNotEmpty && _shortcuts == null && widget.prefs.searchIn.contains('shortcuts')) {
+      Apps.instance.shortcuts().then((list) {
+        if (mounted) setState(() => _shortcuts = list ?? const []);
+      });
+    }
+    // Settings → Search → open the only match.
+    if (q.isNotEmpty && widget.prefs.autoOpenSingleMatch && widget.prefs.searchIn.contains('apps')) {
+      final r = searchApps(widget.apps, q);
+      if (r.length == 1) return widget.onLaunch(r.first);
+    }
+    setState(() {});
+  }
+
+  void _run(Future<void> Function() action) async {
+    widget.onClose();
+    await action();
+  }
+
+  void _submit(String q) {
+    final best = searchApps(widget.apps, q);
+    if (best.isNotEmpty && widget.prefs.searchIn.contains('apps')) return widget.onLaunch(best.first);
+    if (q.trim().isNotEmpty && widget.prefs.searchIn.contains('google')) _run(() => Apps.instance.webSearch(q.trim()));
+  }
+
+  /// Most-used apps (empty search): one row of icons.
+  Widget _recent() {
+    final byPkg = {for (final a in widget.apps) a.package: a};
+    final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
+    final apps = [for (final e in used.take(8)) byPkg[e.key]!];
+    if (apps.isEmpty) return const SizedBox.shrink();
+    return OneCard(
+      padding: const EdgeInsets.fromLTRB(DS.s8, DS.s12, DS.s8, DS.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+            child: Text('Your apps', style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+          ),
+          const SizedBox(height: DS.s8),
+          SizedBox(
+            height: 84,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final a in apps)
+                  SizedBox(
+                    width: 76,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(DS.rMedia),
+                      onTap: () => widget.onLaunch(a),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 4),
+                          AppIcon(a, size: 48),
+                          const SizedBox(height: 6),
+                          Text(
+                            a.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: DS.iconLabel.copyWith(color: DS.ink),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
     final q = widget.text.text.trim();
-    final found = q.isEmpty
-        ? const <AppEntry>[]
-        : ([
-            for (final a in widget.apps)
-              if (matchesQuery(q, [a.label])) a,
-          ]..sort((a, b) {
-            // Names that start with the query first.
-            final sa = a.label.toLowerCase().startsWith(q.toLowerCase()), sb = b.label.toLowerCase().startsWith(q.toLowerCase());
-            return sa == sb ? a.label.toLowerCase().compareTo(b.label.toLowerCase()) : (sa ? -1 : 1);
-          }));
-    final accent = tileAccent();
-    Widget row(Widget lead, String title, VoidCallback onTap) => InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          children: [
-            Container(width: 44, height: 44, color: accent, alignment: Alignment.center, child: lead),
-            const SizedBox(width: DS.s16),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    final results = q.isEmpty
+        ? _recent()
+        : searchResults(
+            prefs: widget.prefs,
+            query: q,
+            apps: widget.apps,
+            shortcuts: _shortcuts,
+            onLaunch: widget.onLaunch,
+            onLongPress: (a) => showTileMenu(context, widget.prefs, a),
+            onWebSearch: (query, {play = false}) => _run(() => play ? Apps.instance.playSearch(query) : Apps.instance.webSearch(query)),
+            onRun: _run,
+          );
 
     return AnimatedBuilder(
       animation: widget.anim,
-      builder: (context, child) {
+      builder: (context, bar) {
         final t = Curves.easeOutCubic.transform(widget.anim.value);
         if (t == 0) return const SizedBox.shrink();
         return Stack(
           fit: StackFit.expand,
           children: [
-            GestureDetector(
-              onTap: widget.onClose,
-              child: ColoredBox(color: Colors.black.withValues(alpha: .88 * t)), // results read cleanly over the tiles
-            ),
-            // The bar comes down from above the screen.
+            // No dark cover: the page behind has stepped back; tap the empty space to close.
+            GestureDetector(behavior: HitTestBehavior.opaque, onTap: widget.onClose),
+            // The pill comes down from above the screen.
             Positioned(
-              left: DS.s16,
-              right: DS.s16,
-              top: pad.top + DS.s12 - (1 - t) * (pad.top + 80),
-              child: Opacity(opacity: t, child: child),
+              left: DS.gutter,
+              right: DS.gutter,
+              top: pad.top + DS.s12 - (1 - t) * (pad.top + 90),
+              child: Opacity(opacity: t, child: bar),
             ),
-            if (found.isNotEmpty || q.isNotEmpty)
-              Positioned(
-                left: DS.s16,
-                right: DS.s16,
-                top: pad.top + 84,
-                bottom: math.max(keyboard, pad.bottom) + DS.s8,
-                child: Opacity(
-                  opacity: t,
-                  child: ListView(
-                    padding: EdgeInsets.zero,
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // keep typing while scrolling
-                    children: [
-                      for (final a in found) row(TileGlyph(app: a, size: 28), a.label, () => widget.onLaunch(a)),
-                      row(const Icon(Icons.travel_explore_rounded, color: Colors.white), 'Search the web for “$q”', () {
-                        widget.onClose();
-                        Apps.instance.webSearch(q);
-                      }),
-                      row(const Icon(Icons.shop_outlined, color: Colors.white), 'Search Play Store for “$q”', () {
-                        widget.onClose();
-                        Apps.instance.playSearch(q);
-                      }),
-                    ],
+            Positioned(
+              left: DS.gutter,
+              right: DS.gutter,
+              top: pad.top + DS.s12 + 56 + DS.s12,
+              bottom: math.max(keyboard, pad.bottom) + DS.s8,
+              child: Opacity(
+                opacity: t,
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // keep typing while scrolling
+                  child: AnimatedSwitcher(
+                    duration: Motion.snapDuration,
+                    child: KeyedSubtree(key: ValueKey(q.isEmpty), child: results),
                   ),
                 ),
               ),
+            ),
           ],
         );
       },
-      child: Material(
-        color: Colors.white.withValues(alpha: .16),
-        borderRadius: BorderRadius.circular(DS.s24),
-        child: TextField(
-          controller: widget.text,
-          focusNode: widget.focus,
-          textInputAction: TextInputAction.search,
-          onSubmitted: (_) {
-            if (found.isNotEmpty) widget.onLaunch(found.first);
-          },
-          cursorColor: DS.onWallpaper,
-          style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 16),
-          decoration: InputDecoration(
-            hintText: 'Search ${widget.apps.length} apps & the web',
-            hintStyle: const TextStyle(fontFamily: DS.font, color: Colors.white60, fontSize: 16),
-            prefixIcon: const Icon(Icons.search_rounded, color: Colors.white70),
-            // ✕: clears what's typed, or closes search when there's nothing.
-            suffixIcon: IconButton(
-              tooltip: widget.text.text.isEmpty ? 'Close search' : 'Clear',
-              icon: const Icon(Icons.close_rounded, color: Colors.white),
-              onPressed: () => widget.text.text.isEmpty ? widget.onClose() : widget.text.clear(),
+      // The classic home's search pill.
+      child: DecoratedBox(
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
+        child: Material(
+          color: DS.card,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            height: 56,
+            child: Row(
+              children: [
+                const SizedBox(width: DS.s16),
+                Icon(Icons.search_rounded, color: DS.ink),
+                const SizedBox(width: DS.s12),
+                Expanded(
+                  child: TextField(
+                    controller: widget.text,
+                    focusNode: widget.focus,
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: _submit,
+                    cursorColor: DS.ink,
+                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400),
+                    decoration: InputDecoration(
+                      hintText: 'Search ${widget.apps.length} apps & more',
+                      hintStyle: DS.rowTitle.copyWith(fontWeight: FontWeight.w400, color: DS.inkMuted),
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                    ),
+                  ),
+                ),
+                // ✕: clears what's typed, or closes search when there's nothing.
+                IconButton(
+                  tooltip: q.isEmpty ? 'Close search' : 'Clear',
+                  icon: Icon(Icons.close_rounded, color: DS.ink),
+                  onPressed: () => q.isEmpty ? widget.onClose() : widget.text.clear(),
+                ),
+                const SizedBox(width: DS.s4),
+              ],
             ),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: DS.s16),
           ),
         ),
       ),
@@ -2495,7 +2611,7 @@ class _AppListPageState extends State<_AppListPage> {
                               Container(
                                 width: 44,
                                 height: 44,
-                                decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(small)),
+                                decoration: listSquare(widget.prefs, accent, small),
                                 alignment: Alignment.center,
                                 child: TileGlyph(app: a, size: 28),
                               ),

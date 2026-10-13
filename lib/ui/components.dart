@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'ds.dart';
+import 'glass.dart';
 import 'motion.dart';
 
 /// A stacked card. `tone` picks the surface from the design system.
@@ -22,19 +23,23 @@ class OneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Padding(padding: padding, child: child),
+    );
     return Pressable(
       enabled: onTap != null,
       scale: 0.98,
-      child: Material(
-        color: color,
-        borderRadius: BorderRadius.circular(DS.rCard),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          child: Padding(padding: padding, child: child),
-        ),
-      ),
+      child: Glass.classic
+          // Glass: a tinted pane (the frosted drawer behind it does the blur).
+          ? GlassPane(
+              colour: color,
+              frost: false,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
+              child: ink,
+            )
+          : Material(color: color, borderRadius: BorderRadius.circular(DS.rCard), clipBehavior: Clip.antiAlias, child: ink),
     );
   }
 }

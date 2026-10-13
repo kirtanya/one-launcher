@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -10,6 +11,8 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'folders.dart';
 import 'prefs.dart';
+import 'ui/perf.dart';
+import 'ui/glass.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'system_settings.dart';
@@ -526,8 +529,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       ];
     }
 
-    return Material(
-      color: DS.canvas,
+    // Glass: the whole drawer is one frosted pane over the wallpaper (cards inside are tints).
+    final glass = Glass.classic && Glass.blur > 0 && !Perf.lite.value;
+    final drawer = Material(
+      color: Glass.classic ? Glass.tinted(DS.canvas) : DS.canvas,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
       // Pull-to-search: the list slides down with the pull and a search pill grows in the gap.
@@ -592,6 +597,14 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
             ),
           ),
         ),
+      ),
+    );
+    if (!glass) return drawer;
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: Glass.blur, sigmaY: Glass.blur),
+        child: drawer,
       ),
     );
   }
@@ -788,7 +801,7 @@ class _FolderHeader extends StatelessWidget {
       duration: Motion.snapDuration,
       curve: Motion.settle,
       decoration: BoxDecoration(
-        color: tone == CardTone.muted ? DS.cardMuted : DS.card,
+        color: Glass.on(tone == CardTone.muted ? DS.cardMuted : DS.card),
         borderRadius: BorderRadius.vertical(top: r, bottom: open ? Radius.zero : r),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1000,7 +1013,7 @@ class _FolderBodyState extends State<_FolderBody> {
           ? const SizedBox(width: double.infinity)
           : Container(
               decoration: BoxDecoration(
-                color: widget.tone == CardTone.muted ? DS.cardMuted : DS.card,
+                color: Glass.on(widget.tone == CardTone.muted ? DS.cardMuted : DS.card),
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(DS.rCard)),
               ),
               padding: const EdgeInsets.fromLTRB(DS.s12, 0, DS.s12, DS.s16),
@@ -1123,6 +1136,45 @@ class _GridApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The classic home's search results for [query], from the sources in Settings → Search →
+/// Search in — the Tiles search shows the same. [shortcuts]: the app shortcuts (loaded once).
+Widget searchResults({
+  required Prefs prefs,
+  required String query,
+  required List<AppEntry> apps,
+  required List<AppShortcut>? shortcuts,
+  required ValueChanged<AppEntry> onLaunch,
+  required ValueChanged<AppEntry> onLongPress,
+  required void Function(String query, {bool play}) onWebSearch,
+  required void Function(Future<void> Function() action) onRun,
+}) {
+  final q = query.trim();
+  final sources = prefs.searchIn;
+  return _SearchResults(
+    query: q,
+    apps: sources.contains('apps') ? searchApps(apps, q) : const [],
+    shortcuts: [
+      for (final sc in sources.contains('shortcuts') ? (shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
+        if (matchesQuery(q, [sc.label, sc.app])) sc,
+    ].take(5).toList(),
+    settings: sources.contains('settings')
+        ? [
+            for (final st in systemSettings)
+              if (matchesQuery(q, [st.title, st.keywords])) st,
+          ].take(4).toList()
+        : const [],
+    web: sources.contains('google'),
+    play: sources.contains('play'),
+    upward: false,
+    prefs: prefs,
+    google: apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
+    onTap: onLaunch,
+    onLongPress: onLongPress,
+    onWebSearch: onWebSearch,
+    onRun: onRun,
+  );
 }
 
 /// Search results, by source (Settings → Search → Search in): apps (best match big with

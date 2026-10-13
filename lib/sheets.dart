@@ -1637,6 +1637,34 @@ class _HomeEditorState extends State<_HomeEditor> {
     );
   }
 
+  /// Frost, tint, edge, sheen — shared by glass tiles and the glass Classic home.
+  List<Widget> _glassControls(BuildContext context) => [
+    _label('Frost'),
+    _slider(
+      prefs.glassBlur,
+      40,
+      16,
+      (x) => prefs.setGlass(blur: x),
+      low: 'Clear',
+      high: 'Frosted',
+    ),
+    _label('Tint'),
+    _slider(
+      prefs.glassTint,
+      .7,
+      14,
+      (x) => prefs.setGlass(tint: x),
+      low: 'None',
+      high: 'Strong',
+    ),
+    _Group(null, [
+      _SwitchRow(Icons.crop_square_rounded, 'Bright edge', 'A thin light border, like a glass pane', prefs.glassEdge, (v) => prefs.setGlass(edge: v)),
+      _SwitchRow(Icons.gradient_rounded, 'Sheen', 'A soft light across the top corner', prefs.glassSheen, (v) => prefs.setGlass(sheen: v)),
+    ]),
+    if (prefs.wallpaperPhoto == null)
+      _hint('Frost blurs “Your photo” wallpaper (Settings → Wallpaper). With the phone’s own wallpaper, glass shows the tint and highlights only.'),
+  ];
+
   // ---- tabs ----
 
   List<Widget> _section(BuildContext context) => switch (_tab) {
@@ -1684,32 +1712,7 @@ class _HomeEditorState extends State<_HomeEditor> {
     'look' when _tiles => [
       _label('Tile look'),
       _chips(const [('solid', 'Solid'), ('glass', 'Glass')], prefs.tileStyle, (v) => prefs.setGlass(style: v)),
-      if (prefs.tileStyle == 'glass') ...[
-        _label('Frost'),
-        _slider(
-          prefs.glassBlur,
-          40,
-          16,
-          (x) => prefs.setGlass(blur: x),
-          low: 'Clear',
-          high: 'Frosted',
-        ),
-        _label('Tint'),
-        _slider(
-          prefs.glassTint,
-          .7,
-          14,
-          (x) => prefs.setGlass(tint: x),
-          low: 'None',
-          high: 'Strong',
-        ),
-        _Group(null, [
-          _SwitchRow(Icons.crop_square_rounded, 'Bright edge', 'A thin light border, like a glass pane', prefs.glassEdge, (v) => prefs.setGlass(edge: v)),
-          _SwitchRow(Icons.gradient_rounded, 'Sheen', 'A soft light across the top corner', prefs.glassSheen, (v) => prefs.setGlass(sheen: v)),
-        ]),
-        if (prefs.wallpaperPhoto == null)
-          _hint('Frost blurs “Your photo” wallpaper (Settings → Wallpaper). With the phone’s own wallpaper, glass shows the tint and highlights only.'),
-      ],
+      if (prefs.tileStyle == 'glass') ..._glassControls(context),
       _label('Tile colours'),
       _chips(const [('accent', 'Accent'), ('colourful', 'Each app’s colour')], prefs.tileColours, prefs.setTileColours),
       _label('Tile transparency', prefs.tileOpacity >= .99 ? 'Solid' : '${((1 - prefs.tileOpacity) * 100).round()}% see-through'),
@@ -1724,6 +1727,10 @@ class _HomeEditorState extends State<_HomeEditor> {
       ]),
     ],
     'look' => [
+      // Glass: the drawer, its cards, the chips and the dock become frosted panes.
+      _label('Home look'),
+      _chips(const [('solid', 'Solid'), ('glass', 'Glass')], prefs.classicStyle, (v) => prefs.setGlass(classic: v)),
+      if (prefs.classicStyle == 'glass') ..._glassControls(context),
       _Group(null, [
         _NavRow(Icons.palette_outlined, 'Colours & style', 'Theme, accent, cards', () => showColoursSheet(context, prefs: prefs, theme: widget.theme)),
         _NavRow(
@@ -2105,7 +2112,7 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
               _NavRow(
                 Icons.crop_rounded,
                 'Adjust photo',
-                'Zoom ${prefs.photoZoom.toStringAsFixed(1)}× · blur ${prefs.photoBlur < .5 ? 'off' : prefs.photoBlur.round()}',
+                '${prefs.homeView == 'tiles' ? 'Tiles · full screen' : 'Classic · top area'} · zoom ${prefs.photoFrame(tiles: prefs.homeView == 'tiles').$1.toStringAsFixed(1)}× · blur ${prefs.photoBlur < .5 ? 'off' : prefs.photoBlur.round()}',
                 () => showPhotoEditor(context, prefs: prefs),
               ),
               _NavRow(Icons.photo_library_outlined, 'Choose another photo', 'From your gallery', pick),

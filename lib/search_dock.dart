@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'ui/ds.dart';
+import 'ui/glass.dart';
 import 'ui/perf.dart';
 import 'ui/motion.dart';
 
@@ -174,10 +175,9 @@ class _DockCircle extends StatelessWidget {
         decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: Perf.lite.value ? null : SearchDock.shadow),
         child: Tooltip(
           message: tooltip,
-          child: Material(
-            color: DS.card,
+          child: glassOr(
+            colour: DS.card,
             shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onTap,
               onLongPress: onLongPress,
@@ -216,10 +216,9 @@ class _Pill extends StatelessWidget {
       scale: .95,
       child: DecoratedBox(
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
-        child: Material(
-          color: DS.card,
-          borderRadius: BorderRadius.circular(99),
-          clipBehavior: Clip.antiAlias,
+        child: glassOr(
+          colour: DS.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
           child: InkWell(
             onTap: active ? null : onActivate,
             child: Stack(

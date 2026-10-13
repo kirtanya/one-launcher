@@ -184,21 +184,33 @@ class Prefs extends ChangeNotifier {
       await _sp.remove('wallpaperPhoto');
     } else {
       await _sp.setString('wallpaperPhoto', path);
-      await setPhotoFrame(zoom: 1, x: 0, y: 0); // a new photo starts centred
+      // A new photo starts centred, in both views.
+      await setPhotoFrame(zoom: 1, x: 0, y: 0);
+      await setPhotoFrame(zoom: 1, x: 0, y: 0, tiles: true);
     }
     notifyListeners();
   }
 
   /// How the photo sits on screen: zoom 1–3, position −1…1 on each axis (which part shows
   /// when zoomed / cropped), blur 0–24.
+  /// Each view frames the photo for itself: Classic for its top window, Tiles for the whole
+  /// screen ([tiles]). Blur is shared.
   double get photoZoom => (_sp.getDouble('photoZoom') ?? 1).clamp(1, 3);
   double get photoX => (_sp.getDouble('photoX') ?? 0).clamp(-1, 1);
   double get photoY => (_sp.getDouble('photoY') ?? 0).clamp(-1, 1);
+  (double zoom, double x, double y) photoFrame({bool tiles = false}) => tiles
+      ? (
+          (_sp.getDouble('tilesPhotoZoom') ?? 1).clamp(1.0, 3.0),
+          (_sp.getDouble('tilesPhotoX') ?? 0).clamp(-1.0, 1.0),
+          (_sp.getDouble('tilesPhotoY') ?? 0).clamp(-1.0, 1.0),
+        )
+      : (photoZoom, photoX, photoY);
   double get photoBlur => (_sp.getDouble('photoBlur') ?? 0).clamp(0, 24);
-  Future<void> setPhotoFrame({double? zoom, double? x, double? y, double? blur}) async {
-    if (zoom != null) await _sp.setDouble('photoZoom', zoom.clamp(1, 3));
-    if (x != null) await _sp.setDouble('photoX', x.clamp(-1, 1));
-    if (y != null) await _sp.setDouble('photoY', y.clamp(-1, 1));
+  Future<void> setPhotoFrame({double? zoom, double? x, double? y, double? blur, bool tiles = false}) async {
+    final k = tiles ? 'tilesPhoto' : 'photo';
+    if (zoom != null) await _sp.setDouble('${k}Zoom', zoom.clamp(1, 3));
+    if (x != null) await _sp.setDouble('${k}X', x.clamp(-1, 1));
+    if (y != null) await _sp.setDouble('${k}Y', y.clamp(-1, 1));
     if (blur != null) await _sp.setDouble('photoBlur', blur.clamp(0, 24));
     notifyListeners();
   }
@@ -555,7 +567,11 @@ class Prefs extends ChangeNotifier {
   double get glassTint => (_sp.getDouble('glassTint') ?? .25).clamp(0, .7);
   bool get glassEdge => _sp.getBool('glassEdge') ?? true;
   bool get glassSheen => _sp.getBool('glassSheen') ?? true;
-  Future<void> setGlass({String? style, double? blur, double? tint, bool? edge, bool? sheen}) async {
+
+  /// The Classic home's look: 'solid' or 'glass' (drawer, cards, chips, dock — same glass values).
+  String get classicStyle => _sp.getString('classicStyle') ?? 'solid';
+  Future<void> setGlass({String? style, String? classic, double? blur, double? tint, bool? edge, bool? sheen}) async {
+    if (classic != null) await _sp.setString('classicStyle', classic);
     if (style != null) await _sp.setString('tileStyle', style);
     if (blur != null) await _sp.setDouble('glassBlur', blur.clamp(0, 40));
     if (tint != null) await _sp.setDouble('glassTint', tint.clamp(0, .7));

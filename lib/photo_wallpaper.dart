@@ -10,8 +10,9 @@ import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'ui/photo_file.dart';
 
-/// The part of the screen where the photo is actually seen: the top area above the app sheet.
-double photoWindow(Prefs p, Size screen) => screen.height * p.topShare;
+/// The part of the screen where the photo is actually seen: the Classic view's top area above
+/// the app sheet, or the whole screen behind Tiles.
+double photoWindow(Prefs p, Size screen, {bool tiles = false}) => tiles ? screen.height : screen.height * p.topShare;
 
 /// Where the photo is drawn: it covers the visible window (full width, [windowH] tall) at
 /// [zoom]; x / y (−1…1) choose which part of the photo fills that window.
@@ -156,9 +157,9 @@ class _PhotoWallpaperState extends State<PhotoWallpaper> {
           img,
           Size(_sharp!.width.toDouble(), _sharp!.height.toDouble()),
           widget.fullScreen ? 1.0 : p.topShare,
-          p.photoZoom,
-          p.photoX,
-          p.photoY,
+          p.photoFrame(tiles: widget.fullScreen).$1,
+          p.photoFrame(tiles: widget.fullScreen).$2,
+          p.photoFrame(tiles: widget.fullScreen).$3,
         ),
       ),
     );
@@ -183,19 +184,22 @@ class _PhotoPainter extends CustomPainter {
 }
 
 /// Full-screen photo framing, like setting a lock-screen wallpaper: drag to move, pinch to
-/// zoom, blur slider at the bottom. Saves as you go; Reset puts it back centred.
+/// zoom, blur slider at the bottom. Saves as you go; Reset puts it back centred. Frames for
+/// the view in use: Classic's top window (the rest shaded, as its apps cover it), or the whole
+/// screen with a ghost of Start's tiles for Tiles.
 Future<void> showPhotoEditor(BuildContext context, {required Prefs prefs}) => Navigator.of(context, rootNavigator: true).push(
   PageRouteBuilder<void>(
     transitionDuration: Motion.snapDuration,
     reverseTransitionDuration: Motion.snapDuration,
-    pageBuilder: (_, _, _) => _PhotoEditor(prefs: prefs),
+    pageBuilder: (_, _, _) => _PhotoEditor(prefs: prefs, tiles: prefs.homeView == 'tiles'),
     transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
   ),
 );
 
 class _PhotoEditor extends StatefulWidget {
-  const _PhotoEditor({required this.prefs});
+  const _PhotoEditor({required this.prefs, required this.tiles});
   final Prefs prefs;
+  final bool tiles;
 
   @override
   State<_PhotoEditor> createState() => _PhotoEditorState();
@@ -207,9 +211,9 @@ class _PhotoEditorState extends State<_PhotoEditor> {
   Offset _focal0 = Offset.zero;
 
   void _start(ScaleStartDetails d) {
-    final p = widget.prefs;
-    _zoom0 = p.photoZoom;
-    _at0 = Offset(p.photoX, p.photoY);
+    final (zoom, x, y) = widget.prefs.photoFrame(tiles: widget.tiles);
+    _zoom0 = zoom;
+    _at0 = Offset(x, y);
     _focal0 = d.focalPoint;
   }
 
@@ -220,16 +224,17 @@ class _PhotoEditorState extends State<_PhotoEditor> {
     final zoom = (_zoom0 * d.scale).clamp(1.0, 3.0);
     // The photo covers the visible window; at zoom z it overflows that window on each axis.
     // Moving x / y from −1 to 1 slides it across that whole overflow.
-    final win = photoWindow(p, screen);
+    final (z0, x0, y0) = p.photoFrame(tiles: widget.tiles);
+    final win = photoWindow(p, screen, tiles: widget.tiles);
     final r = photoRect(img, screen, win, zoom, 0, 0);
     final over = Size(r.width - screen.width, r.height - win);
     final drag = d.focalPoint - _focal0;
-    final x = over.width < 1 ? p.photoX : (_at0.dx - 2 * drag.dx / over.width).clamp(-1.0, 1.0);
-    final y = over.height < 1 ? p.photoY : (_at0.dy - 2 * drag.dy / over.height).clamp(-1.0, 1.0);
-    if ((zoom - 1).abs() < .01 && (p.photoZoom - 1).abs() >= .01 || (zoom - 3).abs() < .01 && (p.photoZoom - 3).abs() >= .01) {
+    final x = over.width < 1 ? x0 : (_at0.dx - 2 * drag.dx / over.width).clamp(-1.0, 1.0);
+    final y = over.height < 1 ? y0 : (_at0.dy - 2 * drag.dy / over.height).clamp(-1.0, 1.0);
+    if ((zoom - 1).abs() < .01 && (z0 - 1).abs() >= .01 || (zoom - 3).abs() < .01 && (z0 - 3).abs() >= .01) {
       HapticFeedback.selectionClick(); // hit the zoom limit
     }
-    p.setPhotoFrame(zoom: zoom, x: x, y: y);
+    p.setPhotoFrame(zoom: zoom, x: x, y: y, tiles: widget.tiles);
   }
 
   @override
@@ -246,12 +251,12 @@ class _PhotoEditorState extends State<_PhotoEditor> {
             onScaleUpdate: _update,
             onDoubleTap: () {
               HapticFeedback.lightImpact();
-              p.setPhotoFrame(zoom: 1, x: 0, y: 0);
+              p.setPhotoFrame(zoom: 1, x: 0, y: 0, tiles: widget.tiles);
             },
             child: Stack(
               fit: StackFit.expand,
               children: [
-                PhotoWallpaper(prefs: p),
+                PhotoWallpaper(prefs: p, fullScreen: widget.tiles),
                 ListenableBuilder(
                   listenable: p,
                   builder: (context, _) => ColoredBox(color: Colors.black.withValues(alpha: p.wallpaperDim)),
@@ -259,42 +264,63 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               ],
             ),
           ),
-          // Only the top window is seen on the home screen: the rest is shaded, as the
-          // app sheet covers it there. Frame the photo inside the clear part.
-          ListenableBuilder(
-            listenable: p,
-            builder: (context, _) {
-              final win = photoWindow(p, MediaQuery.sizeOf(context));
-              return Positioned(
-                top: win,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      color: Color(0xB8000000),
-                      border: Border(top: BorderSide(color: DS.glassLine, width: 1.5)),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: DS.s16),
-                      child: Column(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
-                            decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(DS.s20)),
-                            child: Text('Drag to move · pinch to zoom', style: DS.rowSub.copyWith(color: DS.onWallpaper)),
-                          ),
-                          const SizedBox(height: DS.s8),
-                          Text('Your apps cover this part', style: DS.rowSub.copyWith(color: DS.onWallpaper.withValues(alpha: .6))),
-                        ],
+          // Tiles: the whole screen shows the photo — a faint ghost of Start's tiles shows
+          // where they'll sit, and the tip floats at the top.
+          if (widget.tiles) ...[
+            IgnorePointer(
+              child: _GhostTiles(columns: p.tileColumns, radius: p.tileRadius),
+            ),
+            Positioned(
+              top: pad.top + DS.s16,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
+                    decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(DS.s20)),
+                    child: Text('Drag to move · pinch to zoom', style: DS.rowSub.copyWith(color: DS.onWallpaper)),
+                  ),
+                ),
+              ),
+            ),
+          ] else
+            // Only the top window is seen on the home screen: the rest is shaded, as the
+            // app sheet covers it there. Frame the photo inside the clear part.
+            ListenableBuilder(
+              listenable: p,
+              builder: (context, _) {
+                final win = photoWindow(p, MediaQuery.sizeOf(context));
+                return Positioned(
+                  top: win,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        color: Color(0xB8000000),
+                        border: Border(top: BorderSide(color: DS.glassLine, width: 1.5)),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: DS.s16),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s8),
+                              decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(DS.s20)),
+                              child: Text('Drag to move · pinch to zoom', style: DS.rowSub.copyWith(color: DS.onWallpaper)),
+                            ),
+                            const SizedBox(height: DS.s8),
+                            Text('Your apps cover this part', style: DS.rowSub.copyWith(color: DS.onWallpaper.withValues(alpha: .6))),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
           // Blur + Reset / Done.
           Positioned(
             left: DS.s16,
@@ -335,7 +361,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                         TextButton(
                           onPressed: () {
                             HapticFeedback.lightImpact();
-                            p.setPhotoFrame(zoom: 1, x: 0, y: 0, blur: 0);
+                            p.setPhotoFrame(zoom: 1, x: 0, y: 0, blur: 0, tiles: widget.tiles);
                           },
                           child: Text('Reset', style: DS.rowTitle.copyWith(color: DS.onWallpaper)),
                         ),
@@ -355,6 +381,42 @@ class _PhotoEditorState extends State<_PhotoEditor> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A faint outline of a Start screen (clock, then rows of tiles) for framing the photo.
+class _GhostTiles extends StatelessWidget {
+  const _GhostTiles({required this.columns, required this.radius});
+  final int columns;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final pad = MediaQuery.paddingOf(context);
+    const gap = 6.0, side = 12.0;
+    final unit = (MediaQuery.sizeOf(context).width - 2 * side - (columns - 1) * gap) / columns;
+    Widget cell(double w, double h) => Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: .08),
+        border: Border.all(color: Colors.white.withValues(alpha: .35)),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+    final full = columns * unit + (columns - 1) * gap;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(side, pad.top + 72, side, 0),
+      child: Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [
+          cell(full, unit * 2 + gap), // the clock
+          for (var i = 0; i < 2; i++) cell(unit * 2 + gap, unit * 2 + gap),
+          for (var i = 0; i < columns * 2; i++) cell(unit, unit),
         ],
       ),
     );

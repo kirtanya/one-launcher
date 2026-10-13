@@ -9,6 +9,7 @@ import 'remote_sheet.dart';
 import 'quick_actions.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
+import 'ui/glass.dart';
 import 'ui/motion.dart';
 
 /// The user's look for the quick-action chips (Quick actions → Chip look). Defaults are the
@@ -226,10 +227,9 @@ class QuickChip extends StatelessWidget {
         scale: .94,
         child: Tooltip(
           message: iconOnly ? label : '',
-          child: Material(
-            color: active ? DS.hero : look.fill,
+          child: glassOr(
+            colour: active ? DS.hero : look.fill,
             shape: look.border(lineColor: active ? DS.hero : null),
-            clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onTap,
               onLongPress: onLongPress,

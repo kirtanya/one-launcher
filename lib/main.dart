@@ -8,6 +8,7 @@ import 'tiles/tiles_home.dart';
 import 'prefs.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
+import 'ui/glass.dart';
 import 'ui/theme.dart';
 import 'widgets.dart';
 
@@ -48,14 +49,22 @@ class _OneLauncherState extends State<OneLauncher> {
     super.initState();
     theme.addListener(_repaint);
     Perf.lite.addListener(_repaint);
-    AppIcon.themed = widget.prefs.themedIcons;
+    AppIcon.themed = !widget.prefs.themedIcons; // differs → the first sync applies everything
+    _themedIcons();
     widget.prefs.addListener(_themedIcons);
   }
 
   void _themedIcons() {
-    if (AppIcon.themed == widget.prefs.themedIcons) return;
-    AppIcon.themed = widget.prefs.themedIcons;
-    _repaint(); // every icon, including const ones
+    final p = widget.prefs;
+    final glass = (p.classicStyle == 'glass', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen);
+    if (AppIcon.themed == p.themedIcons && glass == (Glass.classic, Glass.blur, Glass.tint, Glass.edge, Glass.sheen)) return;
+    AppIcon.themed = p.themedIcons;
+    Glass.classic = glass.$1;
+    Glass.blur = glass.$2;
+    Glass.tint = glass.$3;
+    Glass.edge = glass.$4;
+    Glass.sheen = glass.$5;
+    _repaint(); // every icon and surface, including const ones
   }
 
   @override

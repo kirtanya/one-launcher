@@ -244,16 +244,19 @@ void main() {
     await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue, reason: 'search focused');
-    expect(find.text('Search 7 apps & the web'), findsOneWidget);
-    expect(find.textContaining('Search the web'), findsNothing, reason: 'results only once typing');
-    await tester.enterText(find.byType(TextField), 'sla');
+    expect(find.text('Search 7 apps & more'), findsOneWidget, reason: 'the classic home’s search pill');
+    expect(find.text('Search the web'), findsNothing, reason: 'results only once typing');
+    await tester.enterText(find.byType(TextField), 'ma'); // several matches (one would just open)
     await tester.pumpAndSettle();
-    expect(find.text('Search the web for “sla”'), findsOneWidget);
+    // The classic home's results: best match with Open, the other apps in a row, then the web.
+    expect(find.text('Open'), findsOneWidget, reason: 'best match: Maps');
+    expect(find.text('Maps'), findsWidgets);
+    expect(find.text('Search the web'), findsOneWidget);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/36_tiles_search.png'));
     // ✕ clears; ✕ again (empty) closes.
     await tester.tap(find.byTooltip('Clear'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Search the web'), findsNothing);
+    expect(find.text('Search the web'), findsNothing);
     await tester.tap(find.byTooltip('Close search'));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'closed');
