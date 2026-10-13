@@ -16,7 +16,8 @@ Future<void> showTvRemote(BuildContext context, {required Prefs prefs}) {
   HapticFeedback.selectionClick();
   return showOneSheetWith(
     context,
-    height: MediaQuery.sizeOf(context).height * .86,
+    height: MediaQuery.sizeOf(context).height, // full screen
+    keyboard: true, // typing: the sheet's content sits above the phone keyboard
     fill: true,
     scrollable: false,
     builder: (ctx) => _RemoteSheet(prefs: prefs),
@@ -252,87 +253,95 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 ],
               ),
             ),
-            // Typing on the TV: shows when a text field is focused there (or the keyboard button).
-            ValueListenableBuilder<(String, String)?>(
-              valueListenable: tv.ime,
-              builder: (context, ime, _) => AnimatedSize(
-                duration: Motion.snapDuration,
-                curve: Motion.settle,
-                child: ime == null || !live ? const SizedBox(width: double.infinity) : _TypeOnTv(key: ValueKey(ime.$2), start: ime.$1, label: ime.$2),
-              ),
-            ),
+            // Typing on the TV (a text field is focused there, or the keyboard button): the remote
+            // makes way for a typing panel that sits right above the phone keyboard.
             Expanded(
-              child: AnimatedOpacity(
-                duration: Motion.snapDuration,
-                opacity: live ? 1 : .4,
-                child: IgnorePointer(
-                  ignoring: !live,
-                  child: LayoutBuilder(
-                    builder: (context, c) {
-                      final pad = (c.maxWidth * .74).clamp(220.0, 300.0);
-                      return Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _DPad(size: pad, onKey: _press),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back)),
-                              _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home)),
-                              _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
-                              _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input)),
-                              _Round(
-                                icon: Icons.keyboard_rounded,
-                                tooltip: 'Type on TV',
-                                onTap: () {
-                                  HapticFeedback.selectionClick();
-                                  tv.ime.value ??= ('', '');
-                                },
-                              ),
-                            ],
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                            child: Column(
-                              children: [
-                                _Volume(onKey: _press, volume: tv.volume),
-                                const SizedBox(height: DS.s8),
-                                _Brightness(prefs: prefs),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            height: 40,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                              children: [
-                                for (final (name, link) in const [
-                                  ('YouTube', 'https://www.youtube.com'),
-                                  ('Netflix', 'https://www.netflix.com/title'),
-                                  ('Prime Video', 'https://app.primevideo.com'),
-                                  ('Disney+', 'https://www.disneyplus.com'),
-                                ])
+              child: ValueListenableBuilder<(String, String)?>(
+                valueListenable: tv.ime,
+                builder: (context, ime, remote) => AnimatedSwitcher(
+                  duration: Motion.snapDuration,
+                  child: ime != null && live
+                      ? _TypingPanel(key: ValueKey('typing:${ime.$2}'), start: ime.$1, label: ime.$2, onKey: _press)
+                      : KeyedSubtree(key: const ValueKey('remote'), child: remote!),
+                ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: AnimatedOpacity(
+                        duration: Motion.snapDuration,
+                        opacity: live ? 1 : .4,
+                        child: IgnorePointer(
+                          ignoring: !live,
+                          child: LayoutBuilder(
+                            builder: (context, c) {
+                              final pad = (c.maxWidth * .74).clamp(220.0, 300.0);
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _DPad(size: pad, onKey: _press),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: [
+                                      _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back)),
+                                      _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home)),
+                                      _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
+                                      _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input)),
+                                      _Round(
+                                        icon: Icons.keyboard_rounded,
+                                        tooltip: 'Type on TV',
+                                        onTap: () {
+                                          HapticFeedback.selectionClick();
+                                          tv.ime.value ??= ('', '');
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                   Padding(
-                                    padding: const EdgeInsets.only(right: DS.s8),
-                                    child: ActionChip(
-                                      label: Text(name, style: DS.rowTitle.copyWith(fontSize: 14)),
-                                      backgroundColor: DS.cardMuted,
-                                      side: BorderSide.none,
-                                      shape: const StadiumBorder(),
-                                      onPressed: () {
-                                        HapticFeedback.selectionClick();
-                                        tv.appLink(link);
-                                      },
+                                    padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                                    child: Column(
+                                      children: [
+                                        _Volume(onKey: _press, volume: tv.volume),
+                                        const SizedBox(height: DS.s8),
+                                        _Brightness(prefs: prefs),
+                                      ],
                                     ),
                                   ),
-                              ],
-                            ),
+                                  SizedBox(
+                                    height: 40,
+                                    child: ListView(
+                                      scrollDirection: Axis.horizontal,
+                                      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                                      children: [
+                                        for (final (name, link) in const [
+                                          ('YouTube', 'https://www.youtube.com'),
+                                          ('Netflix', 'https://www.netflix.com/title'),
+                                          ('Prime Video', 'https://app.primevideo.com'),
+                                          ('Disney+', 'https://www.disneyplus.com'),
+                                        ])
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: DS.s8),
+                                            child: ActionChip(
+                                              label: Text(name, style: DS.rowTitle.copyWith(fontSize: 14)),
+                                              backgroundColor: DS.cardMuted,
+                                              side: BorderSide.none,
+                                              shape: const StadiumBorder(),
+                                              onPressed: () {
+                                                HapticFeedback.selectionClick();
+                                                tv.appLink(link);
+                                              },
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
-                        ],
-                      );
-                    },
-                  ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -704,17 +713,18 @@ class _VolumeSliderState extends State<_VolumeSlider> {
   );
 }
 
-/// Type on the TV from the phone keyboard: mirrors the TV's focused field; every change is
-/// sent whole, Enter submits there.
-class _TypeOnTv extends StatefulWidget {
-  const _TypeOnTv({super.key, required this.start, required this.label});
+/// Typing on the TV from the phone keyboard: a big field mirroring the TV's focused one (every
+/// change is sent whole), plus the keys you need while typing — move the cursor, Enter, back.
+class _TypingPanel extends StatefulWidget {
+  const _TypingPanel({super.key, required this.start, required this.label, required this.onKey});
   final String start, label;
+  final void Function(int code, {bool strong}) onKey;
 
   @override
-  State<_TypeOnTv> createState() => _TypeOnTvState();
+  State<_TypingPanel> createState() => _TypingPanelState();
 }
 
-class _TypeOnTvState extends State<_TypeOnTv> {
+class _TypingPanelState extends State<_TypingPanel> {
   late final _text = TextEditingController(text: widget.start)..selection = TextSelection.collapsed(offset: widget.start.length);
 
   @override
@@ -723,42 +733,69 @@ class _TypeOnTvState extends State<_TypeOnTv> {
     super.dispose();
   }
 
+  void _done() => TvRemote.instance.ime.value = null;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s4, DS.s4, DS.s4),
-      decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(DS.rMedia)),
-      child: Row(
-        children: [
-          Icon(Icons.keyboard_rounded, color: DS.heroInk),
-          const SizedBox(width: DS.s12),
-          Expanded(
-            child: TextField(
-              controller: _text,
-              autofocus: true,
-              cursorColor: DS.heroInk,
-              textInputAction: TextInputAction.go,
-              style: DS.rowTitle.copyWith(color: DS.heroInk),
-              onChanged: TvRemote.instance.text,
-              onSubmitted: (_) {
-                TvRemote.instance.key(TvKey.enter);
-                TvRemote.instance.ime.value = null;
-              },
-              decoration: InputDecoration(
-                border: InputBorder.none,
-                hintText: widget.label.isEmpty ? 'Type on your TV' : widget.label,
-                hintStyle: DS.rowSub.copyWith(color: DS.heroInk.withValues(alpha: .6)),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.label.isEmpty ? 'Typing on your TV' : 'Typing on your TV · ${widget.label}', style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+        const SizedBox(height: DS.s8),
+        Container(
+          padding: const EdgeInsets.fromLTRB(DS.s16, DS.s4, DS.s4, DS.s4),
+          decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(DS.rMedia)),
+          child: Row(
+            children: [
+              Icon(Icons.keyboard_rounded, color: DS.heroInk),
+              const SizedBox(width: DS.s12),
+              Expanded(
+                child: TextField(
+                  controller: _text,
+                  autofocus: true,
+                  cursorColor: DS.heroInk,
+                  textInputAction: TextInputAction.go,
+                  style: DS.rowTitle.copyWith(color: DS.heroInk, fontSize: 18),
+                  onChanged: TvRemote.instance.text,
+                  onSubmitted: (_) {
+                    widget.onKey(TvKey.enter);
+                    _done();
+                  },
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Type here — it appears on the TV',
+                    hintStyle: DS.rowSub.copyWith(color: DS.heroInk.withValues(alpha: .6)),
+                  ),
+                ),
               ),
+              IconButton(
+                tooltip: 'Done typing',
+                icon: Icon(Icons.close_rounded, color: DS.heroInk),
+                onPressed: _done,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: DS.s12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => widget.onKey(TvKey.back)),
+            _Round(icon: Icons.chevron_left_rounded, tooltip: 'Cursor left', onTap: () => widget.onKey(TvKey.left)),
+            _Round(icon: Icons.chevron_right_rounded, tooltip: 'Cursor right', onTap: () => widget.onKey(TvKey.right)),
+            _Round(
+              icon: Icons.keyboard_return_rounded,
+              tooltip: 'Enter',
+              onTap: () {
+                widget.onKey(TvKey.enter);
+                _done();
+              },
             ),
-          ),
-          IconButton(
-            tooltip: 'Done typing',
-            icon: Icon(Icons.close_rounded, color: DS.heroInk),
-            onPressed: () => TvRemote.instance.ime.value = null,
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     ),
   );
 }

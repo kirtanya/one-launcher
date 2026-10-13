@@ -6,6 +6,7 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import io.flutter.plugin.common.MethodCall
@@ -300,20 +301,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
                         val st = Pb.parse(m[40]!!.first() as ByteArray)
                         emit("power", mapOf("on" to (((st[1]?.firstOrNull() as? Long) ?: 0) != 0L)))
                     }
-                    m.containsKey(20) -> { // a text field got focus on the TV (IME key inject: app + field)
-                        val k = Pb.parse(m[20]!!.first() as ByteArray)
-                        (k[1]?.firstOrNull() as? ByteArray)?.let { app -> imeCounter = (Pb.parse(app)[1]?.firstOrNull() as? Long) ?: imeCounter }
-                        (k[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) }
-                    }
-                    m.containsKey(22) -> { // the TV asks for a keyboard
-                        val req = Pb.parse(m[22]!!.first() as ByteArray)
-                        (req[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) } ?: emit("ime", mapOf("text" to "", "label" to ""))
-                    }
-                    m.containsKey(21) -> { // the TV edited the field itself: keep our counters in step
-                        val e = Pb.parse(m[21]!!.first() as ByteArray)
-                        imeCounter = (e[1]?.firstOrNull() as? Long) ?: imeCounter
-                        fieldCounter = (e[2]?.firstOrNull() as? Long) ?: fieldCounter
-                    }
+                    m.keys.any { it in 20..22 } -> imeMessage(m)
                     m.containsKey(3) -> emit("error", mapOf("message" to "The TV reported an error"))
                 }
             }
@@ -323,6 +311,37 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
             socket = null
             out = null
             emit("disconnected")
+        }
+    }
+
+    /** Typing messages from the TV: 20 = IME key inject (app + field), 21 = batch edit (the TV's
+     *  own edits: counters), 22 = show keyboard. Logged (tag TvRemote) to debug typing. */
+    private fun imeMessage(m: Map<Int, List<Any>>) {
+        Log.i("TvRemote", "IME in: " + m.mapValues { (_, v) -> v.map { if (it is ByteArray) describe(Pb.parse(it)) else it } })
+        m[20]?.firstOrNull()?.let { raw ->
+            val k = Pb.parse(raw as ByteArray)
+            (k[1]?.firstOrNull() as? ByteArray)?.let { app -> imeCounter = (Pb.parse(app)[1]?.firstOrNull() as? Long) ?: imeCounter }
+            (k[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) }
+        }
+        m[21]?.firstOrNull()?.let { raw ->
+            val e = Pb.parse(raw as ByteArray)
+            imeCounter = (e[1]?.firstOrNull() as? Long) ?: imeCounter
+            fieldCounter = (e[2]?.firstOrNull() as? Long) ?: fieldCounter
+        }
+        m[22]?.firstOrNull()?.let { raw ->
+            val req = Pb.parse(raw as ByteArray)
+            (req[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) } ?: emit("ime", mapOf("text" to "", "label" to ""))
+        }
+        Log.i("TvRemote", "IME counters now ime=$imeCounter field=$fieldCounter")
+    }
+
+    /** Readable dump of a parsed message (nested messages tried as messages, else text). */
+    private fun describe(m: Map<Int, List<Any>>): String = m.entries.joinToString(", ", "{", "}") { (k, v) ->
+        "$k=" + v.joinToString("|") { x ->
+            if (x is ByteArray) {
+                val s = x.toString(Charsets.UTF_8)
+                if (s.all { it.isLetterOrDigit() || it in " .-_:/" }) "\"$s\"" else try { describe(Pb.parse(x)) } catch (_: Exception) { "bytes(${x.size})" }
+            } else x.toString()
         }
     }
 
@@ -339,6 +358,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         val pos = (value.length - 1).toLong()
         val obj = Pb().int(1, pos).int(2, pos).str(3, value)
         val edit = Pb().int(1, 1).msg(2, obj)
+        Log.i("TvRemote", "IME out: ime=$imeCounter field=$fieldCounter text=\"$value\"")
         write(Pb().msg(21, Pb().int(1, imeCounter).int(2, fieldCounter).msg(3, edit)))
         return true
     }
