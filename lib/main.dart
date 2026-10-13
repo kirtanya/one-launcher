@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'home.dart';
+import 'tiles/tiles_home.dart';
 import 'prefs.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
@@ -96,7 +97,13 @@ class _OneLauncherState extends State<OneLauncher> {
               child: child,
             )
           : child!,
-      home: HomeScreen(prefs: prefs, theme: theme),
+      // The home view the user picked (Settings → Look → Home view).
+      home: ListenableBuilder(
+        listenable: prefs,
+        builder: (context, _) => prefs.homeView == 'tiles'
+            ? TilesHome(key: const ValueKey('tiles'), prefs: prefs, theme: theme)
+            : HomeScreen(key: const ValueKey('classic'), prefs: prefs, theme: theme),
+      ),
     );
   }
 }

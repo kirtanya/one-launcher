@@ -480,6 +480,54 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Which home screen: 'classic' (clock on top, app drawer below) or 'tiles' (Start tiles +
+  /// app list, Lumia-style).
+  String get homeView => _sp.getString('homeView') ?? 'classic';
+  Future<void> setHomeView(String v) async {
+    await _sp.setString('homeView', v);
+    notifyListeners();
+  }
+
+  /// Tiles on the Start screen, in order: [{id: 'app:<package>' | 'clock', size: 's'|'m'|'w'}].
+  /// Null until the user (or the first Tiles launch) sets them.
+  List<Map<String, dynamic>>? get tiles {
+    final raw = _sp.getString('tiles');
+    if (raw == null) return null;
+    return [for (final t in jsonDecode(raw) as List) Map<String, dynamic>.from(t as Map)];
+  }
+
+  Future<void> setTiles(List<Map<String, dynamic>> v) async {
+    await _sp.setString('tiles', jsonEncode(v));
+    notifyListeners();
+  }
+
+  /// Start screen grid: 4 or 6 columns; tile opacity (wallpaper shows through below 1);
+  /// names on bigger tiles; 'glyph' (themed white glyphs) or 'icon' (full-colour icons).
+  int get tileColumns => _sp.getInt('tileColumns') ?? 4;
+  double get tileOpacity => (_sp.getDouble('tileOpacity') ?? 1).clamp(.3, 1);
+  bool get tileLabels => _sp.getBool('tileLabels') ?? true;
+  String get tileIcons => _sp.getString('tileIcons') ?? 'glyph';
+  Future<void> setTileLook({int? columns, double? opacity, bool? labels, String? icons}) async {
+    if (columns != null) await _sp.setInt('tileColumns', columns);
+    if (opacity != null) await _sp.setDouble('tileOpacity', opacity.clamp(.3, 1));
+    if (labels != null) await _sp.setBool('tileLabels', labels);
+    if (icons != null) await _sp.setString('tileIcons', icons);
+    notifyListeners();
+  }
+
+  /// Start over with the default tiles (next time Tiles opens).
+  Future<void> resetTiles() async {
+    await _sp.remove('tiles');
+    notifyListeners();
+  }
+
+  /// Tile colours: 'accent' (all in the theme's accent, Lumia-like) or 'colourful' (each app's own).
+  String get tileColours => _sp.getString('tileColours') ?? 'accent';
+  Future<void> setTileColours(String v) async {
+    await _sp.setString('tileColours', v);
+    notifyListeners();
+  }
+
   /// Pull down on the app drawer (when it can't scroll further) to open search.
   bool get pullToSearch => _sp.getBool('pullToSearch') ?? true;
   Future<void> setPullToSearch(bool v) async {

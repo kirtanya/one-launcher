@@ -104,6 +104,14 @@ class MainActivity : FlutterActivity() {
                     val apps = loadApps()
                     main.post { result.success(apps) }
                 }
+                // Themed (monochrome) icon for Tiles: the app's own one-colour glyph, white.
+                "getMonoIcon" -> {
+                    val pkg = call.argument<String>("package")!!
+                    worker.execute {
+                        val bytes = loadMonoIcon(pkg)
+                        main.post { result.success(bytes) }
+                    }
+                }
                 "getIcon" -> {
                     val pkg = call.argument<String>("package")!!
                     worker.execute {
@@ -305,6 +313,31 @@ class MainActivity : FlutterActivity() {
         d.setBounds(0, 0, size, size)
         d.draw(Canvas(bmp))
         ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    } catch (e: Exception) {
+        null
+    }
+
+    /** The app's monochrome icon layer (Android 13+ themed icons), white, or null if it has none. */
+    private fun loadMonoIcon(id: String): ByteArray? = try {
+        if (Build.VERSION.SDK_INT < 33) {
+            null
+        } else {
+            val (info, _) = activityFor(id)
+            val d = info?.getIcon(0)
+            val mono = (d as? android.graphics.drawable.AdaptiveIconDrawable)?.monochrome
+            if (mono == null) {
+                null
+            } else {
+                val size = 144
+                val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                // Adaptive layers are 108dp with the visible 72dp in the middle: crop to that.
+                val pad = size / 4
+                mono.setBounds(-pad, -pad, size + pad, size + pad)
+                mono.setTint(android.graphics.Color.WHITE)
+                mono.draw(Canvas(bmp))
+                ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+            }
+        }
     } catch (e: Exception) {
         null
     }

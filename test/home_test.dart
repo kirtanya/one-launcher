@@ -93,9 +93,9 @@ void main() {
     expect(clock.hitTestable(), findsOneWidget);
     expect(find.text('Most used'), findsNothing, reason: 'green card has no header now');
     expect(find.text('Figma'), findsOneWidget, reason: 'most-used app shows in it');
-    // Pinned first: WhatsApp & Slack (pinned) come before Figma (most used), with pin badges.
+    // Pinned first: WhatsApp & Slack (pinned) come before Figma (most used); no pin badge on them.
     expect(tester.getTopLeft(find.text('WhatsApp').first).dx, lessThan(tester.getTopLeft(find.text('Figma')).dx));
-    expect(find.byIcon(Icons.push_pin), findsNWidgets(2));
+    expect(find.byIcon(Icons.push_pin), findsNothing);
     expect(find.byTooltip('Customise pinned & most used'), findsOneWidget);
     expect(find.text('Search 20 apps'), findsOneWidget, reason: 'dock starts as a full bar');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1_rest.png'));

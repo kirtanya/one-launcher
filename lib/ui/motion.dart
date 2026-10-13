@@ -61,6 +61,7 @@ class _PressableState extends State<Pressable> with SingleTickerProviderStateMix
   late final AnimationController _c = AnimationController.unbounded(vsync: this, value: 1);
 
   void _to(double target, {bool spring = false}) {
+    if (!mounted) return; // a pointer can still be up after its tile rebuilt away (e.g. long-press → edit)
     if (spring) {
       _c.animateWith(SpringSimulation(Motion.small, _c.value, target, _c.velocity));
     } else {

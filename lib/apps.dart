@@ -118,6 +118,19 @@ class Apps {
     });
   }
 
+  /// The app's white one-colour glyph (Android 13+ themed icon), or null if it has none.
+  final _mono = <String, Future<Uint8List?>>{};
+  Future<Uint8List?> monoIcon(String package) {
+    if (isDemo) return Future.value(null);
+    return _mono.putIfAbsent(package, () async {
+      try {
+        return await _ch.invokeMethod<Uint8List>('getMonoIcon', {'package': package});
+      } catch (_) {
+        return null;
+      }
+    });
+  }
+
   /// Where the tapped icon is (screen pixels: left, top, width, height), so the app opens
   /// growing out of it. Set by [markLaunchFrom] just before launching; used once.
   List<int>? _launchFrom;

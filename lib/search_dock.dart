@@ -28,10 +28,14 @@ class SearchDock extends StatelessWidget {
     this.inline = false,
     this.onSwipeClose,
     this.onRemote,
+    this.onRemoteLongPress,
   });
 
   /// TV remote button between the bar and settings (null = hidden, Settings → TV remote).
   final VoidCallback? onRemote;
+
+  /// Long-press on the remote button (offer to hide it).
+  final VoidCallback? onRemoteLongPress;
 
   /// Swiped down on the bar while searching (defaults to [onClose]).
   final VoidCallback? onSwipeClose;
@@ -128,7 +132,7 @@ class SearchDock extends StatelessWidget {
                     slide(
                       right: tools ? _slot : -_slot,
                       shown: tools,
-                      child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!),
+                      child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!, onLongPress: onRemoteLongPress),
                     ),
                   slide(
                     right: tools ? 0 : -_slot,
@@ -156,10 +160,11 @@ class SearchDock extends StatelessWidget {
 
 /// White floating circle with a soft shadow, matching the search pill.
 class _DockCircle extends StatelessWidget {
-  const _DockCircle({required this.icon, required this.tooltip, required this.onTap});
+  const _DockCircle({required this.icon, required this.tooltip, required this.onTap, this.onLongPress});
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +180,7 @@ class _DockCircle extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: onTap,
+              onLongPress: onLongPress,
               child: Icon(icon, color: DS.ink),
             ),
           ),

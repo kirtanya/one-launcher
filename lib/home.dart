@@ -162,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onSubmitted: _onSubmit,
     onSettings: _settings,
     onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+    onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
   );
 
   @override

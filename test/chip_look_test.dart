@@ -30,6 +30,8 @@ void main() {
 
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Quick chips'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Quick chips'));
     await tester.pumpAndSettle();
     expect(find.text('Dark · 40% · Pill'), findsOneWidget);

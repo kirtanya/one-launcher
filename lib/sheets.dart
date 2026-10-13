@@ -1314,6 +1314,14 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             // Look
             _Setting(
               'Look',
+              Icons.space_dashboard_outlined,
+              'Home view',
+              prefs.homeView == 'tiles' ? 'Tiles · Start + all apps A–Z' : 'Classic · clock on top, apps below',
+              keywords: 'tiles lumia windows start grid classic layout view face',
+              open: (c) => _showHomeView(c, prefs: prefs),
+            ),
+            _Setting(
+              'Look',
               Icons.palette_outlined,
               'Colours & style',
               '$source · $style · $cards',
@@ -1473,6 +1481,140 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
     ),
   );
 }
+
+/// Settings → Look → Home view (page): Classic or Tiles, and everything about the tiles.
+Future<Object?> _showHomeView(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  height: drawerHeight(context, prefs),
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final tiles = prefs.homeView == 'tiles';
+      Widget option(String id, IconData icon, String title, String sub) {
+        final on = prefs.homeView == id;
+        return Expanded(
+          child: Material(
+            color: on ? DS.hero : DS.cardMuted,
+            borderRadius: BorderRadius.circular(DS.rMedia),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                prefs.setHomeView(id);
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(DS.s16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(icon, size: 32, color: on ? DS.heroInk : DS.ink),
+                    const SizedBox(height: DS.s12),
+                    Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
+                    const SizedBox(height: 2),
+                    Text(sub, style: DS.rowSub.copyWith(fontSize: 12, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      Widget label(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s20, DS.s24, DS.s8),
+        child: Text(t, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+      );
+      Widget chips(List<(String, String)> options, String current, ValueChanged<String> pick) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+        child: Wrap(
+          spacing: DS.s8,
+          runSpacing: DS.s8,
+          children: [
+            for (final (id, name) in options)
+              _Chip(
+                label: name,
+                selected: current == id,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  pick(id);
+                },
+              ),
+          ],
+        ),
+      );
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+            child: SheetHeader(title: 'Home view', subtitle: 'The face of your launcher'),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  option('classic', Icons.view_agenda_outlined, 'Classic', 'Clock on top, app drawer with folders below'),
+                  const SizedBox(width: DS.s12),
+                  option('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
+                ],
+              ),
+            ),
+          ),
+          if (tiles) ...[
+            label('Tile colours'),
+            chips(const [('accent', 'Accent'), ('colourful', 'Each app’s colour')], prefs.tileColours, prefs.setTileColours),
+            label('Columns'),
+            chips(const [('4', '4 · bigger tiles'), ('6', '6 · more tiles')], '${prefs.tileColumns}', (v) => prefs.setTileLook(columns: int.parse(v))),
+            label('Icons'),
+            chips(const [('glyph', 'Themed glyphs'), ('icon', 'App icons')], prefs.tileIcons, (v) => prefs.setTileLook(icons: v)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s20, DS.s24, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Tile transparency', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                  ),
+                  Text(prefs.tileOpacity >= .99 ? 'Solid' : '${((1 - prefs.tileOpacity) * 100).round()}% see-through', style: DS.rowSub),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+              child: Slider(
+                value: (1 - prefs.tileOpacity).clamp(0, .7),
+                max: .7,
+                divisions: 14,
+                activeColor: DS.ink,
+                inactiveColor: DS.cardMuted,
+                thumbColor: DS.ink,
+                onChanged: (x) => prefs.setTileLook(opacity: 1 - x),
+              ),
+            ),
+            _Group(null, [
+              _SwitchRow(Icons.label_outline_rounded, 'Names on tiles', 'On medium and bigger tiles', prefs.tileLabels, (v) => prefs.setTileLook(labels: v)),
+              _NavRow(Icons.restart_alt_rounded, 'Reset Start', 'Back to the starting tiles', () {
+                HapticFeedback.mediumImpact();
+                prefs.resetTiles();
+              }),
+            ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0),
+              child: Text(
+                'On Start, long-press a tile to resize, recolour, unpin or drag it. In all apps, long-press an app to pin it.',
+                style: DS.rowSub.copyWith(fontSize: 13),
+              ),
+            ),
+          ],
+          const SizedBox(height: DS.s16),
+        ],
+      );
+    },
+  ),
+);
 
 /// Settings → Your TV (page): remote button on/off, the paired TV, forget it, open the remote.
 Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, required BuildContext home}) => showOneSheetWith(

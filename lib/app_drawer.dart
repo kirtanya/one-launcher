@@ -1108,28 +1108,7 @@ class _GridApp extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: DS.s8, horizontal: DS.s4),
           child: Column(
             children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  AppIcon(app, size: DS.appIcon),
-                  // Small ink pin badge on pinned apps.
-                  if (pinned)
-                    Positioned(
-                      right: -4,
-                      top: -4,
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: DS.ink,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: DS.hero, width: 2),
-                        ),
-                        child: Icon(Icons.push_pin, size: 11, color: DS.card),
-                      ),
-                    ),
-                ],
-              ),
+              AppIcon(app, size: DS.appIcon), // no pin badge: pinning stays in the long-press menu
               const SizedBox(height: 6),
               Text(
                 app.label,
