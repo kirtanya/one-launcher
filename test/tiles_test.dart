@@ -235,9 +235,12 @@ void main() {
   testWidgets('Tiles: the quick-actions row is one full-width group — no box, moves as one, customise inside', (tester) async {
     final calls = <MethodCall>[];
     final prefs = await _setUp(tester, {'homeView': 'tiles'}, calls: calls);
-    expect(find.byType(QuickChip), findsAtLeast(2), reason: 'the default quick actions, on Start (scrolls sideways)');
-    final row = tester.getRect(find.byType(QuickChipsRow));
-    expect(row.width, greaterThan(300), reason: 'full width');
+    expect(find.byType(QuickChip), findsNothing, reason: 'drawn as tiles, not classic chips');
+    expect(find.text('Set timer'), findsOneWidget);
+    // Each chip is a tile filling the row's height — no extra space above or below.
+    final timer = tester.getRect(find.ancestor(of: find.text('Set timer'), matching: find.byType(Material)).first);
+    final amazon = tester.getRect(find.ancestor(of: find.text('Amazon'), matching: find.byType(Material)).first);
+    expect(timer.height, closeTo(amazon.height / 2 - 3, 2), reason: 'one tile row high (a medium tile is two)');
     // Tap a chip → runs it.
     await tester.tap(find.text('Set timer'));
     await tester.pumpAndSettle();
@@ -254,7 +257,7 @@ void main() {
     await tester.pumpAndSettle();
     final ids = [for (final t in _tiles(prefs)) t.id];
     expect(ids.indexOf('chips'), greaterThan(2), reason: 'row moved down: $ids');
-    expect(find.byType(QuickChip), findsAtLeast(2), reason: 'still one row with its chips');
+    expect(find.text('Set timer'), findsOneWidget, reason: 'still one row with its chips');
     // Edit mode: the row offers Customise (arrange / add inside), not resize or colour.
     expect(find.byTooltip('Customise quick actions'), findsWidgets);
     expect(find.byTooltip('Resize'), findsNothing);

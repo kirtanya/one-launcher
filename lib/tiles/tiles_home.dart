@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../quick_actions.dart';
-import '../quick_chips.dart' show ShortcutIcon, QuickChipsRow;
+import '../quick_chips.dart' show ShortcutIcon;
 import '../photo_wallpaper.dart';
 import '../prefs.dart';
 import '../remote_sheet.dart';
@@ -529,16 +529,14 @@ class _StartPage extends StatelessWidget {
                                         onTap: editing ? () => onEdit(t.id) : () => onLaunch(apps[t.package]!),
                                       )
                                     : t.isChips
-                                    // No tile behind it: the chips look as on the classic home. In edit
+                                    // No box around the group: each chip is a tile of its own. In edit
                                     // mode a tap selects the group (long-press anywhere on it moves it).
                                     ? GestureDetector(
                                         behavior: HitTestBehavior.opaque,
                                         onTap: editing ? () => onEdit(t.id) : null,
                                         child: IgnorePointer(
                                           ignoring: editing,
-                                          child: Center(
-                                            child: QuickChipsRow(prefs: prefs, padding: EdgeInsets.zero, chipLongPress: false),
-                                          ),
+                                          child: _ChipsRowTile(tile: t, prefs: prefs),
                                         ),
                                       )
                                     : t.isAction
@@ -663,7 +661,7 @@ class _EditableTile extends StatelessWidget {
               top: -8,
               child: _EditButton(icon: Icons.push_pin_outlined, tooltip: 'Unpin', onTap: onUnpin),
             ),
-            if (tile.isChips)
+            if (tile.isChips) ...[
               Positioned(
                 right: 36,
                 top: -8,
@@ -672,8 +670,13 @@ class _EditableTile extends StatelessWidget {
                   tooltip: 'Customise quick actions',
                   onTap: () => showCustomiseChips(context, prefs: prefs),
                 ),
-              )
-            else ...[
+              ),
+              Positioned(
+                left: -8,
+                bottom: -8,
+                child: _EditButton(icon: Icons.palette_outlined, tooltip: 'Tile colour', onTap: onRecolour),
+              ),
+            ] else ...[
               Positioned(
                 right: -8,
                 bottom: -8,
@@ -860,16 +863,7 @@ class _ActionTile extends StatelessWidget {
     Widget face(bool on) => _TileFace(
       tile: tile,
       prefs: prefs,
-      onTap:
-          onTap ??
-          () async {
-            HapticFeedback.selectionClick();
-            if (id == 'b:remote') return showTvRemote(context, prefs: prefs); // ours, not the phone's
-            final ok = await Apps.instance.quickAction(id);
-            if (!ok && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
-            }
-          },
+      onTap: onTap ?? () => runQuickAction(context, prefs, id, label),
       child: Stack(
         children: [
           Center(
@@ -903,6 +897,105 @@ class _ActionTile extends StatelessWidget {
     );
     if (id != 'b:torch') return face(false);
     return ValueListenableBuilder<bool>(valueListenable: Apps.instance.torchOn, builder: (context, on, _) => face(on));
+  }
+}
+
+/// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
+Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
+  HapticFeedback.selectionClick();
+  if (id == 'b:remote') return showTvRemote(context, prefs: prefs);
+  final ok = await Apps.instance.quickAction(id);
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
+  }
+}
+
+/// The quick-actions row on Start: the classic chips, drawn as tiles — the row's colour and
+/// transparency, the Start corner radius, white icon + name — filling the row's height, with
+/// the tile gap between them. Scrolls sideways when they don't fit; ＋ at the end to customise.
+class _ChipsRowTile extends StatelessWidget {
+  const _ChipsRowTile({required this.tile, required this.prefs});
+  final TileSpec tile;
+  final Prefs prefs;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = prefs.quickLabels;
+    final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).toList();
+    final radius = BorderRadius.circular(prefs.tileRadius);
+    Widget chip(String id, bool on) {
+      final builtIn = builtInActions[id];
+      final label = builtIn?.$1 ?? labels[id]!.split('|').first;
+      return Pressable(
+        scale: .95,
+        child: FutureBuilder<Color>(
+          future: tileColour(tile, prefs),
+          builder: (context, snap) => Material(
+            color: snap.data ?? tileAccent().withValues(alpha: prefs.tileOpacity),
+            borderRadius: radius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => runQuickAction(context, prefs, id, label),
+              splashColor: Colors.white24,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                foregroundDecoration: on
+                    ? BoxDecoration(
+                        border: Border.all(color: Colors.white, width: 3),
+                        borderRadius: radius,
+                      )
+                    : null,
+                alignment: Alignment.center,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    builtIn != null
+                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 22, color: Colors.white)
+                        : ShortcutIcon(id: id, size: 22, color: Colors.white),
+                    const SizedBox(width: DS.s8),
+                    Text(
+                      label,
+                      style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      scrollDirection: Axis.horizontal,
+      children: [
+        for (final id in ids) ...[
+          id == 'b:torch' ? ValueListenableBuilder<bool>(valueListenable: Apps.instance.torchOn, builder: (context, on, _) => chip(id, on)) : chip(id, false),
+          const SizedBox(width: _StartPage.gap),
+        ],
+        // ＋ : arrange the chips and add more (the same sheet as the classic view).
+        Tooltip(
+          message: 'Customise quick actions',
+          child: InkWell(
+            borderRadius: radius,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              showCustomiseChips(context, prefs: prefs);
+            },
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.white70, width: 1.5),
+                  borderRadius: radius,
+                ),
+                child: const Icon(Icons.add_rounded, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
