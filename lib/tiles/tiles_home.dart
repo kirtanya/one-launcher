@@ -12,7 +12,7 @@ import '../apps.dart';
 import '../search.dart';
 import '../system_settings.dart';
 import '../quick_actions.dart';
-import '../quick_chips.dart' show ShortcutIcon;
+import '../quick_chips.dart' show ShortcutIcon, ChipLook;
 import '../photo_wallpaper.dart';
 import '../prefs.dart';
 import '../remote_sheet.dart';
@@ -71,6 +71,9 @@ class TileSpec {
     'l' => (4, 4),
     _ => (2, 2),
   };
+
+  /// The sizes this tile can take, smallest first (the clock has no small).
+  List<String> get sizes => id == 'clock' ? const ['m', 'w', 'l'] : const ['s', 'm', 'w', 'l'];
 
   /// The quick-actions row: one group across the whole width.
   bool get isChips => id == 'chips';
@@ -359,16 +362,14 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     if (_selected == id) _selected = null;
   }
 
-  Future<void> _resize(TileSpec t) async {
+  /// One size bigger ([step] 1) or smaller (−1): small · medium · wide · large (the clock
+  /// starts at medium).
+  Future<void> _resize(TileSpec t, int step) async {
+    final order = t.sizes;
+    final i = (order.indexOf(t.size) + step).clamp(0, order.length - 1);
+    if (order[i] == t.size) return;
     HapticFeedback.selectionClick();
-    // small → medium → wide → large → small (the clock has no small).
-    final next = switch (t.size) {
-      's' => 'm',
-      'm' => 'w',
-      'w' => 'l',
-      _ => t.id == 'clock' ? 'm' : 's',
-    };
-    await _save([for (final x in _tiles) x.id == t.id ? x.resized(next) : x]);
+    await _save([for (final x in _tiles) x.id == t.id ? x.resized(order[i]) : x]);
   }
 
   Future<void> _recolour(TileSpec t) async {
@@ -644,12 +645,12 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
 /// Start's rows: tiles' rows are a tile unit tall; the quick-actions row is shorter (its chips
 /// are smaller than app tiles). Tops and heights in grid pixels.
 class _Rows {
-  _Rows(List<(TileSpec, int, int)> placed, this.unit)
+  _Rows(List<(TileSpec, int, int)> placed, this.unit, {double chipScale = 1})
     : short = {
         for (final (t, _, r) in placed)
           if (t.isChips) r,
       },
-      chip = math.max(44, unit * .55);
+      chip = math.max(44, unit * .55 * chipScale);
   final double unit, chip;
   final Set<int> short;
   static const gap = _StartPage.gap;
@@ -717,7 +718,8 @@ class _StartPage extends StatelessWidget {
   final ValueChanged<AppEntry> onLaunch;
   final VoidCallback onOpenClock, onDone, onAllApps, onSettings, onDoubleTap;
   final ValueChanged<String> onEdit, onUnpin;
-  final ValueChanged<TileSpec> onResize, onRecolour;
+  final void Function(TileSpec tile, int step) onResize;
+  final ValueChanged<TileSpec> onRecolour;
   final Future<void> Function(String dragged, String target) onMove;
 
   static const gap = 6.0, side = 12.0;
@@ -806,7 +808,8 @@ class _StartPage extends StatelessWidget {
         ];
         final placed = packTiles(shown, cols: cols);
         final rows = placed.fold<int>(0, (m, p) => math.max(m, p.$3 + p.$1.spanIn(cols).$2));
-        final grid = _Rows(placed, unit);
+        // The chips row's height follows Quick actions → Chip look → Size.
+        final grid = _Rows(placed, unit, chipScale: const {'small': .82, 'large': 1.3}[ChipLook.of(prefs).size] ?? 1);
         final height = rows == 0 ? 0.0 : grid.span(0, rows);
         final start = GestureDetector(
           behavior: HitTestBehavior.translucent,
@@ -888,7 +891,8 @@ class _StartPage extends StatelessWidget {
                                         selected: selected == t.id,
                                         onEdit: () => onEdit(t.id),
                                         onUnpin: () => onUnpin(t.id),
-                                        onResize: () => onResize(t),
+                                        onGrow: () => onResize(t, 1),
+                                        onShrink: () => onResize(t, -1),
                                         onRecolour: () => onRecolour(t),
                                         onMore: t.isApp ? () => showTileMenu(context, prefs, apps[t.package]!) : (t.isFolder ? () => onFolderMenu(t) : null),
                                         child: t.isFolder
@@ -1018,7 +1022,8 @@ class _EditableTile extends StatelessWidget {
     required this.selected,
     required this.onEdit,
     required this.onUnpin,
-    required this.onResize,
+    required this.onGrow,
+    required this.onShrink,
     required this.onRecolour,
     required this.prefs,
     required this.child,
@@ -1030,7 +1035,7 @@ class _EditableTile extends StatelessWidget {
   final Prefs prefs;
   final TileSpec tile;
   final bool editing, selected;
-  final VoidCallback onEdit, onUnpin, onResize, onRecolour;
+  final VoidCallback onEdit, onUnpin, onGrow, onShrink, onRecolour;
   final Widget child;
 
   @override
@@ -1107,11 +1112,19 @@ class _EditableTile extends StatelessWidget {
                 child: _EditButton(icon: Icons.palette_outlined, tooltip: 'Tile colour', onTap: onRecolour),
               ),
             ] else ...[
-              Positioned(
-                right: -8,
-                bottom: -8,
-                child: _EditButton(icon: Icons.open_in_full_rounded, tooltip: 'Resize', onTap: onResize),
-              ),
+              // Grow / shrink one size at a time (each hides at its limit).
+              if (tile.size != tile.sizes.last)
+                Positioned(
+                  right: -8,
+                  bottom: -8,
+                  child: _EditButton(icon: Icons.add_rounded, tooltip: 'Bigger', onTap: onGrow),
+                ),
+              if (tile.size != tile.sizes.first)
+                Positioned(
+                  right: tile.size == tile.sizes.last ? -8 : 40,
+                  bottom: -8,
+                  child: _EditButton(icon: Icons.remove_rounded, tooltip: 'Smaller', onTap: onShrink),
+                ),
               Positioned(
                 left: -8,
                 bottom: -8,
@@ -1917,6 +1930,8 @@ class _ChipsRowTile extends StatelessWidget {
     final labels = prefs.quickLabels;
     final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).toList();
     final radius = BorderRadius.circular(prefs.tileRadius);
+    final look = ChipLook.of(prefs);
+    final scale = const {'small': .9, 'large': 1.2}[look.size] ?? 1.0;
     Widget chip(String id, bool on) {
       final builtIn = builtInActions[id];
       final label = builtIn?.$1 ?? labels[id]!.split('|').first;
@@ -1939,15 +1954,18 @@ class _ChipsRowTile extends StatelessWidget {
               alignment: Alignment.center,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
+                // Chip look → Show / Size (Tiles keeps its own chip look).
                 children: [
-                  builtIn != null
-                      ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18, color: Colors.white)
-                      : ShortcutIcon(id: id, size: 18, color: Colors.white),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
+                  if (look.content != 'text')
+                    builtIn != null
+                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18 * scale, color: Colors.white)
+                        : ShortcutIcon(id: id, size: 18 * scale, color: Colors.white),
+                  if (look.content == 'both') const SizedBox(width: 6),
+                  if (look.content != 'icon')
+                    Text(
+                      label,
+                      style: TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13 * scale, fontWeight: FontWeight.w500),
+                    ),
                 ],
               ),
             ),

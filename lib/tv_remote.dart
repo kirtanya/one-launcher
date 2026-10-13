@@ -107,13 +107,46 @@ class TvRemote {
     }
   }
 
-  /// Types on the TV: replaces its focused field with [text].
+  /// What the typing panel last sent (to turn changes into key presses).
+  String _typed = '';
+
+  /// The typing panel opened on [start] (the TV field's current text).
+  void startTyping(String start) => _typed = start;
+
+  /// Types on the TV: replaces its focused field with [text] through the TV's keyboard
+  /// protocol. If the TV didn't give us its field (some only name the app), types the change
+  /// as key presses instead — Delete for removed letters, a key per new character.
   Future<void> text(String text) async {
+    final before = _typed;
+    _typed = text;
     try {
-      await _ch.invokeMethod('tvText', {'text': text});
+      final viaIme = await _ch.invokeMethod<bool>('tvText', {'text': text}) ?? false;
+      if (viaIme) return;
+      var same = 0;
+      while (same < before.length && same < text.length && before[same] == text[same]) {
+        same++;
+      }
+      for (var i = same; i < before.length; i++) {
+        await key(TvKey.delete);
+      }
+      for (final ch in text.substring(same).split('')) {
+        final code = keyFor(ch);
+        if (code != null) await key(code);
+      }
     } catch (e) {
       error.value = _why(e);
     }
+  }
+
+  /// Android key code for a typed character (letters, digits, common symbols), or null.
+  static int? keyFor(String ch) {
+    final c = ch.toLowerCase();
+    final u = c.codeUnitAt(0);
+    if (u >= 97 && u <= 122) return 29 + (u - 97); // a–z
+    if (u >= 48 && u <= 57) return 7 + (u - 48); // 0–9
+    return const {
+      ' ': 62, '.': 56, ',': 55, '-': 69, '=': 70, '[': 71, ']': 72, '\\': 73, ';': 74, "'": 75, '/': 76, '@': 77, '+': 81, '*': 17, '#': 18, //
+    }[c];
   }
 
   /// Volume to [target] (0…max): the protocol only has volume keys, so press up/down the

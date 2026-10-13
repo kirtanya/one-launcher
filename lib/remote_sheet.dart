@@ -214,7 +214,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                     hintStyle: DS.rowSub,
                     filled: true,
                     fillColor: DS.cardMuted,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : DS.s24), borderSide: BorderSide.none),
                   ),
                 ),
               ),
@@ -244,6 +244,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 children: [
                   Expanded(
                     child: SheetHeader(
+                      yours: true, // the TV's own name
                       title: prefs.tvName,
                       subtitle: switch (status) {
                         TvStatus.connected => 'Connected',
@@ -343,7 +344,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                                               label: Text(name, style: DS.rowTitle.copyWith(fontSize: 14)),
                                               backgroundColor: DS.cardMuted,
                                               side: BorderSide.none,
-                                              shape: const StadiumBorder(),
+                                              shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
                                               onPressed: () {
                                                 HapticFeedback.selectionClick();
                                                 tv.appLink(link);
@@ -435,16 +436,17 @@ class _Primary extends StatelessWidget {
     height: 52,
     width: compact ? null : double.infinity,
     child: FilledButton(
+      // Classic: an ink pill. Metro (Tiles): a flat accent box, lowercase.
       style: FilledButton.styleFrom(
-        backgroundColor: DS.ink,
-        foregroundColor: DS.card,
-        shape: const StadiumBorder(),
+        backgroundColor: DS.metro ? DS.hero : DS.ink,
+        foregroundColor: DS.metro ? Colors.white : DS.card,
+        shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: DS.s24),
       ),
       onPressed: onTap,
       child: Text(
-        label,
-        style: DS.rowTitle.copyWith(color: DS.card, fontWeight: FontWeight.w600),
+        DS.cased(label),
+        style: DS.rowTitle.copyWith(color: DS.metro ? Colors.white : DS.card, fontWeight: DS.metro ? FontWeight.w400 : FontWeight.w600),
       ),
     ),
   );
@@ -465,7 +467,8 @@ class _Round extends StatelessWidget {
       scale: .9,
       child: Material(
         color: danger ? DS.alert.withValues(alpha: .14) : DS.cardMuted,
-        shape: const CircleBorder(),
+        // Metro: square tiles (the tile corner setting) instead of circles.
+        shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -502,7 +505,10 @@ class _DPad extends StatelessWidget {
     return SizedBox.square(
       dimension: size,
       child: DecoratedBox(
-        decoration: BoxDecoration(color: DS.cardMuted, shape: BoxShape.circle),
+        // Metro: a square pad (tile corners); Classic: round.
+        decoration: DS.metro
+            ? BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.rCard))
+            : BoxDecoration(color: DS.cardMuted, shape: BoxShape.circle),
         child: Stack(
           children: [
             arrow(Alignment.topCenter, Icons.keyboard_arrow_up_rounded, TvKey.up, 'Up'),
@@ -515,8 +521,8 @@ class _DPad extends StatelessWidget {
                 child: Pressable(
                   scale: .92,
                   child: Material(
-                    color: DS.ink,
-                    shape: const CircleBorder(),
+                    color: DS.metro ? DS.hero : DS.ink,
+                    shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
                       onTap: () => onKey(TvKey.ok, strong: true),
@@ -524,8 +530,12 @@ class _DPad extends StatelessWidget {
                         dimension: ok,
                         child: Center(
                           child: Text(
-                            'OK',
-                            style: DS.rowTitle.copyWith(color: DS.card, fontWeight: FontWeight.w600),
+                            DS.cased('OK'),
+                            style: DS.rowTitle.copyWith(
+                              color: DS.metro ? Colors.white : DS.card,
+                              fontWeight: DS.metro ? FontWeight.w300 : FontWeight.w600,
+                              fontSize: DS.metro ? 22 : null,
+                            ),
                           ),
                         ),
                       ),
@@ -583,7 +593,7 @@ class _Volume extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height: 64,
     padding: const EdgeInsets.symmetric(horizontal: DS.s4),
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(32)),
+    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 32)),
     child: ValueListenableBuilder<(int, int, bool)?>(
       valueListenable: volume,
       builder: (context, v, _) => Row(
@@ -653,7 +663,7 @@ class _BrightnessState extends State<_Brightness> {
   Widget build(BuildContext context) => Container(
     height: 64,
     padding: const EdgeInsets.symmetric(horizontal: DS.s4),
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(32)),
+    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 32)),
     child: Row(
       children: [
         Tooltip(
@@ -745,6 +755,12 @@ class _TypingPanel extends StatefulWidget {
 
 class _TypingPanelState extends State<_TypingPanel> {
   late final _text = TextEditingController(text: widget.start)..selection = TextSelection.collapsed(offset: widget.start.length);
+
+  @override
+  void initState() {
+    super.initState();
+    TvRemote.instance.startTyping(widget.start);
+  }
 
   @override
   void dispose() {

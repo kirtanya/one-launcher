@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/apps.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
+import 'package:one_launcher/tv_remote.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -74,9 +75,34 @@ void main() {
     await tester.pump();
     final sent = calls.lastWhere((c) => c.method == 'tvText');
     expect((sent.arguments as Map)['text'], 'stranger things');
+    // This TV gave no text field (tvText → not sent): the letters went as key presses instead.
+    final keys = [for (final c in calls.where((c) => c.method == 'tvKey')) (c.arguments as Map)['code']];
+    expect(keys, containsAllInOrder([TvRemote.keyFor('n'), TvRemote.keyFor('g'), TvRemote.keyFor(' '), TvRemote.keyFor('t')]), reason: 'typed as keys');
     await tester.testTextInput.receiveAction(TextInputAction.go);
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'tvKey' && (c.arguments as Map)['code'] == 66), isNotEmpty, reason: 'Enter submits on the TV');
     expect(find.byTooltip('Done typing'), findsNothing);
+  });
+
+  testWidgets('remote in the Tiles view speaks Metro: square pad, accent OK, square buttons', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    addTearDown(tester.view.reset);
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'getApps') return [{'package': 'com.slack', 'label': 'Slack', 'system': false, 'category': -1, 'installed': 0}];
+      if (call.method == 'tvConnect') return true;
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({'tvHost': '192.168.1.23', 'tvName': 'Kame TV', 'homeView': 'tiles'});
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncher(prefs: prefs));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('All apps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('TV remote'));
+    await tester.pumpAndSettle();
+    expect(find.text('Kame TV'), findsOneWidget, reason: 'the TV keeps its own name');
+    expect(find.text('ok'), findsOneWidget, reason: 'Metro OK');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/40_remote_tiles.png'));
   });
 }

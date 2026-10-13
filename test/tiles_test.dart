@@ -74,9 +74,15 @@ void main() {
     await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
     expect(ci('Done'), findsOneWidget);
-    await tester.tap(find.byTooltip('Resize'));
+    await tester.tap(find.byTooltip('Bigger'));
     await tester.pumpAndSettle();
     expect(_tiles(prefs).firstWhere((t) => t.id == 'app:com.amazon').size, 'w', reason: 'medium → wide');
+    // And one size back down (no need to go round through large).
+    await tester.tap(find.byTooltip('Smaller'));
+    await tester.pumpAndSettle();
+    expect(_tiles(prefs).firstWhere((t) => t.id == 'app:com.amazon').size, 'm', reason: 'wide → medium');
+    await tester.tap(find.byTooltip('Bigger'));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Tile colour'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Accent'));
@@ -203,11 +209,11 @@ void main() {
     expect(after.toSet(), before.toSet(), reason: 'same tiles, new order');
     expect(ci('Done'), findsOneWidget, reason: 'dragging enters edit mode');
     // Back leaves edit mode — and the tile's controls go with it (they used to linger).
-    expect(find.byTooltip('Resize'), findsOneWidget);
+    expect(find.byTooltip('Bigger'), findsOneWidget);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(ci('Done'), findsNothing);
-    expect(find.byTooltip('Resize'), findsNothing, reason: 'no edit controls outside edit mode');
+    expect(find.byTooltip('Bigger'), findsNothing, reason: 'no edit controls outside edit mode');
     await tester.longPress(ci('Amazon'));
     await tester.pumpAndSettle();
     // Edit mode → Add tile → a quick action as a small tile; tapping it runs the action.
@@ -314,7 +320,7 @@ void main() {
     expect(ci('Set timer'), findsOneWidget, reason: 'still one row with its chips');
     // Edit mode: the row offers Customise (arrange / add inside), not resize or colour.
     expect(find.byTooltip('Customise quick actions'), findsWidgets);
-    expect(find.byTooltip('Resize'), findsNothing);
+    expect(find.byTooltip('Bigger'), findsNothing);
     await tester.tap(find.byTooltip('Customise quick actions').first);
     await tester.pumpAndSettle();
     expect(ci('Quick actions'), findsWidgets, reason: 'the same customise sheet as the classic view');
@@ -428,6 +434,29 @@ void main() {
     await tester.drag(find.byType(Slider).at(1), const Offset(120, 0));
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/39_tiles_glass.png'));
+  });
+
+  testWidgets('each view keeps its own look settings; Tiles chip look = size + what to show', (tester) async {
+    final prefs = await _setUp(tester, {'homeView': 'classic', 'glassTint': .1, 'themedIcons': false});
+    // Tiles starts from Classic's values…
+    await prefs.setHomeView('tiles');
+    await tester.pumpAndSettle();
+    expect(prefs.glassTint, .1);
+    // …then changes only its own.
+    await prefs.setGlass(tint: .6);
+    await prefs.setThemedIcons(true);
+    await prefs.setChipLook({'size': 'large', 'content': 'icon'});
+    await tester.pumpAndSettle();
+    expect(find.text('Set timer'), findsNothing, reason: 'Tiles chips: icon only');
+    await prefs.setHomeView('classic');
+    await tester.pumpAndSettle();
+    expect(prefs.glassTint, .1, reason: 'Classic kept its glass');
+    expect(prefs.themedIcons, isFalse);
+    expect(prefs.chipLook['content'], isNull, reason: 'Classic chips untouched');
+    await prefs.setHomeView('tiles');
+    await tester.pumpAndSettle();
+    expect(prefs.glassTint, .6);
+    expect(prefs.themedIcons, isTrue);
   });
 
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {

@@ -663,58 +663,72 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
             padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
             child: SheetHeader(title: 'Chip look', subtitle: 'Changes show on the chips above'),
           ),
-          label('Colour'),
-          choices(ChipLook.tones, look.tone, (t) => set((l) => l.copyWith(tone: t, opacity: ChipLook.defaultOpacity(t)))),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s16, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text('Opacity', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-                ),
-                Text(pct >= 100 ? 'Solid' : '$pct%', style: DS.rowSub),
-              ],
+          // Tiles: chips are tiles — colour, corners and glass come from the tile look, so
+          // only what they show and how big they are is theirs.
+          if (DS.metro) ...[
+            label('Size'),
+            choices(ChipLook.sizes, look.size, (v) => set((l) => l.copyWith(size: v))),
+            label('Show'),
+            choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0),
+              child: Text('Colour, corners and glass follow your tiles (Home view → Look).', style: DS.rowSub.copyWith(fontSize: 13)),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s16, 0),
-            child: Row(
-              children: [
-                Icon(Icons.blur_on_rounded, size: 18, color: DS.inkMuted),
-                Expanded(
-                  child: Slider(
-                    value: look.opacity,
-                    min: .1,
-                    max: 1,
-                    divisions: 18, // 5% steps
-                    label: '$pct%',
-                    activeColor: DS.ink,
-                    inactiveColor: DS.cardMuted,
-                    thumbColor: DS.ink,
-                    onChanged: (x) {
-                      if ((x - look.opacity).abs() > .01) HapticFeedback.selectionClick();
-                      set((l) => l.copyWith(opacity: x));
-                    },
+            const SizedBox(height: DS.s8),
+          ] else ...[
+            label('Colour'),
+            choices(ChipLook.tones, look.tone, (t) => set((l) => l.copyWith(tone: t, opacity: ChipLook.defaultOpacity(t)))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Opacity', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
                   ),
-                ),
-                Icon(Icons.circle, size: 18, color: DS.inkMuted),
-              ],
+                  Text(pct >= 100 ? 'Solid' : '$pct%', style: DS.rowSub),
+                ],
+              ),
             ),
-          ),
-          label('Shape'),
-          choices(ChipLook.shapes, look.shape, (v) => set((l) => l.copyWith(shape: v))),
-          label('Size'),
-          choices(ChipLook.sizes, look.size, (v) => set((l) => l.copyWith(size: v))),
-          label('Show'),
-          choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
-          _Group(null, [
-            _SwitchRow(Icons.crop_square_rounded, 'Outline', 'Thin edge around each chip', look.outline, (v) => set((l) => l.copyWith(outline: v))),
-            _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () {
-              HapticFeedback.lightImpact();
-              set((_) => const ChipLook());
-            }),
-          ]),
-          const SizedBox(height: DS.s8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s16, 0),
+              child: Row(
+                children: [
+                  Icon(Icons.blur_on_rounded, size: 18, color: DS.inkMuted),
+                  Expanded(
+                    child: Slider(
+                      value: look.opacity,
+                      min: .1,
+                      max: 1,
+                      divisions: 18, // 5% steps
+                      label: '$pct%',
+                      activeColor: DS.ink,
+                      inactiveColor: DS.cardMuted,
+                      thumbColor: DS.ink,
+                      onChanged: (x) {
+                        if ((x - look.opacity).abs() > .01) HapticFeedback.selectionClick();
+                        set((l) => l.copyWith(opacity: x));
+                      },
+                    ),
+                  ),
+                  Icon(Icons.circle, size: 18, color: DS.inkMuted),
+                ],
+              ),
+            ),
+            label('Shape'),
+            choices(ChipLook.shapes, look.shape, (v) => set((l) => l.copyWith(shape: v))),
+            label('Size'),
+            choices(ChipLook.sizes, look.size, (v) => set((l) => l.copyWith(size: v))),
+            label('Show'),
+            choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
+            _Group(null, [
+              _SwitchRow(Icons.crop_square_rounded, 'Outline', 'Thin edge around each chip', look.outline, (v) => set((l) => l.copyWith(outline: v))),
+              _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () {
+                HapticFeedback.lightImpact();
+                set((_) => const ChipLook());
+              }),
+            ]),
+            const SizedBox(height: DS.s8),
+          ],
         ],
       );
     },

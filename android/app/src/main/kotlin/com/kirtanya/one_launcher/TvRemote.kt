@@ -70,6 +70,10 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
     private var imeCounter = 0L
     private var fieldCounter = 0L
 
+    /** The TV told us about a text field with its counters (key inject with a field, a batch
+     *  edit, or a show-keyboard request). Some TVs only name the app: then typing goes as keys. */
+    @Volatile private var imeReady = false
+
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
         when (call.method) {
             "tvDiscover" -> discover(result)
@@ -321,16 +325,23 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         m[20]?.firstOrNull()?.let { raw ->
             val k = Pb.parse(raw as ByteArray)
             (k[1]?.firstOrNull() as? ByteArray)?.let { app -> imeCounter = (Pb.parse(app)[1]?.firstOrNull() as? Long) ?: imeCounter }
-            (k[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) }
+            (k[2]?.firstOrNull() as? ByteArray)?.let { field ->
+                imeReady = true
+                emitIme(Pb.parse(field))
+            }
         }
         m[21]?.firstOrNull()?.let { raw ->
             val e = Pb.parse(raw as ByteArray)
             imeCounter = (e[1]?.firstOrNull() as? Long) ?: imeCounter
             fieldCounter = (e[2]?.firstOrNull() as? Long) ?: fieldCounter
+            imeReady = true
         }
         m[22]?.firstOrNull()?.let { raw ->
             val req = Pb.parse(raw as ByteArray)
-            (req[2]?.firstOrNull() as? ByteArray)?.let { field -> emitIme(Pb.parse(field)) } ?: emit("ime", mapOf("text" to "", "label" to ""))
+            (req[2]?.firstOrNull() as? ByteArray)?.let { field ->
+                imeReady = true
+                emitIme(Pb.parse(field))
+            } ?: emit("ime", mapOf("text" to "", "label" to ""))
         }
         Log.i("TvRemote", "IME counters now ime=$imeCounter field=$fieldCounter")
     }
@@ -353,8 +364,13 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         emit("ime", mapOf("text" to value, "label" to label))
     }
 
-    /** Replace the TV's focused text field with [value] (sent whole on each change). */
+    /** Replace the TV's focused text field with [value] (sent whole on each change). Returns
+     *  false — sending nothing — when the TV hasn't given us a field: Flutter types keys instead. */
     private fun text(value: String): Boolean {
+        if (!imeReady) {
+            Log.i("TvRemote", "IME out skipped (no field from the TV): typing as keys")
+            return false
+        }
         val pos = (value.length - 1).toLong()
         val obj = Pb().int(1, pos).int(2, pos).str(3, value)
         val edit = Pb().int(1, 1).msg(2, obj)

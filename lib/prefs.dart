@@ -35,6 +35,20 @@ class Prefs extends ChangeNotifier {
   static const maxFavourites = 16; // pinned apps lead the green card (2 pages × 8)
 
   // ---- Speed: JSON settings are parsed once and kept until something changes ----
+  /// Look settings each home view keeps for itself — Classic and Tiles are separate designs
+  /// (docs/DESIGN_LANGUAGES.md). Tiles keeps `tiles.<key>`, starting from Classic's value
+  /// until it's changed in Tiles. Features and data (apps, folders, quick actions, search
+  /// sources, the wallpaper photo) stay shared.
+  static const perView = {
+    'themeSource', 'themeSeed', 'themeStyle', 'cardStyle', 'wallpaperDim', 'photoBlur', //
+    'glassBlur', 'glassTint', 'glassEdge', 'glassSheen', 'themedIcons', 'chipLook',
+  };
+  String _k(String key) => perView.contains(key) && homeView == 'tiles' ? 'tiles.$key' : key;
+  String? _viewString(String key) => _sp.getString(_k(key)) ?? _sp.getString(key);
+  double? _viewDouble(String key) => _sp.getDouble(_k(key)) ?? _sp.getDouble(key);
+  int? _viewInt(String key) => _sp.getInt(_k(key)) ?? _sp.getInt(key);
+  bool? _viewBool(String key) => _sp.getBool(_k(key)) ?? _sp.getBool(key);
+
   final _parsed = <String, Map>{};
   Map _json(String key) => _parsed.putIfAbsent(key, () => jsonDecode(_sp.getString(key) ?? '{}') as Map);
 
@@ -168,10 +182,10 @@ class Prefs extends ChangeNotifier {
   }
 
   /// How the quick-action chips look (colour, opacity, shape, size, content, outline) — see ChipLook.
-  Map get chipLook => _json('chipLook');
+  Map get chipLook => _json(_k('chipLook'));
   Future<void> setChipLook(Map<String, Object> look) async {
-    final saving = _sp.setString('chipLook', jsonEncode(look)); // memory updates at once
-    _parsed.remove('chipLook'); // so a quick second change builds on this one
+    final saving = _sp.setString(_k('chipLook'), jsonEncode(look)); // memory updates at once
+    _parsed.remove(_k('chipLook')); // so a quick second change builds on this one
     await saving;
     notifyListeners();
   }
@@ -205,20 +219,20 @@ class Prefs extends ChangeNotifier {
           (_sp.getDouble('tilesPhotoY') ?? 0).clamp(-1.0, 1.0),
         )
       : (photoZoom, photoX, photoY);
-  double get photoBlur => (_sp.getDouble('photoBlur') ?? 0).clamp(0, 24);
+  double get photoBlur => (_viewDouble('photoBlur') ?? 0).clamp(0, 24);
   Future<void> setPhotoFrame({double? zoom, double? x, double? y, double? blur, bool tiles = false}) async {
     final k = tiles ? 'tilesPhoto' : 'photo';
     if (zoom != null) await _sp.setDouble('${k}Zoom', zoom.clamp(1, 3));
     if (x != null) await _sp.setDouble('${k}X', x.clamp(-1, 1));
     if (y != null) await _sp.setDouble('${k}Y', y.clamp(-1, 1));
-    if (blur != null) await _sp.setDouble('photoBlur', blur.clamp(0, 24));
+    if (blur != null) await _sp.setDouble(_k('photoBlur'), blur.clamp(0, 24));
     notifyListeners();
   }
 
   /// Black over the wallpaper (0 = off … 0.6), for legibility of everything on it.
-  double get wallpaperDim => (_sp.getDouble('wallpaperDim') ?? 0.2).clamp(0, .6);
+  double get wallpaperDim => (_viewDouble('wallpaperDim') ?? 0.2).clamp(0, .6);
   Future<void> setWallpaperDim(double v) async {
-    await _sp.setDouble('wallpaperDim', v.clamp(0, .6));
+    await _sp.setDouble(_k('wallpaperDim'), v.clamp(0, .6));
     notifyListeners();
   }
 
@@ -231,21 +245,21 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Colours & style: 'system' (Material You), 'basic' (one of 8 colours) or 'original'.
-  String get themeSource => _sp.getString('themeSource') ?? 'system';
-  int get themeSeed => _sp.getInt('themeSeed') ?? 0xFF4285F4;
-  String get themeStyle => _sp.getString('themeStyle') ?? 'tonal';
+  String get themeSource => _viewString('themeSource') ?? 'system';
+  int get themeSeed => _viewInt('themeSeed') ?? 0xFF4285F4;
+  String get themeStyle => _viewString('themeStyle') ?? 'tonal';
 
   /// Cards: 'light', 'dark', or 'auto' (follow the phone's dark theme).
-  String get cardStyle => _sp.getString('cardStyle') ?? 'light';
+  String get cardStyle => _viewString('cardStyle') ?? 'light';
   Future<void> setCardStyle(String v) async {
-    await _sp.setString('cardStyle', v);
+    await _sp.setString(_k('cardStyle'), v);
     notifyListeners();
   }
 
   Future<void> setTheme({String? source, int? seed, String? style}) async {
-    if (source != null) await _sp.setString('themeSource', source);
-    if (seed != null) await _sp.setInt('themeSeed', seed);
-    if (style != null) await _sp.setString('themeStyle', style);
+    if (source != null) await _sp.setString(_k('themeSource'), source);
+    if (seed != null) await _sp.setInt(_k('themeSeed'), seed);
+    if (style != null) await _sp.setString(_k('themeStyle'), style);
     notifyListeners();
   }
 
@@ -563,20 +577,20 @@ class Prefs extends ChangeNotifier {
   /// Tile look: 'solid' or 'glass' (frosted: the wallpaper blurred behind each tile, tinted
   /// with its colour). Glass: blur 0–40, tint 0–.7, a bright edge, a soft sheen.
   String get tileStyle => _sp.getString('tileStyle') ?? 'solid';
-  double get glassBlur => (_sp.getDouble('glassBlur') ?? 18).clamp(0, 40);
-  double get glassTint => (_sp.getDouble('glassTint') ?? .25).clamp(0, .7);
-  bool get glassEdge => _sp.getBool('glassEdge') ?? true;
-  bool get glassSheen => _sp.getBool('glassSheen') ?? true;
+  double get glassBlur => (_viewDouble('glassBlur') ?? 18).clamp(0, 40);
+  double get glassTint => (_viewDouble('glassTint') ?? .25).clamp(0, .7);
+  bool get glassEdge => _viewBool('glassEdge') ?? true;
+  bool get glassSheen => _viewBool('glassSheen') ?? true;
 
   /// The Classic home's look: 'solid' or 'glass' (drawer, cards, chips, dock — same glass values).
   String get classicStyle => _sp.getString('classicStyle') ?? 'solid';
   Future<void> setGlass({String? style, String? classic, double? blur, double? tint, bool? edge, bool? sheen}) async {
     if (classic != null) await _sp.setString('classicStyle', classic);
     if (style != null) await _sp.setString('tileStyle', style);
-    if (blur != null) await _sp.setDouble('glassBlur', blur.clamp(0, 40));
-    if (tint != null) await _sp.setDouble('glassTint', tint.clamp(0, .7));
-    if (edge != null) await _sp.setBool('glassEdge', edge);
-    if (sheen != null) await _sp.setBool('glassSheen', sheen);
+    if (blur != null) await _sp.setDouble(_k('glassBlur'), blur.clamp(0, 40));
+    if (tint != null) await _sp.setDouble(_k('glassTint'), tint.clamp(0, .7));
+    if (edge != null) await _sp.setBool(_k('glassEdge'), edge);
+    if (sheen != null) await _sp.setBool(_k('glassSheen'), sheen);
     notifyListeners();
   }
 
@@ -595,9 +609,9 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Themed icons (like Pixel's): apps with a one-colour icon show it in the theme's colours.
-  bool get themedIcons => _sp.getBool('themedIcons') ?? false;
+  bool get themedIcons => _viewBool('themedIcons') ?? false;
   Future<void> setThemedIcons(bool v) async {
-    await _sp.setBool('themedIcons', v);
+    await _sp.setBool(_k('themedIcons'), v);
     notifyListeners();
   }
 
