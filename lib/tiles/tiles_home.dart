@@ -606,6 +606,41 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
 
 // ---- Start ----------------------------------------------------------------------------------
 
+/// Start's rows: tiles' rows are a tile unit tall; the quick-actions row is shorter (its chips
+/// are smaller than app tiles). Tops and heights in grid pixels.
+class _Rows {
+  _Rows(List<(TileSpec, int, int)> placed, this.unit)
+    : short = {
+        for (final (t, _, r) in placed)
+          if (t.isChips) r,
+      },
+      chip = math.max(44, unit * .55);
+  final double unit, chip;
+  final Set<int> short;
+  static const gap = _StartPage.gap;
+
+  double h(int r) => short.contains(r) ? chip : unit;
+  double top(int r) {
+    var y = 0.0;
+    for (var i = 0; i < r; i++) {
+      y += h(i) + gap;
+    }
+    return y;
+  }
+
+  double span(int r, int n) => top(r + n) - top(r) - gap;
+
+  /// The row at [dy] (past the last row keeps counting in tile units).
+  int at(double dy) {
+    var y = 0.0;
+    for (var r = 0; r < 4000; r++) {
+      y += h(r) + gap;
+      if (dy < y) return r;
+    }
+    return 4000;
+  }
+}
+
 class _StartPage extends StatelessWidget {
   const _StartPage({
     required this.tiles,
@@ -656,14 +691,14 @@ class _StartPage extends StatelessWidget {
 
   /// While a tile is dragged: the cell under its centre decides where it goes — onto a tile
   /// takes that tile's place (the rest reflow), empty space after the last tile = the end.
-  void _hover(DragTargetDetails<String> d, List<(TileSpec, int, int)> placed, double unit, int cols) {
+  void _hover(DragTargetDetails<String> d, List<(TileSpec, int, int)> placed, double unit, int cols, _Rows rows) {
     final box = _grid.currentContext?.findRenderObject() as RenderBox?;
     final dragged = placed.where((p) => p.$1.id == d.data).firstOrNull;
     if (box == null || dragged == null) return;
-    final (w, h) = (dragged.$1.spanIn(cols).$1 * (unit + gap), dragged.$1.spanIn(cols).$2 * (unit + gap));
+    final (w, h) = (dragged.$1.spanIn(cols).$1 * (unit + gap), rows.span(dragged.$3, dragged.$1.spanIn(cols).$2) + gap);
     final p = box.globalToLocal(d.offset + Offset(w / 2, h / 2));
     if (p.dy < 0 || p.dx < 0) return;
-    final col = (p.dx / (unit + gap)).floor().clamp(0, cols - 1), row = (p.dy / (unit + gap)).floor();
+    final col = (p.dx / (unit + gap)).floor().clamp(0, cols - 1), row = rows.at(p.dy);
     String? target;
     for (final (t, c, r) in placed) {
       final (sw, sh) = t.spanIn(cols);
@@ -681,7 +716,7 @@ class _StartPage extends StatelessWidget {
     final over = placed.where((x) => x.$1.id == target).firstOrNull;
     if (prefs.fx('folders') && dragged.$1.isApp && over != null && (over.$1.isApp || over.$1.isFolder)) {
       final (sw, sh) = over.$1.spanIn(cols);
-      final r = Rect.fromLTWH(over.$2 * (unit + gap), over.$3 * (unit + gap), sw * unit + (sw - 1) * gap, sh * unit + (sh - 1) * gap);
+      final r = Rect.fromLTWH(over.$2 * (unit + gap), rows.top(over.$3), sw * unit + (sw - 1) * gap, rows.span(over.$3, sh));
       if (r.deflate(math.min(r.width, r.height) * .25).contains(p)) {
         _pending = null;
         _pendingTimer?.cancel();
@@ -735,7 +770,8 @@ class _StartPage extends StatelessWidget {
         ];
         final placed = packTiles(shown, cols: cols);
         final rows = placed.fold<int>(0, (m, p) => math.max(m, p.$3 + p.$1.spanIn(cols).$2));
-        final height = rows == 0 ? 0.0 : rows * unit + (rows - 1) * gap;
+        final grid = _Rows(placed, unit);
+        final height = rows == 0 ? 0.0 : grid.span(0, rows);
         final start = GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTap: editing ? onDone : null,
@@ -752,7 +788,7 @@ class _StartPage extends StatelessWidget {
                 children: [
                   DragTarget<String>(
                     onWillAcceptWithDetails: (_) => true,
-                    onMove: (d) => _hover(d, placed, unit, cols),
+                    onMove: (d) => _hover(d, placed, unit, cols, grid),
                     onLeave: (_) {
                       _mergePending = null;
                       _mergeTimer?.cancel();
@@ -781,9 +817,9 @@ class _StartPage extends StatelessWidget {
                               duration: Motion.snapDuration,
                               curve: Motion.settle,
                               left: col * (unit + gap),
-                              top: row * (unit + gap),
+                              top: grid.top(row),
                               width: t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
-                              height: t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
+                              height: grid.span(row, t.spanIn(cols).$2),
                               child: t.isPanel
                                   ? Landed(
                                       landing: startLanding,
@@ -807,8 +843,8 @@ class _StartPage extends StatelessWidget {
                                       id: t.id,
                                       // Long Start: tiles below the fold come in as you scroll to them.
                                       scroll: scroll,
-                                      top: pad.top + DS.s24 + row * (unit + gap),
-                                      bottom: pad.top + DS.s24 + (row + t.spanIn(cols).$2) * (unit + gap),
+                                      top: pad.top + DS.s24 + grid.top(row),
+                                      bottom: pad.top + DS.s24 + grid.top(row + t.spanIn(cols).$2),
                                       child: _EditableTile(
                                         prefs: prefs,
                                         tile: t,
@@ -911,9 +947,9 @@ class _StartPage extends StatelessWidget {
           for (final (t, col, row) in placed)
             Rect.fromLTWH(
               side + col * (unit + gap),
-              pad.top + DS.s24 + row * (unit + gap),
+              pad.top + DS.s24 + grid.top(row),
               t.spanIn(cols).$1 * unit + (t.spanIn(cols).$1 - 1) * gap,
-              t.spanIn(cols).$2 * unit + (t.spanIn(cols).$2 - 1) * gap,
+              grid.span(row, t.spanIn(cols).$2),
             ),
         ];
         return Stack(
@@ -1771,7 +1807,7 @@ class _ChipsRowTile extends StatelessWidget {
               onTap: () => runQuickAction(context, prefs, id, label),
               splashColor: Colors.white24,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                padding: const EdgeInsets.symmetric(horizontal: DS.s12),
                 foregroundDecoration: on
                     ? BoxDecoration(
                         border: Border.all(color: Colors.white, width: 3),
@@ -1783,12 +1819,12 @@ class _ChipsRowTile extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     builtIn != null
-                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 22, color: Colors.white)
-                        : ShortcutIcon(id: id, size: 22, color: Colors.white),
-                    const SizedBox(width: DS.s8),
+                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18, color: Colors.white)
+                        : ShortcutIcon(id: id, size: 18, color: Colors.white),
+                    const SizedBox(width: 6),
                     Text(
                       label,
-                      style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500),
+                      style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),

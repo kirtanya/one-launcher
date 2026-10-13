@@ -269,7 +269,9 @@ void main() {
     // Each chip is a tile filling the row's height — no extra space above or below.
     final timer = tester.getRect(find.ancestor(of: find.text('Set timer'), matching: find.byType(Material)).first);
     final amazon = tester.getRect(find.ancestor(of: find.text('Amazon'), matching: find.byType(Material)).first);
-    expect(timer.height, closeTo(amazon.height / 2 - 3, 2), reason: 'one tile row high (a medium tile is two)');
+    final smallTile = amazon.height / 2 - 3; // a medium tile is two rows
+    expect(timer.height, lessThan(smallTile * .7), reason: 'chips are shorter than app tiles');
+    expect(timer.height, greaterThanOrEqualTo(44), reason: 'still easy to tap');
     // Tap a chip → runs it.
     await tester.tap(find.text('Set timer'));
     await tester.pumpAndSettle();
