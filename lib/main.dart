@@ -9,6 +9,7 @@ import 'prefs.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
 import 'ui/theme.dart';
+import 'widgets.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,12 +48,21 @@ class _OneLauncherState extends State<OneLauncher> {
     super.initState();
     theme.addListener(_repaint);
     Perf.lite.addListener(_repaint);
+    AppIcon.themed = widget.prefs.themedIcons;
+    widget.prefs.addListener(_themedIcons);
+  }
+
+  void _themedIcons() {
+    if (AppIcon.themed == widget.prefs.themedIcons) return;
+    AppIcon.themed = widget.prefs.themedIcons;
+    _repaint(); // every icon, including const ones
   }
 
   @override
   void dispose() {
     theme.removeListener(_repaint);
     Perf.lite.removeListener(_repaint);
+    widget.prefs.removeListener(_themedIcons);
     super.dispose();
   }
 

@@ -12,6 +12,10 @@ class AppIcon extends StatelessWidget {
   final AppEntry app;
   final double size;
 
+  /// Themed icons on (Settings → Colours & style): one-colour glyphs in the theme's colours,
+  /// like Pixel. Apps without a glyph keep their own icon. Set by the app from prefs.
+  static bool themed = false;
+
   static const _tiles = [Color(0xFF5B8DEF), Color(0xFF41B883), Color(0xFFF2994A), Color(0xFFBB6BD9), Color(0xFFEB5757), Color(0xFF2D9CDB), Color(0xFFE0B23A)];
 
   @override
@@ -25,7 +29,28 @@ class AppIcon extends StatelessWidget {
     );
   }
 
-  Widget _icon() {
+  Widget _icon() => themed ? _themed() : _plain();
+
+  Widget _themed() {
+    Widget circle(ImageProvider glyph) => Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: DS.hero, shape: BoxShape.circle),
+      child: Image(image: glyph, color: DS.heroInk, colorBlendMode: BlendMode.srcIn, gaplessPlayback: true, filterQuality: FilterQuality.medium),
+    );
+    final ready = Apps.instance.monoNow(app.package);
+    if (ready != null) return withWorkBadge(app, size, circle(ready));
+    return FutureBuilder<Uint8List?>(
+      future: Apps.instance.monoIcon(app.package),
+      builder: (context, snap) {
+        if (snap.connectionState != ConnectionState.done) return SizedBox.square(dimension: size);
+        final glyph = Apps.instance.monoNow(app.package);
+        return glyph != null ? withWorkBadge(app, size, circle(glyph)) : _plain();
+      },
+    );
+  }
+
+  Widget _plain() {
     final ready = Apps.instance.iconNow(app.package);
     if (ready != null) {
       return SizedBox.square(
@@ -53,6 +78,33 @@ class AppIcon extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Work-profile glyphs (themed / tile icons) get a small briefcase at the bottom-right — the
+/// full-colour icons already carry Android's own badge. Tiny icons (folder previews) skip it.
+Widget withWorkBadge(AppEntry app, double size, Widget icon) {
+  if (!app.work || size < 28) return icon;
+  final d = (size * .4).clamp(14.0, 24.0);
+  return Stack(
+    clipBehavior: Clip.none,
+    children: [
+      icon,
+      Positioned(
+        right: -d * .15,
+        bottom: -d * .15,
+        child: Container(
+          width: d,
+          height: d,
+          decoration: BoxDecoration(
+            color: DS.ink,
+            shape: BoxShape.circle,
+            border: Border.all(color: DS.card, width: 1.5),
+          ),
+          child: Icon(Icons.work_rounded, size: d * .58, color: DS.card),
+        ),
+      ),
+    ],
+  );
 }
 
 /// One option in a bottom sheet: icon + label, full-width 56pt row.

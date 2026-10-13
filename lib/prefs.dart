@@ -154,6 +154,19 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The Tiles view's clock tile has its own style (same axes), saved apart from the classic clock.
+  double get tileClockWeight => _sp.getDouble('tileClockWeight') ?? 300;
+  double get tileClockWidth => _sp.getDouble('tileClockWidth') ?? 60;
+  double get tileClockSlant => _sp.getDouble('tileClockSlant') ?? 0;
+  double get tileClockRound => _sp.getDouble('tileClockRound') ?? 0;
+  Future<void> setTileClockStyle({double? weight, double? width, double? slant, double? round}) async {
+    if (round != null) await _sp.setDouble('tileClockRound', round.clamp(0, 100));
+    if (weight != null) await _sp.setDouble('tileClockWeight', weight.clamp(100, 1000));
+    if (width != null) await _sp.setDouble('tileClockWidth', width.clamp(25, 151));
+    if (slant != null) await _sp.setDouble('tileClockSlant', slant.clamp(-10, 0));
+    notifyListeners();
+  }
+
   /// How the quick-action chips look (colour, opacity, shape, size, content, outline) — see ChipLook.
   Map get chipLook => _json('chipLook');
   Future<void> setChipLook(Map<String, Object> look) async {
@@ -349,6 +362,12 @@ class Prefs extends ChangeNotifier {
     await _setList('quickChips', list);
   }
 
+  /// Remembers an app shortcut's name (for a quick-action tile) without adding a chip.
+  Future<void> nameQuickAction(String id, String label, String app) async {
+    await _sp.setString('quickLabels', jsonEncode(quickLabels..[id] = '$label|$app'));
+    _parsed.remove('quickLabels');
+  }
+
   Future<void> removeQuickChip(String id) => _setList('quickChips', quickChips.where((x) => x != id).toList());
 
   /// The Paytm-style "Scan QR" chip is offered once (needs app shortcuts to be available).
@@ -507,11 +526,32 @@ class Prefs extends ChangeNotifier {
   double get tileOpacity => (_sp.getDouble('tileOpacity') ?? 1).clamp(.3, 1);
   bool get tileLabels => _sp.getBool('tileLabels') ?? true;
   String get tileIcons => _sp.getString('tileIcons') ?? 'glyph';
-  Future<void> setTileLook({int? columns, double? opacity, bool? labels, String? icons}) async {
+
+  /// Tile corner roundness in dp: 0 = square, like Windows Phone.
+  double get tileRadius => (_sp.getDouble('tileRadius') ?? 0).clamp(0, 32);
+  Future<void> setTileLook({int? columns, double? opacity, bool? labels, String? icons, double? radius}) async {
+    if (radius != null) await _sp.setDouble('tileRadius', radius.clamp(0, 32));
     if (columns != null) await _sp.setInt('tileColumns', columns);
     if (opacity != null) await _sp.setDouble('tileOpacity', opacity.clamp(.3, 1));
     if (labels != null) await _sp.setBool('tileLabels', labels);
     if (icons != null) await _sp.setString('tileIcons', icons);
+    notifyListeners();
+  }
+
+  /// Landing animations: how Start's tiles and the app list's rows come in ('turnstile',
+  /// 'cascade', 'zoom', 'slide', 'none').
+  String get tileAnim => _sp.getString('tileAnim') ?? 'turnstile';
+  String get listAnim => _sp.getString('listAnim') ?? 'cascade';
+  Future<void> setLandingAnims({String? tiles, String? list}) async {
+    if (tiles != null) await _sp.setString('tileAnim', tiles);
+    if (list != null) await _sp.setString('listAnim', list);
+    notifyListeners();
+  }
+
+  /// Themed icons (like Pixel's): apps with a one-colour icon show it in the theme's colours.
+  bool get themedIcons => _sp.getBool('themedIcons') ?? false;
+  Future<void> setThemedIcons(bool v) async {
+    await _sp.setBool('themedIcons', v);
     notifyListeners();
   }
 

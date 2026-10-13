@@ -6,6 +6,7 @@ import 'package:one_launcher/home.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tiles/tiles_home.dart';
+import 'package:one_launcher/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _apps = ['Slack', 'Maps', 'Camera', 'Zoom', 'Amazon', 'Notes'];
@@ -19,8 +20,11 @@ Future<Prefs> _setUp(WidgetTester tester, Map<String, Object> initial, {List<Met
     if (call.method == 'getApps') {
       return [
         for (final l in _apps) {'package': 'com.${l.toLowerCase()}', 'label': l, 'system': false, 'category': -1, 'installed': 0},
+        {'package': 'com.teams@10', 'label': 'Teams', 'system': false, 'category': -1, 'installed': 0, 'work': true},
       ];
     }
+    // Slack and the work Teams have one-colour (themed) glyphs.
+    if (call.method == 'getMonoIcon' && {'com.slack', 'com.teams@10'}.contains((call.arguments as Map)['package'])) return _png;
     return null;
   });
   SharedPreferences.setMockInitialValues(initial);
@@ -29,6 +33,12 @@ Future<Prefs> _setUp(WidgetTester tester, Map<String, Object> initial, {List<Met
   await tester.pumpAndSettle();
   return prefs;
 }
+
+// 1×1 white PNG.
+final _png = Uint8List.fromList(const [
+  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 11, 73, 68, 65, 84, //
+  120, 156, 99, 248, 15, 4, 0, 9, 251, 3, 253, 251, 94, 107, 43, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
+]);
 
 List<TileSpec> _tiles(Prefs p) => [for (final m in p.tiles!) TileSpec.fromJson(m)];
 
@@ -78,6 +88,7 @@ void main() {
     await tester.tap(find.byTooltip('All apps'));
     await tester.pumpAndSettle();
     expect(find.text('a'), findsOneWidget, reason: 'letter tile');
+    expect(find.byIcon(Icons.work_rounded), findsOneWidget, reason: 'work app’s glyph badged (full-colour icons carry Android’s badge)');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/32_tiles_all_apps.png'));
     await tester.longPress(find.text('Amazon'));
     await tester.pumpAndSettle();
@@ -98,6 +109,37 @@ void main() {
     await tester.tap(find.text('Home view'));
     await tester.pumpAndSettle();
     expect(find.text('Tile colours'), findsOneWidget, reason: 'tile options while on Tiles');
+    expect(find.text('Each app’s colour'), findsOneWidget, reason: 'its own short sheet over Start');
+    await tester.ensureVisible(find.text('Corner roundness'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Slider).last, const Offset(200, 0)); // corner roundness
+    await tester.pumpAndSettle();
+    expect(prefs.tileRadius, greaterThan(8));
+    await tester.ensureVisible(find.text('Themed icons'));
+    await tester.tap(find.text('Themed icons'));
+    await tester.pumpAndSettle();
+    expect(prefs.themedIcons, isTrue);
+    expect(AppIcon.themed, isTrue);
+    // Landing animations + the clock tile's own font.
+    await tester.ensureVisible(find.text('Start animation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Zoom').first);
+    await tester.pumpAndSettle();
+    expect(prefs.tileAnim, 'zoom');
+    await tester.ensureVisible(find.text('Clock tile style'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clock tile style'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Bubble'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bubble'));
+    await tester.pumpAndSettle();
+    expect(prefs.tileClockWeight, 900);
+    expect(prefs.clockWeight, 300, reason: 'the classic clock keeps its own style');
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Each app’s colour'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Each app’s colour'));
     await tester.tap(find.text('6 · more tiles'));
     await tester.pumpAndSettle();
@@ -119,6 +161,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(TilesHome), findsNothing);
     expect(find.byType(HomeScreen), findsOneWidget);
+  });
+
+  testWidgets('Tiles: long-press and drag a tile to a new spot; quick-action tile; pull down on Start → search', (tester) async {
+    final calls = <MethodCall>[];
+    final prefs = await _setUp(tester, {'homeView': 'tiles'}, calls: calls);
+    final before = [for (final t in _tiles(prefs)) t.id];
+    expect(before.take(3), ['clock', 'app:com.amazon', 'app:com.camera']);
+    // Pick Amazon (medium, top-left under the clock) up and drop it at the bottom right.
+    final g = await tester.startGesture(tester.getCenter(find.text('Amazon')));
+    await tester.pump(const Duration(milliseconds: 700)); // long-press picks it up
+    for (var i = 0; i < 12; i++) {
+      await g.moveBy(const Offset(30, 40));
+      await tester.pump(const Duration(milliseconds: 260));
+    }
+    await g.up();
+    await tester.pumpAndSettle();
+    final after = [for (final t in _tiles(prefs)) t.id];
+    expect(after.indexOf('app:com.amazon'), greaterThan(1), reason: 'moved later on Start: $after');
+    expect(after.toSet(), before.toSet(), reason: 'same tiles, new order');
+    expect(find.text('Done'), findsOneWidget, reason: 'dragging enters edit mode');
+    // Edit mode → Add tile → a quick action as a small tile; tapping it runs the action.
+    await tester.tap(find.text('Add tile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Flashlight'));
+    await tester.pumpAndSettle();
+    expect(_tiles(prefs).last.id, 'qa:b:torch');
+    expect(_tiles(prefs).last.size, 's');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/34_tiles_action.png'));
+    calls.clear();
+    await tester.tap(find.byIcon(Icons.flashlight_on_outlined));
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:torch'), isNotEmpty);
+
+    // Pull down past the top → all apps with the search box focused.
+    await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode!.hasFocus, isTrue, reason: 'search focused');
+    expect(find.text('Search 7 apps'), findsOneWidget);
   });
 
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {

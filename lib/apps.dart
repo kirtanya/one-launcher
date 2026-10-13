@@ -124,12 +124,18 @@ class Apps {
     if (isDemo) return Future.value(null);
     return _mono.putIfAbsent(package, () async {
       try {
-        return await _ch.invokeMethod<Uint8List>('getMonoIcon', {'package': package});
+        final bytes = await _ch.invokeMethod<Uint8List>('getMonoIcon', {'package': package});
+        if (bytes != null) _monoReady[package] = MemoryImage(bytes);
+        return bytes;
       } catch (_) {
         return null;
       }
     });
   }
+
+  /// The glyph when already loaded (no flicker on rebuilds); [monoChecked] = asked before.
+  final _monoReady = <String, MemoryImage>{};
+  MemoryImage? monoNow(String package) => _monoReady[package];
 
   /// Where the tapped icon is (screen pixels: left, top, width, height), so the app opens
   /// growing out of it. Set by [markLaunchFrom] just before launching; used once.
