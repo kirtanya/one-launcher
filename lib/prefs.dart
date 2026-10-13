@@ -548,6 +548,22 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Tile look: 'solid' or 'glass' (frosted: the wallpaper blurred behind each tile, tinted
+  /// with its colour). Glass: blur 0–40, tint 0–.7, a bright edge, a soft sheen.
+  String get tileStyle => _sp.getString('tileStyle') ?? 'solid';
+  double get glassBlur => (_sp.getDouble('glassBlur') ?? 18).clamp(0, 40);
+  double get glassTint => (_sp.getDouble('glassTint') ?? .25).clamp(0, .7);
+  bool get glassEdge => _sp.getBool('glassEdge') ?? true;
+  bool get glassSheen => _sp.getBool('glassSheen') ?? true;
+  Future<void> setGlass({String? style, double? blur, double? tint, bool? edge, bool? sheen}) async {
+    if (style != null) await _sp.setString('tileStyle', style);
+    if (blur != null) await _sp.setDouble('glassBlur', blur.clamp(0, 40));
+    if (tint != null) await _sp.setDouble('glassTint', tint.clamp(0, .7));
+    if (edge != null) await _sp.setBool('glassEdge', edge);
+    if (sheen != null) await _sp.setBool('glassSheen', sheen);
+    notifyListeners();
+  }
+
   /// Tiles interactions the user switches on or off (Settings → Home view → Interactions):
   /// tilt (press tilts the tile), live (tiles flip to live content), turnstile (Start swings
   /// away on launch), window (wallpaper only through the tiles), folders, badges, lock

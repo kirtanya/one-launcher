@@ -495,109 +495,112 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
       child: Scaffold(
         backgroundColor: Colors.transparent,
         resizeToAvoidBottomInset: false,
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Start shows the whole screen. Wallpaper through tiles: it drifts slower than the tiles
-            // as Start scrolls (parallax) — zoomed a little so it has room to move.
-            IgnorePointer(
-              child: prefs.fx('window')
-                  ? AnimatedBuilder(
-                      animation: _start,
-                      builder: (context, child) => Transform.translate(
-                        offset: Offset(0, (-(_start.hasClients ? _start.offset : 0) * .15).clamp(-MediaQuery.sizeOf(context).height * .2, 0)),
-                        child: child,
-                      ),
-                      child: Transform.scale(
-                        scale: 1.25,
-                        alignment: Alignment.topCenter,
-                        child: PhotoWallpaper(prefs: prefs, fullScreen: true),
-                      ),
-                    )
-                  : PhotoWallpaper(prefs: prefs, fullScreen: true),
-            ),
-            // Tiles want calm behind them: the wallpaper dims more than on the classic view (less
-            // when it only shows through the tiles).
-            IgnorePointer(
-              child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + (prefs.fx('window') ? 0 : .35)).clamp(0.0, .85))),
-            ),
-            PageView(
-              controller: _pages,
-              onPageChanged: (i) {
-                _closeSearch(); // going between Start and all apps ends a search
-                (i == 0 ? startLanding : listLanding).play();
-              },
-              children: [
-                NotificationListener<ScrollNotification>(
-                  onNotification: _onStartScroll,
-                  child: _StartPage(
-                    tiles: _tiles,
-                    apps: {for (final a in _apps) a.package: a},
-                    scroll: _start,
-                    editing: _editing,
-                    selected: _selected,
-                    prefs: prefs,
-                    onLaunch: _launchFromStart,
-                    onOpenClock: () {
-                      final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
-                      if (clock != null) _launch(clock);
-                    },
-                    openFolder: _openFolder,
-                    onFolder: _toFolder,
-                    onOutOfFolder: _outOfFolder,
-                    onFolderMenu: _folderMenu,
-                    onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
-                    onEdit: (id) => setState(() {
-                      if (!_editing) HapticFeedback.mediumImpact();
-                      _openFolder = null; // editing works on closed folders
-                      _editing = true;
-                      _selected = id;
-                    }),
-                    onDone: () => setState(() {
-                      _editing = false;
-                      _selected = null;
-                    }),
-                    onUnpin: _unpin,
-                    onResize: _resize,
-                    onRecolour: _recolour,
-                    onMove: _move,
-                    onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
-                    onSettings: _settings,
-                    onDoubleTap: _lock,
-                  ),
-                ),
-                NotificationListener<ScrollNotification>(
-                  onNotification: _onStartScroll, // pull down on the list: search too
-                  // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
-                  child: ColoredBox(
-                    color: prefs.fx('window') ? Colors.black : Colors.transparent,
-                    child: _AppListPage(
-                      onSearch: _openSearch,
-                      apps: _apps,
+        // Glass tiles blur the wallpaper behind them; grouped, they share one backdrop pass.
+        body: BackdropGroup(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Start shows the whole screen. Wallpaper through tiles: it drifts slower than the tiles
+              // as Start scrolls (parallax) — zoomed a little so it has room to move.
+              IgnorePointer(
+                child: prefs.fx('window')
+                    ? AnimatedBuilder(
+                        animation: _start,
+                        builder: (context, child) => Transform.translate(
+                          offset: Offset(0, (-(_start.hasClients ? _start.offset : 0) * .15).clamp(-MediaQuery.sizeOf(context).height * .2, 0)),
+                          child: child,
+                        ),
+                        child: Transform.scale(
+                          scale: 1.25,
+                          alignment: Alignment.topCenter,
+                          child: PhotoWallpaper(prefs: prefs, fullScreen: true),
+                        ),
+                      )
+                    : PhotoWallpaper(prefs: prefs, fullScreen: true),
+              ),
+              // Tiles want calm behind them: the wallpaper dims more than on the classic view (less
+              // when it only shows through the tiles).
+              IgnorePointer(
+                child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + (prefs.fx('window') ? 0 : .35)).clamp(0.0, .85))),
+              ),
+              PageView(
+                controller: _pages,
+                onPageChanged: (i) {
+                  _closeSearch(); // going between Start and all apps ends a search
+                  (i == 0 ? startLanding : listLanding).play();
+                },
+                children: [
+                  NotificationListener<ScrollNotification>(
+                    onNotification: _onStartScroll,
+                    child: _StartPage(
+                      tiles: _tiles,
+                      apps: {for (final a in _apps) a.package: a},
+                      scroll: _start,
+                      editing: _editing,
+                      selected: _selected,
                       prefs: prefs,
-                      isPinned: isPinned,
-                      onLaunch: _launch,
-                      onPin: _pin,
-                      onUnpin: (a) => _unpin('app:${a.package}'),
+                      onLaunch: _launchFromStart,
+                      onOpenClock: () {
+                        final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
+                        if (clock != null) _launch(clock);
+                      },
+                      openFolder: _openFolder,
+                      onFolder: _toFolder,
+                      onOutOfFolder: _outOfFolder,
+                      onFolderMenu: _folderMenu,
+                      onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
+                      onEdit: (id) => setState(() {
+                        if (!_editing) HapticFeedback.mediumImpact();
+                        _openFolder = null; // editing works on closed folders
+                        _editing = true;
+                        _selected = id;
+                      }),
+                      onDone: () => setState(() {
+                        _editing = false;
+                        _selected = null;
+                      }),
+                      onUnpin: _unpin,
+                      onResize: _resize,
+                      onRecolour: _recolour,
+                      onMove: _move,
+                      onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
                       onSettings: _settings,
-                      onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                      onDoubleTap: _lock,
                     ),
                   ),
-                ),
-              ],
-            ),
-            _TileSearch(
-              anim: _search,
-              text: _searchText,
-              focus: _searchFocus,
-              apps: _apps,
-              onClose: _closeSearch,
-              onLaunch: (a) {
-                _closeSearch();
-                _launch(a);
-              },
-            ),
-          ],
+                  NotificationListener<ScrollNotification>(
+                    onNotification: _onStartScroll, // pull down on the list: search too
+                    // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
+                    child: ColoredBox(
+                      color: prefs.fx('window') ? Colors.black : Colors.transparent,
+                      child: _AppListPage(
+                        onSearch: _openSearch,
+                        apps: _apps,
+                        prefs: prefs,
+                        isPinned: isPinned,
+                        onLaunch: _launch,
+                        onPin: _pin,
+                        onUnpin: (a) => _unpin('app:${a.package}'),
+                        onSettings: _settings,
+                        onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              _TileSearch(
+                anim: _search,
+                text: _searchText,
+                focus: _searchFocus,
+                apps: _apps,
+                onClose: _closeSearch,
+                onLaunch: (a) {
+                  _closeSearch();
+                  _launch(a);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1358,14 +1361,81 @@ class _TileFace extends StatelessWidget {
     prefs: prefs,
     child: FutureBuilder<Color>(
       future: tileColour(tile, prefs),
-      builder: (context, snap) => Material(
-        color: snap.data ?? tileAccent().withValues(alpha: prefs.tileOpacity),
-        borderRadius: BorderRadius.circular(prefs.tileRadius),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, splashColor: Colors.white24, child: child),
+      builder: (context, snap) => TileSurface(
+        colour: snap.data ?? tileAccent().withValues(alpha: prefs.tileOpacity),
+        prefs: prefs,
+        onTap: onTap,
+        child: child,
       ),
     ),
   );
+}
+
+/// A tile's surface in the chosen look. Solid: its colour. Glass: the wallpaper behind it
+/// frosted (blurred), tinted with the tile's colour, with an optional bright edge and a soft
+/// diagonal sheen. Lighter effects keep the tint and drop the blur.
+class TileSurface extends StatelessWidget {
+  const TileSurface({super.key, required this.colour, required this.prefs, required this.onTap, required this.child});
+  final Color colour;
+  final Prefs prefs;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(prefs.tileRadius);
+    if (prefs.tileStyle != 'glass') {
+      return Material(
+        color: colour,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(onTap: onTap, splashColor: Colors.white24, child: child),
+      );
+    }
+    final face = Material(
+      color: colour.withValues(alpha: prefs.glassTint),
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: prefs.glassEdge ? BorderSide(color: Colors.white.withValues(alpha: .35), width: 1) : BorderSide.none,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: Colors.white24,
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            if (prefs.glassSheen)
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0x38FFFFFF), Color(0x00FFFFFF), Color(0x00FFFFFF), Color(0x14FFFFFF)],
+                        stops: [0, .45, .75, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            child,
+          ],
+        ),
+      ),
+    );
+    final blur = prefs.glassBlur;
+    if (blur <= 0 || Perf.lite.value) return face;
+    // Grouped: all tiles share one backdrop pass (see BackdropGroup in TilesHome).
+    return ClipRRect(
+      borderRadius: radius,
+      child: BackdropFilter.grouped(
+        filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: face,
+      ),
+    );
+  }
 }
 
 /// How a tile reacts to a press: Lumia's tilt (it leans toward the finger and sinks a little)
@@ -1799,35 +1869,31 @@ class _ChipsRowTile extends StatelessWidget {
         prefs: prefs,
         child: FutureBuilder<Color>(
           future: tileColour(tile, prefs),
-          builder: (context, snap) => Material(
-            color: snap.data ?? tileAccent().withValues(alpha: prefs.tileOpacity),
-            borderRadius: radius,
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => runQuickAction(context, prefs, id, label),
-              splashColor: Colors.white24,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: DS.s12),
-                foregroundDecoration: on
-                    ? BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 3),
-                        borderRadius: radius,
-                      )
-                    : null,
-                alignment: Alignment.center,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    builtIn != null
-                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18, color: Colors.white)
-                        : ShortcutIcon(id: id, size: 18, color: Colors.white),
-                    const SizedBox(width: 6),
-                    Text(
-                      label,
-                      style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                    ),
-                  ],
-                ),
+          builder: (context, snap) => TileSurface(
+            colour: snap.data ?? tileAccent().withValues(alpha: prefs.tileOpacity),
+            prefs: prefs,
+            onTap: () => runQuickAction(context, prefs, id, label),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+              foregroundDecoration: on
+                  ? BoxDecoration(
+                      border: Border.all(color: Colors.white, width: 3),
+                      borderRadius: radius,
+                    )
+                  : null,
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  builtIn != null
+                      ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18, color: Colors.white)
+                      : ShortcutIcon(id: id, size: 18, color: Colors.white),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
             ),
           ),

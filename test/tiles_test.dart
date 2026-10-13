@@ -375,6 +375,36 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/38_tiles_window.png'));
   });
 
+  testWidgets('Tiles: glass look — frosted tiles tinted with their colour; frost / tint / edge / sheen', (tester) async {
+    final prefs = await _setUp(tester, {'homeView': 'tiles'});
+    expect(find.byType(BackdropFilter), findsNothing, reason: 'solid by default');
+    await tester.tap(find.byTooltip('All apps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Home view'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Glass'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Glass'));
+    await tester.pumpAndSettle();
+    expect(prefs.tileStyle, 'glass');
+    expect(find.byType(BackdropFilter), findsWidgets, reason: 'tiles frost what is behind them');
+    await tester.ensureVisible(find.text('Sheen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sheen'));
+    await tester.pumpAndSettle();
+    expect(prefs.glassSheen, isFalse);
+    await tester.ensureVisible(find.text('Tint'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Slider).at(1), const Offset(-400, 0)); // tint → none
+    await tester.pumpAndSettle();
+    expect(prefs.glassTint, lessThan(.05));
+    await tester.drag(find.byType(Slider).at(1), const Offset(120, 0));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/39_tiles_glass.png'));
+  });
+
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));

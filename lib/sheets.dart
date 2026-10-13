@@ -1593,6 +1593,62 @@ Future<Object?> _showHomeView(BuildContext context, {required Prefs prefs}) {
               ),
             ]),
             if (tiles) ...[
+              // Solid or glass (frosted wallpaper behind each tile), and how the glass looks.
+              label('Tile look'),
+              chips(const [('solid', 'Solid'), ('glass', 'Glass')], prefs.tileStyle, (v) => prefs.setGlass(style: v)),
+              if (prefs.tileStyle == 'glass') ...[
+                for (final (name, low, high, value, max, set) in [
+                  ('Frost', 'Clear', 'Frosted', prefs.glassBlur, 40.0, (double x) => prefs.setGlass(blur: x)),
+                  ('Tint', 'None', 'Strong', prefs.glassTint, .7, (double x) => prefs.setGlass(tint: x)),
+                ])
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
+                        Row(
+                          children: [
+                            SizedBox(width: 56, child: Text(low, style: DS.rowSub.copyWith(fontSize: 12))),
+                            Expanded(
+                              child: Slider(
+                                value: value,
+                                max: max,
+                                divisions: 14,
+                                activeColor: DS.ink,
+                                inactiveColor: DS.cardMuted,
+                                thumbColor: DS.ink,
+                                onChanged: set,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 56,
+                              child: Text(high, textAlign: TextAlign.right, style: DS.rowSub.copyWith(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                _Group(null, [
+                  _SwitchRow(
+                    Icons.crop_square_rounded,
+                    'Bright edge',
+                    'A thin light border, like a glass pane',
+                    prefs.glassEdge,
+                    (v) => prefs.setGlass(edge: v),
+                  ),
+                  _SwitchRow(Icons.gradient_rounded, 'Sheen', 'A soft light across the top corner', prefs.glassSheen, (v) => prefs.setGlass(sheen: v)),
+                ]),
+                if (prefs.wallpaperPhoto == null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, 0),
+                    child: Text(
+                      'Frost blurs “Your photo” wallpaper (Settings → Wallpaper). With the phone’s own wallpaper, glass shows the tint and highlights only.',
+                      style: DS.rowSub.copyWith(fontSize: 13),
+                    ),
+                  ),
+              ],
               label('Tile colours'),
               chips(const [('accent', 'Accent'), ('colourful', 'Each app’s colour')], prefs.tileColours, prefs.setTileColours),
               label('Columns'),
