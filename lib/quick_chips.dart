@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'prefs.dart';
+import 'remote_sheet.dart';
 import 'quick_actions.dart';
 import 'sheets.dart';
 import 'ui/ds.dart';
@@ -109,6 +110,7 @@ class QuickChipsRow extends StatelessWidget {
 
   Future<void> _run(BuildContext context, String id, String label) async {
     HapticFeedback.selectionClick();
+    if (id == 'b:remote') return showTvRemote(context, prefs: prefs); // ours, not the phone's
     final ok = await Apps.instance.quickAction(id);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));

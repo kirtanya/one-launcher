@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -317,7 +318,12 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (_editing) return setState(() => _editing = false);
+        if (_editing) {
+          return setState(() {
+            _editing = false;
+            _selected = null;
+          });
+        }
         if (_pages.hasClients && (_pages.page ?? 0) > .5) _pages.animateToPage(0, duration: Motion.snapDuration, curve: Motion.settle);
       },
       child: Scaffold(
@@ -326,7 +332,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            IgnorePointer(child: PhotoWallpaper(prefs: prefs)),
+            IgnorePointer(child: PhotoWallpaper(prefs: prefs, fullScreen: true)), // Start shows the whole screen
             // Tiles want calm behind them: the wallpaper dims more than on the classic view.
             IgnorePointer(
               child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + .35).clamp(0.0, .85))),
@@ -495,6 +501,10 @@ class _StartPage extends StatelessWidget {
                               style: prefs.tileAnim,
                               // Lumia's sweep: column by column, a little later each row.
                               delay: Duration(milliseconds: 40 * col + 22 * row),
+                              // Long Start: tiles below the fold come in as you scroll to them.
+                              scroll: scroll,
+                              top: pad.top + DS.s24 + row * (unit + gap),
+                              bottom: pad.top + DS.s24 + (row + t.span.$2) * (unit + gap),
                               child: _EditableTile(
                                 tile: t,
                                 editing: editing,
@@ -624,7 +634,7 @@ class _EditableTile extends StatelessWidget {
             },
             child: body,
           ),
-          if (selected) ...[
+          if (editing && selected) ...[
             Positioned(
               right: -8,
               top: -8,
@@ -819,6 +829,7 @@ class _ActionTile extends StatelessWidget {
           onTap ??
           () async {
             HapticFeedback.selectionClick();
+            if (id == 'b:remote') return showTvRemote(context, prefs: prefs); // ours, not the phone's
             final ok = await Apps.instance.quickAction(id);
             if (!ok && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
@@ -1222,11 +1233,13 @@ class _AppListPageState extends State<_AppListPage> {
                 controller: _list,
                 padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pad.bottom + DS.s24),
                 itemExtent: rowH,
+                scrollCacheExtent: const ScrollCacheExtent.pixels(0), // build rows as they scroll in, so they animate in view
                 itemCount: rows.length,
                 // Landing: rows on screen come in one after another; rows scrolled to later don't.
                 itemBuilder: (context, i) => Landed(
                   landing: listLanding,
                   style: widget.prefs.listAnim,
+                  reveal: true, // rows scrolled to come in as they appear
                   delay: Duration(milliseconds: 24 * (i - (_list.hasClients ? _list.offset ~/ rowH : 0)).clamp(0, 16)),
                   child: Builder(
                     builder: (context) {

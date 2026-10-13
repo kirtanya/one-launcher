@@ -27,8 +27,11 @@ Rect photoRect(Size img, Size screen, double windowH, double zoom, double x, dou
 /// Cheap per frame: the photo is decoded at about screen size, and blur is baked once into a
 /// small image (re-made only when the blur setting changes) instead of a live blur filter.
 class PhotoWallpaper extends StatefulWidget {
-  const PhotoWallpaper({super.key, required this.prefs});
+  const PhotoWallpaper({super.key, required this.prefs, this.fullScreen = false});
   final Prefs prefs;
+
+  /// Fill the whole screen (Tiles view) instead of the classic view's top window.
+  final bool fullScreen;
 
   /// Pixel size of the decoded photo (the editor needs its shape to turn drags into position).
   static final size = ValueNotifier<Size?>(null);
@@ -149,7 +152,14 @@ class _PhotoWallpaperState extends State<PhotoWallpaper> {
     return RepaintBoundary(
       child: CustomPaint(
         size: Size.infinite,
-        painter: _PhotoPainter(img, Size(_sharp!.width.toDouble(), _sharp!.height.toDouble()), p.topShare, p.photoZoom, p.photoX, p.photoY),
+        painter: _PhotoPainter(
+          img,
+          Size(_sharp!.width.toDouble(), _sharp!.height.toDouble()),
+          widget.fullScreen ? 1.0 : p.topShare,
+          p.photoZoom,
+          p.photoX,
+          p.photoY,
+        ),
       ),
     );
   }

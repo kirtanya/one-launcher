@@ -181,6 +181,14 @@ void main() {
     expect(after.indexOf('app:com.amazon'), greaterThan(1), reason: 'moved later on Start: $after');
     expect(after.toSet(), before.toSet(), reason: 'same tiles, new order');
     expect(find.text('Done'), findsOneWidget, reason: 'dragging enters edit mode');
+    // Back leaves edit mode — and the tile's controls go with it (they used to linger).
+    expect(find.byTooltip('Resize'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Done'), findsNothing);
+    expect(find.byTooltip('Resize'), findsNothing, reason: 'no edit controls outside edit mode');
+    await tester.longPress(find.text('Amazon'));
+    await tester.pumpAndSettle();
     // Edit mode → Add tile → a quick action as a small tile; tapping it runs the action.
     await tester.tap(find.text('Add tile'));
     await tester.pumpAndSettle();
@@ -196,6 +204,24 @@ void main() {
     await tester.tap(find.byIcon(Icons.flashlight_on_outlined));
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'quickAction' && (c.arguments as Map)['id'] == 'b:torch'), isNotEmpty);
+    // Our own TV remote as a tile: opens the remote sheet (not a phone action).
+    await tester.longPress(find.text('Amazon'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add tile'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('TV remote'));
+    await tester.tap(find.text('TV remote'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(_tiles(prefs).last.id, 'qa:b:remote');
+    calls.clear();
+    await tester.tap(find.byIcon(Icons.settings_remote_rounded).last);
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'quickAction'), isEmpty);
+    expect(find.byType(BottomSheet), findsOneWidget, reason: 'remote sheet open');
+    Navigator.of(tester.element(find.byType(BottomSheet)), rootNavigator: true).pop();
+    await tester.pumpAndSettle();
 
     // Pull down past the top → all apps with the search box focused.
     await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
