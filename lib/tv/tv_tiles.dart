@@ -27,6 +27,25 @@ class TvResumeInfo {
   final bool playing;
 }
 
+/// A quick action above the Resume row (Tiles view): a built-in, a pinned app, or "+" (edit).
+class TvTileAction {
+  const TvTileAction({required this.id, required this.label, required this.onSelect, this.icon, this.app, this.onOptions});
+  final String id, label;
+  final IconData? icon;
+  final AppEntry? app; // pinned app: its icon
+  final VoidCallback onSelect;
+  final VoidCallback? onOptions;
+}
+
+/// One card in the Resume row: what's playing / paused, the watch history, the apps' Watch Next.
+class TvResumeCard {
+  const TvResumeCard({required this.key, required this.info, required this.onSelect, this.onOptions});
+  final String key;
+  final TvResumeInfo info;
+  final VoidCallback onSelect;
+  final VoidCallback? onOptions;
+}
+
 /// The Start screen's own landing (Customise → Tiles → Start animation).
 final tvStartLanding = Landing();
 
@@ -53,8 +72,7 @@ List<TileSpec> _defaults(Prefs prefs, List<AppEntry> apps) {
   ].take(8).toList();
   const sizes = ['m', 'm', 's', 's', 's', 's', 'm', 'm'];
   return [
-    const TileSpec('resume', 'w'),
-    const TileSpec('clock', 'm'),
+    const TileSpec('clock', 'm'), // (Resume lives in its own row above the tiles)
     for (final (i, a) in picks.indexed) TileSpec('app:${a.package}', sizes[i]),
     const TileSpec('qa:t:inputs', 's'),
     const TileSpec('qa:t:settings', 's'),
@@ -132,6 +150,8 @@ class TvTilesStart extends StatefulWidget {
     required this.onResume,
     required this.onAllApps,
     required this.onTop,
+    this.quick = const [],
+    this.resumeCards = const [],
   });
   final Prefs prefs;
   final List<AppEntry> apps;
@@ -140,6 +160,8 @@ class TvTilesStart extends StatefulWidget {
   final void Function(AppEntry app) onLaunch;
   final VoidCallback onResume, onAllApps;
   final VoidCallback onTop; // ↑ from the top row: the top bar
+  final List<TvTileAction> quick; // quick actions row (top)
+  final List<TvResumeCard> resumeCards; // Resume row (under the quick actions)
 
   @override
   State<TvTilesStart> createState() => TvTilesStartState();
@@ -147,7 +169,10 @@ class TvTilesStart extends StatefulWidget {
 
 class TvTilesStartState extends State<TvTilesStart> {
   final _nodes = <String, FocusNode>{};
-  final _scroll = ScrollController();
+  final _scroll = ScrollController(); // the tiles, sideways
+  final _page = ScrollController(); // the whole Start, up / down (quick actions → resume → tiles)
+  double _gridTop = 0;
+  int _qi = 0, _ri = 0; // last focused quick action / resume card
   final _colours = <String, Color>{};
   String? _moving;
   List<(TileSpec, int, int)> _placed = const [];
@@ -163,27 +188,116 @@ class TvTilesStartState extends State<TvTilesStart> {
   }
 
   @override
+  void didUpdateWidget(TvTilesStart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The focused card / action went away (Hold OK → Remove from Continue watching / quick
+    // actions): focus stays in its row, on the one now in its place, so the remote isn't lost.
+    bool lost(Iterable<String> was, Iterable<String> now) => was.toSet().difference(now.toSet()).any((id) => _nodes[id]?.hasPrimaryFocus ?? false);
+    final resume = lost([for (final r in oldWidget.resumeCards) 'r:${r.key}'], [for (final r in widget.resumeCards) 'r:${r.key}']);
+    final quick = lost([for (final a in oldWidget.quick) 'q:${a.id}'], [for (final a in widget.quick) 'q:${a.id}']);
+    if (!resume && !quick) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (resume && widget.resumeCards.isNotEmpty) return _toResume();
+      if (quick && widget.quick.isNotEmpty) return _toQuick();
+      focusFirst();
+    });
+  }
+
+  @override
   void dispose() {
     _scroll.dispose();
+    _page.dispose();
     for (final n in _nodes.values) {
       n.dispose();
     }
     super.dispose();
   }
 
-  /// Home / Back / landing: the first tile, Start scrolled to its beginning, tiles fly in.
+  /// Home / Back / landing: back to the top (first quick action, else Resume, else the first
+  /// tile), everything scrolled to its start, tiles fly in.
   void land() {
     if (!mounted) return;
-    if (_scroll.hasClients) _scroll.jumpTo(0);
-    final first = tvTiles(prefs, widget.apps).firstOrNull;
-    if (first != null) _node(first.id).requestFocus();
+    for (final c in [_scroll, _page]) {
+      if (c.hasClients) c.jumpTo(0);
+    }
+    _qi = _ri = 0;
+    focusFirst();
     tvStartLanding.play();
   }
 
-  /// ↓ from the top bar: the first tile on screen (no animation).
+  /// ↓ from the top bar: the first row there is (no animation).
   void focusFirst() {
+    if (widget.quick.isNotEmpty) return _toQuick();
+    if (widget.resumeCards.isNotEmpty) return _toResume();
+    _toTiles();
+  }
+
+  void _toQuick() => _focusIn('q:${widget.quick[_qi.clamp(0, widget.quick.length - 1)].id}', top: true);
+  void _toResume() => _focusIn('r:${widget.resumeCards[_ri.clamp(0, widget.resumeCards.length - 1)].key}', top: true);
+  void _toTiles() {
     final first = tvTiles(prefs, widget.apps).firstOrNull;
-    if (first != null) _node(first.id).requestFocus();
+    if (first != null) _focusIn(first.id, top: false);
+  }
+
+  /// Focus [id]; the page shows the top rows ([top]) or the tiles; the row slides it into view.
+  void _focusIn(String id, {required bool top}) {
+    final node = _node(id)..requestFocus();
+    _pageTo(top);
+    final ctx = node.context;
+    if (ctx != null) _reveal(ctx);
+  }
+
+  void _pageTo(bool top) {
+    if (!_page.hasClients) return;
+    final y = top ? 0.0 : (_gridTop - TvDS.safe.top).clamp(0.0, _page.position.maxScrollExtent);
+    if ((_page.offset - y).abs() > 1) _page.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 380)), curve: Curves.easeOutCubic);
+  }
+
+  /// Slide the item's own row (sideways only) so it sits comfortably in view.
+  void _reveal(BuildContext ctx) {
+    final ro = ctx.findRenderObject();
+    final pos = Scrollable.maybeOf(ctx)?.position;
+    if (ro == null || pos == null || pos.axis != Axis.horizontal) return;
+    pos.ensureVisible(ro, alignment: .3, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic);
+  }
+
+  bool _moveQuick(int i, AxisDirection d) {
+    final n = widget.quick.length;
+    switch (d) {
+      case AxisDirection.left when i > 0:
+        _qi = i - 1;
+        _toQuick();
+      case AxisDirection.right when i < n - 1:
+        _qi = i + 1;
+        _toQuick();
+      case AxisDirection.up:
+        widget.onTop();
+      case AxisDirection.down:
+        widget.resumeCards.isNotEmpty ? _toResume() : _toTiles();
+      default:
+        break;
+    }
+    return true;
+  }
+
+  bool _moveResume(int i, AxisDirection d) {
+    final n = widget.resumeCards.length;
+    switch (d) {
+      case AxisDirection.left when i > 0:
+        _ri = i - 1;
+        _toResume();
+      case AxisDirection.right when i < n - 1:
+        _ri = i + 1;
+        _toResume();
+      case AxisDirection.up:
+        widget.quick.isNotEmpty ? _toQuick() : widget.onTop();
+      case AxisDirection.down:
+        _toTiles();
+      default:
+        break;
+    }
+    return true;
   }
 
   /// Leaves for an app: everything swings away (turnstile), the chosen tile last.
@@ -329,14 +443,19 @@ class TvTilesStartState extends State<TvTilesStart> {
       }
     }
     if (best == null) {
-      if (d == AxisDirection.up) widget.onTop();
+      // ↑ off the tiles: the Resume row, the quick actions, then the top bar.
+      if (d == AxisDirection.up) {
+        if (widget.resumeCards.isNotEmpty) {
+          _toResume();
+        } else if (widget.quick.isNotEmpty) {
+          _toQuick();
+        } else {
+          widget.onTop();
+        }
+      }
       return true;
     }
-    final node = _node(best.$1.id)..requestFocus();
-    final ctx = node.context;
-    if (ctx != null) {
-      Scrollable.ensureVisible(ctx, alignment: .35, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic);
-    }
+    _focusIn(best.$1.id, top: false);
     return true;
   }
 
@@ -383,11 +502,33 @@ class TvTilesStartState extends State<TvTilesStart> {
         _placed = placed;
         _rows = rows;
         final cols = placed.fold<int>(0, (m, p) => math.max(m, p.$2 + _span(p.$1, rows).$1));
-        const gap = 8.0, top = 104.0;
+        const gap = 8.0;
         return LayoutBuilder(
           builder: (context, c) {
-            final unit = (c.maxHeight - top - TvDS.safe.bottom - (rows - 1) * gap) / rows;
+            const headerH = 60.0, quickH = 44.0, resumeH = 150.0, space = 18.0;
+            final hasQuick = widget.quick.isNotEmpty, hasResume = widget.resumeCards.isNotEmpty;
+            final stacked = hasQuick || hasResume;
+            // With rows above, the tiles fill a screen of their own (scrolled to with ↓) so they stay
+            // big, and the gap over them is wider than the top margin: nothing peeks in above them.
+            // With no rows above, they fit under "start" (no scrolling).
+            final gridGap = stacked ? TvDS.safe.top + 3 : 23.0;
+            _gridTop = TvDS.safe.top - 6 + headerH + (hasQuick ? space + quickH : 0) + (hasResume ? space + resumeH : 0) + gridGap;
+            final gridH = c.maxHeight - (stacked ? TvDS.safe.top : _gridTop) - TvDS.safe.bottom;
+            final unit = (gridH - (rows - 1) * gap) / rows;
             final width = TvDS.safe.left * 2 + cols * unit + (cols - 1) * gap;
+            Widget sideways({required double height, required List<Widget> children}) => SizedBox(
+              height: height,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                padding: EdgeInsets.symmetric(horizontal: TvDS.safe.left),
+                child: Row(
+                  children: [
+                    for (final (i, w) in children.indexed) ...[if (i > 0) const SizedBox(width: gap), w],
+                  ],
+                ),
+              ),
+            );
             return Stack(
               fit: StackFit.expand,
               children: [
@@ -404,58 +545,77 @@ class TvTilesStartState extends State<TvTilesStart> {
                       ),
                     ),
                   ),
-                // "start", Metro style: big, light, lowercase — and the top bar's buttons.
-                // "start" and the top bar's tile buttons on one line, centred on each other.
-                Positioned(
-                  left: TvDS.safe.left,
-                  right: TvDS.safe.right,
-                  top: TvDS.safe.top - 6,
-                  height: 60,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text('start', style: TvDS.heroTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, letterSpacing: -1, height: 1)),
-                      const Spacer(),
-                      widget.header,
-                    ],
-                  ),
-                ),
-                Positioned(
-                  top: top,
-                  left: 0,
-                  right: 0,
-                  bottom: TvDS.safe.bottom,
-                  child: BackdropGroup(
-                    child: SingleChildScrollView(
-                      controller: _scroll,
-                      scrollDirection: Axis.horizontal,
-                      clipBehavior: Clip.none,
-                      child: SizedBox(
-                        width: width,
-                        height: rows * unit + (rows - 1) * gap,
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            for (final (t, col, row) in placed)
-                              AnimatedPositioned(
-                                key: ValueKey(t.id),
-                                duration: TvLook.anim(Motion.snapDuration),
-                                curve: Motion.settle,
-                                left: TvDS.safe.left + col * (unit + gap),
-                                top: row * (unit + gap),
-                                width: _span(t, rows).$1 * unit + (_span(t, rows).$1 - 1) * gap,
-                                height: _span(t, rows).$2 * unit + (_span(t, rows).$2 - 1) * gap,
-                                child: Landed(
-                                  landing: tvStartLanding,
-                                  style: TvLook.str('motion') == 'reduced' ? 'none' : prefs.tileAnim,
-                                  delay: Duration(milliseconds: 40 * col + 22 * row),
-                                  id: t.id,
-                                  child: _tile(t),
-                                ),
-                              ),
-                          ],
+                BackdropGroup(
+                  child: SingleChildScrollView(
+                    controller: _page,
+                    clipBehavior: Clip.none,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(height: TvDS.safe.top - 6),
+                        // "start" and the top bar's tile buttons on one line.
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: TvDS.safe.left),
+                          child: SizedBox(
+                            height: headerH,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text('start', style: TvDS.heroTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, letterSpacing: -1, height: 1)),
+                                const Spacer(),
+                                widget.header,
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
+                        // ---- Quick actions ----
+                        if (hasQuick) ...[
+                          const SizedBox(height: space),
+                          sideways(height: quickH, children: [for (final (i, a) in widget.quick.indexed) _quickTile(a, i)]),
+                        ],
+                        // ---- Resume: everything you were watching ----
+                        if (hasResume) ...[
+                          const SizedBox(height: space),
+                          sideways(height: resumeH, children: [for (final (i, r) in widget.resumeCards.indexed) _resumeTile(r, i, resumeH)]),
+                        ],
+                        SizedBox(height: gridGap),
+                        // ---- The tiles ----
+                        SizedBox(
+                          height: rows * unit + (rows - 1) * gap,
+                          child: SingleChildScrollView(
+                            controller: _scroll,
+                            scrollDirection: Axis.horizontal,
+                            clipBehavior: Clip.none,
+                            child: SizedBox(
+                              width: width,
+                              height: rows * unit + (rows - 1) * gap,
+                              child: Stack(
+                                clipBehavior: Clip.none,
+                                children: [
+                                  for (final (t, col, row) in placed)
+                                    AnimatedPositioned(
+                                      key: ValueKey(t.id),
+                                      duration: TvLook.anim(Motion.snapDuration),
+                                      curve: Motion.settle,
+                                      left: TvDS.safe.left + col * (unit + gap),
+                                      top: row * (unit + gap),
+                                      width: _span(t, rows).$1 * unit + (_span(t, rows).$1 - 1) * gap,
+                                      height: _span(t, rows).$2 * unit + (_span(t, rows).$2 - 1) * gap,
+                                      child: Landed(
+                                        landing: tvStartLanding,
+                                        style: TvLook.str('motion') == 'reduced' ? 'none' : prefs.tileAnim,
+                                        delay: Duration(milliseconds: 40 * col + 22 * row),
+                                        id: t.id,
+                                        child: _tile(t),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: TvDS.safe.bottom),
+                      ],
                     ),
                   ),
                 ),
@@ -464,6 +624,101 @@ class TvTilesStartState extends State<TvTilesStart> {
           },
         );
       },
+    );
+  }
+
+  /// A quick action as a small tile (tile colour / glass / corners, white focus frame).
+  Widget _quickTile(TvTileAction a, int i) {
+    return TvFocusable(
+      key: ValueKey('q:${a.id}'), // keyed: a reorder moves the tile (and its focus) with it
+      focusNode: _node('q:${a.id}'),
+      onSelect: a.onSelect,
+      onLongSelect: a.onOptions,
+      onMove: (d) => _moveQuick(i, d),
+      builder: (context, f) => AnimatedScale(
+        scale: f ? 1.06 : 1,
+        duration: TvLook.anim(Motion.popDuration),
+        curve: Motion.pop,
+        child: Container(
+          height: 44,
+          constraints: const BoxConstraints(minWidth: 44),
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(prefs.tileRadius),
+            border: Border.all(color: f ? Colors.white : Colors.transparent, width: 2),
+          ),
+          child: ExcludeFocus(
+            child: TileSurface(
+              colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+              prefs: prefs,
+              onTap: a.onSelect,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: a.label.isEmpty ? 0 : 14),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: a.label.isEmpty ? 44 : null,
+                      // A pinned app: its own icon (cached after the first load, so no flicker).
+                      child: a.app != null
+                          ? SizedBox.square(
+                              dimension: 22,
+                              child: switch (TvApps.instance.iconNow(a.app!.package)) {
+                                final ready? => Image(image: ready, gaplessPlayback: true),
+                                _ => FutureBuilder<MemoryImage?>(
+                                  future: TvApps.instance.icon(a.app!.package),
+                                  builder: (context, s) => s.data != null
+                                      ? Image(image: s.data!, gaplessPlayback: true)
+                                      : const Icon(Icons.apps_rounded, color: Colors.white, size: 20),
+                                ),
+                              },
+                            )
+                          : Icon(a.icon ?? Icons.bolt_rounded, color: Colors.white, size: 20),
+                    ),
+                    if (a.label.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Text(a.label.toLowerCase(), style: TvDS.tileName.copyWith(fontSize: 14, color: Colors.white)),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A Resume card: wide tile with the artwork, title, app and progress; OK resumes it.
+  Widget _resumeTile(TvResumeCard r, int i, double h) {
+    return TvFocusable(
+      key: ValueKey('r:${r.key}'), // keyed: when a card goes, the others keep their focus / flip
+      focusNode: _node('r:${r.key}'),
+      onSelect: r.onSelect,
+      onLongSelect: r.onOptions,
+      onMove: (d) => _moveResume(i, d),
+      builder: (context, f) => AnimatedScale(
+        scale: f ? 1.05 : 1,
+        duration: TvLook.anim(Motion.popDuration),
+        curve: Motion.pop,
+        child: Container(
+          width: h * 16 / 9,
+          height: h,
+          foregroundDecoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(prefs.tileRadius),
+            border: Border.all(color: f ? Colors.white : Colors.transparent, width: 3),
+          ),
+          child: ExcludeFocus(
+            child: TileSurface(
+              colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+              prefs: prefs,
+              onTap: r.onSelect,
+              // Live tiles: only the one that's playing flips.
+              child: _ResumeFace(info: r.info, live: prefs.fx('live') && r.info.playing && TvLook.str('motion') != 'reduced', names: true),
+            ),
+          ),
+        ),
+      ),
     );
   }
 

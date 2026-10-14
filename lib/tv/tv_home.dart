@@ -278,6 +278,7 @@ class _TvHomeState extends State<TvHome> {
     // Tiles view: the Resume tile shows what's playing / the latest from history.
     final now = cont.firstOrNull?.kind == TvKind.resume ? cont.first : null;
     _resumeItem = now;
+    _cont = cont;
     _resumeInfo = now == null ? null : TvResumeInfo(title: now.title, app: now.appName, art: now.art, progress: now.progress, playing: now.playing);
     // The title block follows focus; keep it pointing at a live item.
     final firstContent = _rows.where((r) => !r.chips).firstOrNull;
@@ -351,6 +352,53 @@ class _TvHomeState extends State<TvHome> {
   final _tilesKey = GlobalKey<TvTilesStartState>();
   bool get _tilesView => prefs.homeView == 'tiles';
   TvItem? _resumeItem;
+  List<TvItem> _cont = const []; // everything to resume (Tiles view: the Resume row)
+
+  /// Tiles view: the quick actions row (same chips as the Cinematic view, + to edit).
+  List<TvTileAction> _tilesQuick() {
+    final row = _rows.where((r) => r.id == 'quick').firstOrNull;
+    if (row == null) return const [];
+    return [
+      for (final (i, it) in row.items.indexed)
+        TvTileAction(
+          id: it.key,
+          label: it.key == 'q:edit' ? '' : it.title,
+          icon: it.key == 'q:edit' ? Icons.add_rounded : tvActions[it.key]?.$2,
+          app: it.app,
+          onSelect: () => _open(it),
+          onOptions: () => _options(row, i),
+        ),
+    ];
+  }
+
+  /// Tiles view: every resume item as a card (playing / paused, history, the apps' Watch Next).
+  List<TvResumeCard> _tilesResume() {
+    if (!TvLook.on('resume') || _cont.isEmpty) return const [];
+    final row = TvRow('continue', 'Continue watching', _cont, wide: true);
+    return [
+      for (final (i, c) in _cont.indexed)
+        TvResumeCard(
+          key: c.key,
+          info: TvResumeInfo(title: c.title, app: c.appName, art: _tilesArt(c), progress: c.progress, playing: c.playing),
+          onSelect: () => _open(c),
+          onOptions: () => _options(row, i),
+        ),
+    ];
+  }
+
+  /// A Resume card's picture: its own artwork, else the Watch Next still (fetched once; the row
+  /// redraws when it arrives — the Cinematic cards that would load it aren't on screen here).
+  ImageProvider? _tilesArt(TvItem c) {
+    if (c.art != null || c.image == null) return c.art;
+    final ready = tv.imageNow(c.image!);
+    if (ready == null) {
+      tv.image(c.image!).then((m) {
+        if (m != null && mounted) setState(() {}); // (no picture: nothing to redraw, no loop)
+      }, onError: (_) {});
+    }
+    return ready;
+  }
+
   TvResumeInfo? _resumeInfo;
 
   /// Customise → Tiles → Add a tile: clock, resume, all apps, any quick action. (Apps: All apps →
@@ -651,7 +699,10 @@ class _TvHomeState extends State<TvHome> {
         title: item.title,
         actions: [
           TvAction(Icons.open_in_new_rounded, 'Open', () => _open(item)),
-          if (row.items.length > 2) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
+          // Move mode belongs to the Cinematic row; the Tiles view's row moves one step per press.
+          if (row.items.length > 2 && !_tilesView) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
+          if (_tilesView && i > 0) TvAction(Icons.chevron_left_rounded, 'Move left', () => _nudgeQuick(row, i, -1)),
+          if (_tilesView && i < row.items.length - 2) TvAction(Icons.chevron_right_rounded, 'Move right', () => _nudgeQuick(row, i, 1)),
           TvAction(
             Icons.remove_circle_outline_rounded,
             'Remove from quick actions',
@@ -735,6 +786,23 @@ class _TvHomeState extends State<TvHome> {
   };
 
   /// Tick quick actions on and off (the chips update behind the panel). Order: Hold OK → Move.
+  /// Tiles view: a quick action one place left / right ("Edit" stays last; actions not shown,
+  /// like an uninstalled app's, keep their spot at the end).
+  void _nudgeQuick(TvRow row, int i, int by) {
+    final keys = [
+      for (final it in row.items)
+        if (it.key != 'q:edit') it.key,
+    ];
+    final j = i + by;
+    if (i >= keys.length || j < 0 || j >= keys.length) return;
+    keys.insert(j, keys.removeAt(i));
+    prefs.setTvQuickActions([
+      ...keys,
+      for (final k in prefs.tvQuickActions)
+        if (!keys.contains(k)) k,
+    ]);
+  }
+
   void _editQuick() {
     showTvPanel(
       context,
@@ -874,6 +942,8 @@ class _TvHomeState extends State<TvHome> {
                 onResume: () => _resumeItem != null ? _open(_resumeItem!) : tv.mediaResume(),
                 onAllApps: _allApps,
                 onTop: () => _focus(-1, 0),
+                quick: _tilesQuick(),
+                resumeCards: _tilesResume(),
               ),
             )
           : Scaffold(

@@ -51,3 +51,6 @@ android/.kotlin/
 
 # TMDB key for the TV app's shows & films search (never commit)
 tmdb.key
+
+# Stremio addon manifests for the TV catalog (may contain personal tokens; never commit)
+catalog_sources.txt
