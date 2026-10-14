@@ -5,6 +5,7 @@ import '../prefs.dart';
 import '../ui/ds.dart';
 import 'catalog.dart';
 import 'tv_ds.dart';
+import 'tv_metro.dart';
 import 'tv_parts.dart';
 
 /// Customise → Search: the shows & films catalog search uses — update it now, when it last
@@ -145,7 +146,9 @@ class _AddSourceState extends State<_AddSource> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Add a source', style: TvDS.heroTitle.copyWith(fontSize: 32)),
+            TvMetro.on
+                ? Text(TvMetro.cased('Add a source'), style: TvMetro.title(size: 40).copyWith(height: 1))
+                : Text('Add a source', style: TvDS.heroTitle.copyWith(fontSize: 32)),
             const SizedBox(height: DS.s12),
             const SizedBox(
               width: 620,
@@ -180,10 +183,10 @@ class _AddSourceState extends State<_AddSource> {
                   filled: true,
                   fillColor: TvDS.surface,
                   contentPadding: const EdgeInsets.symmetric(vertical: DS.s16),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
+                  border: OutlineInputBorder(borderRadius: TvMetro.corners(28), borderSide: BorderSide.none),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(28),
-                    borderSide: const BorderSide(color: TvDS.ink, width: 2),
+                    borderRadius: TvMetro.corners(28),
+                    borderSide: BorderSide(color: TvMetro.on ? TvMetro.focus : TvDS.ink, width: 2),
                   ),
                 ),
               ),

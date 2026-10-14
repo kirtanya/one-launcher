@@ -34,7 +34,8 @@ class TvFocusable extends StatefulWidget {
 }
 
 class _TvFocusableState extends State<TvFocusable> {
-  bool _focused = false;
+  // A node that already has focus (this widget rebuilt in a new place) shows as focused at once.
+  late bool _focused = widget.focusNode?.hasFocus ?? false;
   bool _held = false; // OK went down here
   bool _long = false; // …and was held long enough to open options
 

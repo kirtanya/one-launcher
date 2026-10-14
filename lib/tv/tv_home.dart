@@ -19,6 +19,7 @@ import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
+import 'tv_metro.dart';
 import 'tv_search.dart';
 import 'tv_tiles.dart';
 import '../tiles/tiles_home.dart' show TileSpec;
@@ -837,6 +838,9 @@ class _TvHomeState extends State<TvHome> {
       refresh: prefs,
       build: () {
         final source = prefs.themeSource == 'system' && !theme.hasSystem ? 'original' : prefs.themeSource;
+        // Tiles: each swatch shows the accent it gives Start (Metro derives its own from the colour).
+        final metro = TvMetro.on;
+        Color sw(Color c, {String src = 'basic', String? style}) => metro ? TvMetro.accentFor(theme, prefs, source: src, seed: c.toARGB32(), style: style) : c;
         return [
           if (theme.hasSystem)
             TvAction(
@@ -844,7 +848,7 @@ class _TvHomeState extends State<TvHome> {
               'Match your TV',
               () => prefs.setTheme(source: 'system'),
               keepOpen: true,
-              swatch: theme.systemSeed,
+              swatch: metro ? TvMetro.accentFor(theme, prefs, source: 'system') : theme.systemSeed,
               selected: source == 'system',
             ),
           TvAction(
@@ -852,7 +856,7 @@ class _TvHomeState extends State<TvHome> {
             'One original',
             () => prefs.setTheme(source: 'original'),
             keepOpen: true,
-            swatch: OnePalette.original.hero,
+            swatch: metro ? TvMetro.accentFor(theme, prefs, source: 'original') : OnePalette.original.hero,
             selected: source == 'original',
           ),
           for (final (i, c) in OneTheme.basicSeeds.indexed)
@@ -861,12 +865,20 @@ class _TvHomeState extends State<TvHome> {
               names[i],
               () => prefs.setTheme(source: 'basic', seed: c.toARGB32()),
               keepOpen: true,
-              swatch: c,
+              swatch: sw(c),
               selected: source == 'basic' && prefs.themeSeed == c.toARGB32(),
             ),
           if (source != 'original')
             for (final MapEntry(key: id, value: (label, _)) in OneTheme.styles.entries)
-              TvAction(Icons.style_outlined, 'Style: $label', () => prefs.setTheme(style: id), keepOpen: true, selected: prefs.themeStyle == id),
+              TvAction(
+                Icons.style_outlined,
+                'Style: $label',
+                () => prefs.setTheme(style: id),
+                keepOpen: true,
+                selected: prefs.themeStyle == id,
+                // Tiles: the style's accent for the current colour.
+                swatch: metro ? TvMetro.accentFor(theme, prefs, style: id) : null,
+              ),
         ];
       },
     );

@@ -6,6 +6,7 @@ import '../ui/motion.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
+import 'tv_metro.dart';
 
 /// Shared TV pieces: app tiles + artwork, the options side panel, search.
 
@@ -50,17 +51,20 @@ class TvAppTile extends StatelessWidget {
                   duration: Motion.pressIn * 2,
                   width: TvDS.tileW,
                   height: TvDS.tileH,
-                  // Ring + glow only on the focused tile (one blur on screen at a time).
-                  foregroundDecoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
-                    border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                  ),
+                  // Ring + glow only on the focused tile (one blur on screen at a time). Tiles: the
+                  // Metro frame and corners.
+                  foregroundDecoration: TvMetro.on
+                      ? TvMetro.frame(f, width: TvDS.focusRing)
+                      : BoxDecoration(
+                          borderRadius: BorderRadius.circular(TvDS.rTile),
+                          border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
+                        ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
-                    boxShadow: f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null,
+                    borderRadius: TvMetro.corners(TvDS.rTile),
+                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
+                    borderRadius: TvMetro.corners(TvDS.rTile),
                     child: TvAppArt(app: app, width: TvDS.tileW),
                   ),
                 ),
@@ -104,7 +108,7 @@ class TvAppArt extends StatelessWidget {
   Widget _fallback(ImageProvider? icon) {
     final s = width / TvDS.tileW;
     return ColoredBox(
-      color: TvDS.surface,
+      color: TvMetro.on ? TvMetro.tileFill : TvDS.surface, // Tiles: an accent tile
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -113,7 +117,9 @@ class TvAppArt extends StatelessWidget {
             child: icon != null
                 ? Image(image: icon, gaplessPlayback: true, filterQuality: FilterQuality.medium)
                 : DecoratedBox(
-                    decoration: BoxDecoration(color: DS.hero, shape: BoxShape.circle),
+                    decoration: TvMetro.on
+                        ? BoxDecoration(color: Colors.white24, borderRadius: TvMetro.corners(0))
+                        : BoxDecoration(color: DS.hero, shape: BoxShape.circle),
                     child: Center(
                       child: Text(
                         app.label.isEmpty ? '?' : app.label[0].toUpperCase(),
@@ -171,7 +177,7 @@ Future<void> showTvPanel(
     pageBuilder: (ctx, _, _) => Align(
       alignment: Alignment.centerRight,
       child: Material(
-        color: const Color(0xFF1C1C1C),
+        color: TvMetro.on ? DS.card : const Color(0xFF1C1C1C), // Tiles: Metro's near-black, flat
         child: SizedBox(
           width: 440,
           height: double.infinity,
@@ -186,11 +192,13 @@ Future<void> showTvPanel(
                     if (leading != null) ...[
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: ClipRRect(borderRadius: BorderRadius.circular(TvDS.rTile), child: leading),
+                        child: ClipRRect(borderRadius: TvMetro.corners(TvDS.rTile), child: leading),
                       ),
                       const SizedBox(height: DS.s16),
                     ],
-                    Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    TvMetro.on
+                        ? Text(TvMetro.cased(title), style: TvMetro.title(size: 34), maxLines: 2, overflow: TextOverflow.ellipsis)
+                        : Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: DS.s24),
                     for (final (i, a) in actions2.indexed)
                       Padding(
@@ -201,43 +209,49 @@ Future<void> showTvPanel(
                             if (!a.keepOpen) Navigator.pop(ctx);
                             a.onSelect();
                           },
-                          builder: (context, f) => AnimatedContainer(
-                            duration: Motion.pressIn * 2,
-                            height: 52,
-                            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                            decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
-                            child: Row(
-                              children: [
-                                if (a.swatch != null)
-                                  Container(
-                                    width: 22,
-                                    height: 22,
-                                    decoration: BoxDecoration(
-                                      color: a.swatch,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: TvDS.line),
-                                    ),
-                                  )
-                                else
-                                  Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : TvDS.onLight) : (a.danger ? DS.alert : TvDS.inkMuted)),
-                                const SizedBox(width: DS.s16),
-                                Expanded(
-                                  child: Text(
-                                    a.label,
-                                    style: TvDS.panelRow.copyWith(color: f ? TvDS.onLight : TvDS.ink),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                          builder: (context, f) => TvMetro.on
+                              ? _MetroRow(action: a, focused: f)
+                              : AnimatedContainer(
+                                  duration: Motion.pressIn * 2,
+                                  height: 52,
+                                  padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                                  decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
+                                  child: Row(
+                                    children: [
+                                      if (a.swatch != null)
+                                        Container(
+                                          width: 22,
+                                          height: 22,
+                                          decoration: BoxDecoration(
+                                            color: a.swatch,
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: TvDS.line),
+                                          ),
+                                        )
+                                      else
+                                        Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : TvDS.onLight) : (a.danger ? DS.alert : TvDS.inkMuted)),
+                                      const SizedBox(width: DS.s16),
+                                      Expanded(
+                                        child: Text(
+                                          a.label,
+                                          style: TvDS.panelRow.copyWith(color: f ? TvDS.onLight : TvDS.ink),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (a.value != null)
+                                        Text(
+                                          a.value!,
+                                          style: TvDS.panelRow.copyWith(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w400,
+                                            color: f ? TvDS.onLightMuted : TvDS.inkMuted,
+                                          ),
+                                        ),
+                                      if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                                    ],
                                   ),
                                 ),
-                                if (a.value != null)
-                                  Text(
-                                    a.value!,
-                                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
-                                  ),
-                                if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
-                              ],
-                            ),
-                          ),
                         ),
                       ),
                   ],
@@ -329,31 +343,107 @@ class TvActionPill extends StatelessWidget {
           scale: f ? 1.06 : 1,
           duration: Motion.popDuration,
           curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-            decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (leading != null)
-                  ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
-                else if (icon != null)
-                  Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
-                const SizedBox(width: DS.s12),
-                Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink)),
-                if (detail != null) ...[
-                  const SizedBox(width: DS.s8),
-                  Text(
-                    detail!,
-                    style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
+          child: TvMetro.on
+              ? _metro(f)
+              : AnimatedContainer(
+                  duration: Motion.pressIn * 2,
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                  decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (leading != null)
+                        ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
+                      else if (icon != null)
+                        Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                      const SizedBox(width: DS.s12),
+                      Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink)),
+                      if (detail != null) ...[
+                        const SizedBox(width: DS.s8),
+                        Text(
+                          detail!,
+                          style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
-              ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  /// Tiles: an accent tile button — flat, the tile corners, lowercase; focus is the Metro frame.
+  Widget _metro(bool f) => AnimatedContainer(
+    duration: Motion.pressIn * 2,
+    height: 48,
+    padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+    decoration: BoxDecoration(color: TvMetro.tileFill, borderRadius: TvMetro.corners(0), boxShadow: TvMetro.glow(f)),
+    foregroundDecoration: TvMetro.frame(f, width: 2),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (leading != null) ClipRRect(borderRadius: TvMetro.corners(0), child: leading) else if (icon != null) Icon(icon, size: 22, color: Colors.white),
+        const SizedBox(width: DS.s12),
+        Text(TvMetro.cased(label), style: TvDS.panelRow.copyWith(fontSize: 15, color: Colors.white)),
+        if (detail != null) ...[
+          const SizedBox(width: DS.s8),
+          Text(
+            TvMetro.cased(detail!),
+            style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: Colors.white70),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+/// A side-panel row in Tiles (Metro): the icon on a small accent tile (or a square colour
+/// swatch), the label in Metro's case, the value muted; focus is the Metro frame — no white pill.
+class _MetroRow extends StatelessWidget {
+  const _MetroRow({required this.action, required this.focused});
+  final TvAction action;
+  final bool focused;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = action, f = focused;
+    final r = TvMetro.corners(0);
+    return AnimatedContainer(
+      duration: Motion.pressIn * 2,
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+      decoration: BoxDecoration(color: f ? const Color(0x14FFFFFF) : Colors.transparent, borderRadius: r, boxShadow: TvMetro.glow(f)),
+      foregroundDecoration: TvMetro.frame(f, width: 2),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: a.swatch ?? (a.danger ? DS.alert : TvMetro.accent),
+              borderRadius: BorderRadius.circular(TvMetro.radius(0) * .6),
+              border: a.swatch != null ? Border.all(color: TvDS.line) : null,
+            ),
+            child: a.swatch != null ? null : Icon(a.icon, size: 20, color: Colors.white),
+          ),
+          const SizedBox(width: DS.s16),
+          Expanded(
+            child: Text(
+              TvMetro.cased(a.label),
+              style: TvDS.panelRow.copyWith(fontWeight: FontWeight.w400, color: a.danger ? DS.alert : Colors.white),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-        ),
+          if (a.value != null)
+            Text(
+              TvMetro.cased(a.value!),
+              style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w400, color: f ? TvMetro.accentText : TvDS.inkMuted),
+            ),
+          if (a.selected) Icon(Icons.check_rounded, size: 22, color: TvMetro.accentText),
+        ],
       ),
     );
   }

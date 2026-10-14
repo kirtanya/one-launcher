@@ -38,6 +38,16 @@ class TvApps {
   /// Already loaded art (draws on the first frame, no flash).
   TvArt? artNow(String package) => _ready[package];
 
+  /// Tests / previews: icons, banners and icon colours as if Android had sent them.
+  @visibleForTesting
+  void debugSeed({Map<String, MemoryImage> icons = const {}, Map<String, TvArt> art = const {}, Map<String, Color> colours = const {}}) {
+    _iconsReady.addAll(icons);
+    _ready.addAll(art);
+    _demoColours.addAll(colours);
+  }
+
+  final _demoColours = <String, Color>{};
+
   void init() {
     if (demo) return;
     _ch.setMethodCallHandler((call) async {
@@ -145,7 +155,7 @@ class TvApps {
 
   final _colours = <String, Future<Color?>>{};
   Future<Color?> iconColour(String package) {
-    if (demo) return Future.value(null);
+    if (demo) return Future.value(_demoColours[package]);
     return _colours.putIfAbsent(package, () async {
       final c = await _ch.invokeMethod<int>('getIconColour', {'package': package});
       return c == null ? null : Color(c);

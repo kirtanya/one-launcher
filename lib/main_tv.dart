@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'prefs.dart';
 import 'tv/tv_apps.dart';
 import 'tv/tv_home.dart';
+import 'tv/tv_metro.dart';
 import 'ui/ds.dart';
 import 'ui/glass.dart';
 import 'ui/theme.dart';
@@ -36,14 +37,16 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
   @override
   void initState() {
     super.initState();
-    theme.addListener(_repaint);
+    TvMetro.prefs = prefs;
+    TvMetro.apply(theme, prefs); // Tiles: the TV's own Metro accent (keeps every colour choice apart)
+    theme.addListener(_onTheme);
     _syncGlass(repaint: false); // no rebuild needed before the first frame
     prefs.addListener(_syncGlass);
   }
 
   @override
   void dispose() {
-    theme.removeListener(_repaint);
+    theme.removeListener(_onTheme);
     prefs.removeListener(_syncGlass);
     super.dispose();
   }
@@ -60,6 +63,12 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
     Glass.sheen = g.$4;
     Glass.tiles = g.$5;
     if (repaint) _repaint();
+  }
+
+  /// Colours / home view changed: Tiles takes the TV's Metro accent, then everything repaints.
+  void _onTheme() {
+    TvMetro.apply(theme, prefs);
+    _repaint();
   }
 
   /// New colours: rebuild everything (const widgets included), like the phone app.

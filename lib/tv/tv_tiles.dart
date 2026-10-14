@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../apps.dart';
 import '../prefs.dart';
 import '../tiles/landing.dart';
-import '../tiles/tiles_home.dart' show TileSpec, TileSurface, tileAccent, tileSwatches;
+import '../tiles/tiles_home.dart' show TileSpec, TileSurface, tileSwatches;
 import '../top/header_fonts.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
@@ -14,6 +14,7 @@ import 'tv_actions.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
+import 'tv_metro.dart';
 import 'tv_parts.dart';
 import 'tv_settings.dart';
 
@@ -87,7 +88,9 @@ bool tvPinned(Prefs prefs, List<AppEntry> apps, String package) => tvTiles(prefs
 Future<void> tvTogglePin(Prefs prefs, List<AppEntry> apps, String package) {
   final list = tvTiles(prefs, apps);
   final i = list.indexWhere((t) => t.id == 'app:$package');
-  i >= 0 ? list.removeAt(i) : list.add(TileSpec('app:$package', 'm'));
+  // Customise → Tiles → New tiles: the size a newly pinned app starts at.
+  final size = prefs.tvSettings['tileNewSize'] as String? ?? 'm';
+  i >= 0 ? list.removeAt(i) : list.add(TileSpec('app:$package', const ['s', 'm', 'w'].contains(size) ? size : 'm'));
   return saveTvTiles(prefs, list);
 }
 
@@ -172,6 +175,7 @@ class TvTilesStartState extends State<TvTilesStart> {
   final _scroll = ScrollController(); // the tiles, sideways
   final _page = ScrollController(); // the whole Start, up / down (quick actions → resume → tiles)
   double _gridTop = 0;
+  bool _onTiles = false; // the page is showing the tiles (not the rows above)
   int _qi = 0, _ri = 0; // last focused quick action / resume card
   final _colours = <String, Color>{};
   String? _moving;
@@ -179,6 +183,10 @@ class TvTilesStartState extends State<TvTilesStart> {
   int _rows = 4;
 
   Prefs get prefs => widget.prefs;
+
+  /// The rows above the tiles, as Customise → Tiles → Layout shows them.
+  List<TvTileAction> get _quick => TvLook.on('tileQuickRow') ? widget.quick : const [];
+  List<TvResumeCard> get _resumeCards => TvLook.on('tileResumeRow') ? widget.resumeCards : const [];
   FocusNode _node(String id) => _nodes.putIfAbsent(id, () => FocusNode(debugLabel: 'tile:$id'));
 
   @override
@@ -198,8 +206,8 @@ class TvTilesStartState extends State<TvTilesStart> {
     if (!resume && !quick) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (resume && widget.resumeCards.isNotEmpty) return _toResume();
-      if (quick && widget.quick.isNotEmpty) return _toQuick();
+      if (resume && _resumeCards.isNotEmpty) return _toResume();
+      if (quick && _quick.isNotEmpty) return _toQuick();
       focusFirst();
     });
   }
@@ -222,19 +230,30 @@ class TvTilesStartState extends State<TvTilesStart> {
       if (c.hasClients) c.jumpTo(0);
     }
     _qi = _ri = 0;
-    focusFirst();
+    _onTiles = false;
+    // Customise → Remote & behaviour → Start on (falls through when that row isn't there).
+    switch (TvLook.str('landing')) {
+      case 'search':
+        widget.onTop();
+      case 'resume' when _resumeCards.isNotEmpty:
+        _toResume();
+      case 'app':
+        _toTiles();
+      default:
+        focusFirst();
+    }
     tvStartLanding.play();
   }
 
   /// ↓ from the top bar: the first row there is (no animation).
   void focusFirst() {
-    if (widget.quick.isNotEmpty) return _toQuick();
-    if (widget.resumeCards.isNotEmpty) return _toResume();
+    if (_quick.isNotEmpty) return _toQuick();
+    if (_resumeCards.isNotEmpty) return _toResume();
     _toTiles();
   }
 
-  void _toQuick() => _focusIn('q:${widget.quick[_qi.clamp(0, widget.quick.length - 1)].id}', top: true);
-  void _toResume() => _focusIn('r:${widget.resumeCards[_ri.clamp(0, widget.resumeCards.length - 1)].key}', top: true);
+  void _toQuick() => _focusIn('q:${_quick[_qi.clamp(0, _quick.length - 1)].id}', top: true);
+  void _toResume() => _focusIn('r:${_resumeCards[_ri.clamp(0, _resumeCards.length - 1)].key}', top: true);
   void _toTiles() {
     final first = tvTiles(prefs, widget.apps).firstOrNull;
     if (first != null) _focusIn(first.id, top: false);
@@ -243,6 +262,7 @@ class TvTilesStartState extends State<TvTilesStart> {
   /// Focus [id]; the page shows the top rows ([top]) or the tiles; the row slides it into view.
   void _focusIn(String id, {required bool top}) {
     final node = _node(id)..requestFocus();
+    _onTiles = !top;
     _pageTo(top);
     final ctx = node.context;
     if (ctx != null) _reveal(ctx);
@@ -263,7 +283,7 @@ class TvTilesStartState extends State<TvTilesStart> {
   }
 
   bool _moveQuick(int i, AxisDirection d) {
-    final n = widget.quick.length;
+    final n = _quick.length;
     switch (d) {
       case AxisDirection.left when i > 0:
         _qi = i - 1;
@@ -274,7 +294,7 @@ class TvTilesStartState extends State<TvTilesStart> {
       case AxisDirection.up:
         widget.onTop();
       case AxisDirection.down:
-        widget.resumeCards.isNotEmpty ? _toResume() : _toTiles();
+        _resumeCards.isNotEmpty ? _toResume() : _toTiles();
       default:
         break;
     }
@@ -282,7 +302,7 @@ class TvTilesStartState extends State<TvTilesStart> {
   }
 
   bool _moveResume(int i, AxisDirection d) {
-    final n = widget.resumeCards.length;
+    final n = _resumeCards.length;
     switch (d) {
       case AxisDirection.left when i > 0:
         _ri = i - 1;
@@ -291,7 +311,7 @@ class TvTilesStartState extends State<TvTilesStart> {
         _ri = i + 1;
         _toResume();
       case AxisDirection.up:
-        widget.quick.isNotEmpty ? _toQuick() : widget.onTop();
+        _quick.isNotEmpty ? _toQuick() : widget.onTop();
       case AxisDirection.down:
         _toTiles();
       default:
@@ -370,7 +390,7 @@ class TvTilesStartState extends State<TvTilesStart> {
 
         return [
           TvAction(Icons.auto_awesome_outlined, 'Start default', () => set(null), keepOpen: true, selected: cur == null),
-          TvAction(Icons.circle, 'Accent', () => set('accent'), keepOpen: true, swatch: tileAccent(), selected: cur == 'accent'),
+          TvAction(Icons.circle, 'Accent', () => set('accent'), keepOpen: true, swatch: TvMetro.accent, selected: cur == 'accent'),
           if (t.isApp) TvAction(Icons.apps_rounded, 'App colour', () => set('app'), keepOpen: true, selected: cur == 'app'),
           for (final (k, c) in tileSwatches.indexed)
             TvAction(
@@ -445,9 +465,9 @@ class TvTilesStartState extends State<TvTilesStart> {
     if (best == null) {
       // ↑ off the tiles: the Resume row, the quick actions, then the top bar.
       if (d == AxisDirection.up) {
-        if (widget.resumeCards.isNotEmpty) {
+        if (_resumeCards.isNotEmpty) {
           _toResume();
-        } else if (widget.quick.isNotEmpty) {
+        } else if (_quick.isNotEmpty) {
           _toQuick();
         } else {
           widget.onTop();
@@ -467,13 +487,24 @@ class TvTilesStartState extends State<TvTilesStart> {
 
   // ---- Colours ----
 
-  Color _colour(TileSpec t) {
-    final mode = t.colour ?? (prefs.tileColours == 'colourful' ? 'app' : 'accent');
+  /// A tile's colour: its own (Hold OK → Colour), else Customise → Tiles → Tile colours — the
+  /// accent, each app's colour, a rainbow along Start, or dark tiles — with the transparency.
+  Color _colour(TileSpec t, int index) {
+    final mode =
+        t.colour ??
+        switch (prefs.tileColours) {
+          'colourful' => 'app',
+          'rainbow' => 'rainbow',
+          'dark' => 'dark',
+          _ => 'accent',
+        };
     final Color c = switch (mode) {
-      'accent' => tileAccent(),
+      'accent' => TvMetro.accent,
       'app' when t.isApp => _colours[t.package] ?? _fetchColour(t.package),
-      'app' => tileAccent(),
-      _ => Color(int.tryParse(mode, radix: 16) ?? tileAccent().toARGB32()),
+      'app' => TvMetro.accent,
+      'rainbow' => tileSwatches[index % tileSwatches.length],
+      'dark' => const Color(0xFF262626),
+      _ => Color(int.tryParse(mode, radix: 16) ?? TvMetro.accent.toARGB32()),
     };
     return c.withValues(alpha: prefs.tileOpacity);
   }
@@ -485,10 +516,85 @@ class TvTilesStartState extends State<TvTilesStart> {
       final h = HSLColor.fromColor(c);
       setState(() => _colours[pkg] = h.withSaturation(math.max(h.saturation, .45)).withLightness(.4).toColor());
     });
-    return tileAccent();
+    return TvMetro.accent;
   }
 
   // ---- Build ----
+
+  /// Customise → Tiles → Title: "start", "home", a greeting, or nothing.
+  String? _heading() => switch (TvLook.str('tileTitle')) {
+    'off' => null,
+    'home' => 'home',
+    'greeting' => switch (DateTime.now().hour) {
+      < 5 => 'good night',
+      < 12 => 'good morning',
+      < 17 => 'good afternoon',
+      _ => 'good evening',
+    },
+    _ => 'start',
+  };
+
+  /// Customise → Tiles → Background, behind everything.
+  Widget? _background() {
+    final a = TvMetro.accent;
+    switch (TvLook.str('tileBg')) {
+      case 'glow':
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: const Alignment(-.6, -.4),
+              radius: 1.3,
+              colors: [a.withValues(alpha: .75), a.withValues(alpha: .18), TvDS.canvas],
+              stops: const [0, .55, 1],
+            ),
+          ),
+        );
+      case 'gradient':
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color.lerp(a, Colors.black, .35)!, Color.lerp(a, Colors.black, .82)!],
+            ),
+          ),
+        );
+      case 'accent':
+        return ColoredBox(color: Color.lerp(a, Colors.black, .25)!);
+      case 'art':
+        // The artwork of what you're watching, dimmed; no artwork: the accent glow.
+        final art = widget.resume?.art ?? widget.resumeCards.map((r) => r.info.art).nonNulls.firstOrNull;
+        if (art == null) {
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .55), TvDS.canvas]),
+            ),
+          );
+        }
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image(image: art, fit: BoxFit.cover, gaplessPlayback: true),
+            const ColoredBox(color: Color(0xB3000000)),
+          ],
+        );
+    }
+    return null;
+  }
+
+  /// A row heading (Customise → Tiles → Row headings), or nothing.
+  Widget? _rowHeading(String text) {
+    if (TvLook.str('tileHeadings') == 'off') return null;
+    return Padding(
+      padding: EdgeInsets.only(left: TvDS.safe.left, bottom: 6),
+      child: SizedBox(
+        height: _headH - 6,
+        child: Text(TvMetro.cased(text), style: TvMetro.header),
+      ),
+    );
+  }
+
+  static const _headH = 30.0;
 
   @override
   Widget build(BuildContext context) {
@@ -501,22 +607,36 @@ class TvTilesStartState extends State<TvTilesStart> {
         final placed = packTvTiles(tiles, rows);
         _placed = placed;
         _rows = rows;
+        final index = {for (final (i, t) in tiles.indexed) t.id: i};
         final cols = placed.fold<int>(0, (m, p) => math.max(m, p.$2 + _span(p.$1, rows).$1));
-        const gap = 8.0;
+        final gap = TvLook.number('tileGap');
+        final heads = TvLook.str('tileHeadings') != 'off';
+        final title = _heading();
         return LayoutBuilder(
           builder: (context, c) {
-            const headerH = 60.0, quickH = 44.0, resumeH = 150.0, space = 18.0;
-            final hasQuick = widget.quick.isNotEmpty, hasResume = widget.resumeCards.isNotEmpty;
+            const quickH = 44.0, space = 18.0;
+            final resumeH = TvLook.number('tileResumeSize');
+            final headH = heads ? _headH : 0.0;
+            final topH = title == null ? TvTileButton.size : 60.0;
+            final hasQuick = _quick.isNotEmpty, hasResume = _resumeCards.isNotEmpty;
             final stacked = hasQuick || hasResume;
             // With rows above, the tiles fill a screen of their own (scrolled to with ↓) so they stay
             // big, and the gap over them is wider than the top margin: nothing peeks in above them.
             // With no rows above, they fit under "start" (no scrolling).
             final gridGap = stacked ? TvDS.safe.top + 3 : 23.0;
-            _gridTop = TvDS.safe.top - 6 + headerH + (hasQuick ? space + quickH : 0) + (hasResume ? space + resumeH : 0) + gridGap;
-            final gridH = c.maxHeight - (stacked ? TvDS.safe.top : _gridTop) - TvDS.safe.bottom;
+            _gridTop =
+                TvDS.safe.top -
+                6 +
+                topH +
+                (hasQuick ? space + headH + quickH : 0) +
+                (hasResume ? space + headH + resumeH : 0) +
+                gridGap +
+                (stacked ? headH : 0);
+            final gridH = c.maxHeight - (stacked ? TvDS.safe.top + headH : _gridTop) - TvDS.safe.bottom;
             final unit = (gridH - (rows - 1) * gap) / rows;
             final width = TvDS.safe.left * 2 + cols * unit + (cols - 1) * gap;
-            Widget sideways({required double height, required List<Widget> children}) => SizedBox(
+            Widget sideways({required Key key, required double height, required List<Widget> children}) => SizedBox(
+              key: key,
               height: height,
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -524,27 +644,23 @@ class TvTilesStartState extends State<TvTilesStart> {
                 padding: EdgeInsets.symmetric(horizontal: TvDS.safe.left),
                 child: Row(
                   children: [
-                    for (final (i, w) in children.indexed) ...[if (i > 0) const SizedBox(width: gap), w],
+                    for (final (i, w) in children.indexed) ...[if (i > 0) SizedBox(width: gap), w],
                   ],
                 ),
               ),
             );
+            final bg = _background();
+            // A layout setting changed while on the tiles (rows above / headings / sizes): stay on them.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || !_onTiles || !_page.hasClients || _page.position.isScrollingNotifier.value) return;
+              final y = (_gridTop - TvDS.safe.top).clamp(0.0, _page.position.maxScrollExtent);
+              if ((_page.offset - y).abs() > 1) _page.jumpTo(y);
+            });
             return Stack(
               fit: StackFit.expand,
               children: [
                 ColoredBox(color: TvDS.canvas),
-                // Customise → Tiles → Background: an accent glow (gives glass tiles something to frost).
-                if (TvLook.str('tileBg') == 'glow')
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(-.6, -.4),
-                        radius: 1.3,
-                        colors: [tileAccent().withValues(alpha: .75), tileAccent().withValues(alpha: .18), TvDS.canvas],
-                        stops: const [0, .55, 1],
-                      ),
-                    ),
-                  ),
+                ?bg,
                 BackdropGroup(
                   child: SingleChildScrollView(
                     controller: _page,
@@ -557,11 +673,11 @@ class TvTilesStartState extends State<TvTilesStart> {
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: TvDS.safe.left),
                           child: SizedBox(
-                            height: headerH,
+                            height: topH,
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text('start', style: TvDS.heroTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, letterSpacing: -1, height: 1)),
+                                if (title != null) Text(title, style: TvMetro.title(size: 44).copyWith(height: 1)),
                                 const Spacer(),
                                 widget.header,
                               ],
@@ -571,16 +687,24 @@ class TvTilesStartState extends State<TvTilesStart> {
                         // ---- Quick actions ----
                         if (hasQuick) ...[
                           const SizedBox(height: space),
-                          sideways(height: quickH, children: [for (final (i, a) in widget.quick.indexed) _quickTile(a, i)]),
+                          ?_rowHeading('Quick actions'),
+                          sideways(key: const ValueKey('quick'), height: quickH, children: [for (final (i, a) in _quick.indexed) _quickTile(a, i)]),
                         ],
                         // ---- Resume: everything you were watching ----
                         if (hasResume) ...[
                           const SizedBox(height: space),
-                          sideways(height: resumeH, children: [for (final (i, r) in widget.resumeCards.indexed) _resumeTile(r, i, resumeH)]),
+                          ?_rowHeading('Resume'),
+                          sideways(
+                            key: const ValueKey('resume'),
+                            height: resumeH,
+                            children: [for (final (i, r) in _resumeCards.indexed) _resumeTile(r, i, resumeH)],
+                          ),
                         ],
                         SizedBox(height: gridGap),
+                        if (stacked) ?_rowHeading('Tiles'),
                         // ---- The tiles ----
                         SizedBox(
+                          key: const ValueKey('grid'), // keeps its state (and focus) when rows / headings come and go
                           height: rows * unit + (rows - 1) * gap,
                           child: SingleChildScrollView(
                             controller: _scroll,
@@ -606,7 +730,7 @@ class TvTilesStartState extends State<TvTilesStart> {
                                         style: TvLook.str('motion') == 'reduced' ? 'none' : prefs.tileAnim,
                                         delay: Duration(milliseconds: 40 * col + 22 * row),
                                         id: t.id,
-                                        child: _tile(t),
+                                        child: _tile(t, index[t.id] ?? 0),
                                       ),
                                     ),
                                 ],
@@ -627,8 +751,16 @@ class TvTilesStartState extends State<TvTilesStart> {
     );
   }
 
-  /// A quick action as a small tile (tile colour / glass / corners, white focus frame).
+  /// Tile shadow (Customise → Tiles → Tile shadow) + the focus glow.
+  List<BoxShadow>? _shadow(bool f) {
+    final l = [if (TvLook.on('tileShadow')) const BoxShadow(color: Color(0x99000000), blurRadius: 14, offset: Offset(0, 6)), ...?TvMetro.glow(f)];
+    return l.isEmpty ? null : l;
+  }
+
+  /// A quick action as a small tile (tile colour / glass / corners, the focus frame).
+  /// Customise → Tiles → Quick action tiles: icon + name, or just the icon.
   Widget _quickTile(TvTileAction a, int i) {
+    final named = a.label.isNotEmpty && TvLook.str('tileQuickStyle') != 'icon';
     return TvFocusable(
       key: ValueKey('q:${a.id}'), // keyed: a reorder moves the tile (and its focus) with it
       focusNode: _node('q:${a.id}'),
@@ -642,43 +774,32 @@ class TvTilesStartState extends State<TvTilesStart> {
         child: Container(
           height: 44,
           constraints: const BoxConstraints(minWidth: 44),
-          foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(prefs.tileRadius),
-            border: Border.all(color: f ? Colors.white : Colors.transparent, width: 2),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
+          foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
           child: ExcludeFocus(
             child: TileSurface(
-              colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+              colour: TvMetro.tileFill,
               prefs: prefs,
               onTap: a.onSelect,
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: a.label.isEmpty ? 0 : 14),
+                padding: EdgeInsets.symmetric(horizontal: named ? 14 : 0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SizedBox(
-                      width: a.label.isEmpty ? 44 : null,
+                      width: named ? null : 44,
                       // A pinned app: its own icon (cached after the first load, so no flicker).
-                      child: a.app != null
-                          ? SizedBox.square(
-                              dimension: 22,
-                              child: switch (TvApps.instance.iconNow(a.app!.package)) {
-                                final ready? => Image(image: ready, gaplessPlayback: true),
-                                _ => FutureBuilder<MemoryImage?>(
-                                  future: TvApps.instance.icon(a.app!.package),
-                                  builder: (context, s) => s.data != null
-                                      ? Image(image: s.data!, gaplessPlayback: true)
-                                      : const Icon(Icons.apps_rounded, color: Colors.white, size: 20),
-                                ),
-                              },
-                            )
-                          : Icon(a.icon ?? Icons.bolt_rounded, color: Colors.white, size: 20),
+                      child: Center(
+                        child: a.app != null
+                            ? SizedBox.square(
+                                dimension: 22,
+                                child: _appIcon(a.app!, fallback: const Icon(Icons.apps_rounded, color: Colors.white, size: 20)),
+                              )
+                            : Icon(a.icon ?? Icons.bolt_rounded, color: Colors.white, size: 20),
+                      ),
                     ),
-                    if (a.label.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Text(a.label.toLowerCase(), style: TvDS.tileName.copyWith(fontSize: 14, color: Colors.white)),
-                    ],
+                    if (named) ...[const SizedBox(width: 8), Text(TvMetro.cased(a.label), style: TvDS.tileName.copyWith(fontSize: 14, color: Colors.white))],
                   ],
                 ),
               ),
@@ -704,13 +825,11 @@ class TvTilesStartState extends State<TvTilesStart> {
         child: Container(
           width: h * 16 / 9,
           height: h,
-          foregroundDecoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(prefs.tileRadius),
-            border: Border.all(color: f ? Colors.white : Colors.transparent, width: 3),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
+          foregroundDecoration: TvMetro.frame(f, r: prefs.tileRadius),
           child: ExcludeFocus(
             child: TileSurface(
-              colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+              colour: TvMetro.tileFill,
               prefs: prefs,
               onTap: r.onSelect,
               // Live tiles: only the one that's playing flips.
@@ -722,7 +841,7 @@ class TvTilesStartState extends State<TvTilesStart> {
     );
   }
 
-  Widget _tile(TileSpec t) {
+  Widget _tile(TileSpec t, int index) {
     final moving = _moving == t.id;
     final app = t.isApp ? widget.apps.where((a) => a.package == t.package).firstOrNull : null;
     return TvFocusable(
@@ -734,20 +853,24 @@ class TvTilesStartState extends State<TvTilesStart> {
         final radius = BorderRadius.circular(prefs.tileRadius);
         // ExcludeFocus: the surface's own tap target must not catch the remote's focus.
         Widget tile = ExcludeFocus(
-          child: TileSurface(colour: _colour(t), prefs: prefs, onTap: () => _open(t), child: _face(t, app)),
+          child: TileSurface(colour: _colour(t, index), prefs: prefs, onTap: () => _open(t), child: _face(t, app)),
         );
-        // Focus: Metro's bright frame, a small lift, and (Interactions → Tilt) a slight lean.
+        // Focus: Metro's frame (Customise → Tiles → Focus / Focus colour), a small lift, and
+        // (Tilt on focus) a slight lean. Moving: always the white frame.
         tile = AnimatedContainer(
           duration: TvLook.anim(Motion.pressIn * 2),
-          foregroundDecoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: f || moving ? Colors.white : Colors.transparent, width: 3),
-          ),
+          decoration: BoxDecoration(borderRadius: radius, boxShadow: _shadow(f)),
+          foregroundDecoration: moving
+              ? BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(color: Colors.white, width: 3),
+                )
+              : TvMetro.frame(f, r: prefs.tileRadius),
           child: tile,
         );
         final tilt = f && prefs.fx('tilt') && TvLook.str('motion') != 'reduced';
         return AnimatedScale(
-          scale: moving ? 1.1 : (f ? 1.05 : 1),
+          scale: moving ? 1.1 : (f ? (TvMetro.focusStyle == 'lift' ? 1.08 : 1.05) : 1),
           duration: TvLook.anim(Motion.popDuration),
           curve: Motion.pop,
           child: Transform(
@@ -778,6 +901,20 @@ class TvTilesStartState extends State<TvTilesStart> {
     );
   }
 
+  /// An app's icon (cached after the first load), white glyph when Customise → Tiles → App icons
+  /// says so.
+  Widget _appIcon(AppEntry app, {required Widget fallback}) {
+    final ready = TvApps.instance.iconNow(app.package);
+    Widget icon(ImageProvider p) {
+      final img = Image(image: p, gaplessPlayback: true);
+      return TvLook.str('tileIconStyle') == 'white' ? ColorFiltered(colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn), child: img) : img;
+    }
+
+    return ready != null
+        ? icon(ready)
+        : FutureBuilder<MemoryImage?>(future: TvApps.instance.icon(app.package), builder: (context, s) => s.data != null ? icon(s.data!) : fallback);
+  }
+
   String _title(TileSpec t, AppEntry? app) => switch (t.id) {
     'clock' => 'Clock',
     'resume' => 'Resume',
@@ -786,32 +923,45 @@ class TvTilesStartState extends State<TvTilesStart> {
     _ => app?.label ?? 'App',
   };
 
-  Widget _label(String text) => Positioned(
-    left: 10,
-    right: 10,
-    bottom: 8,
-    child: Text(
-      text,
-      style: TvDS.tileName.copyWith(fontSize: 13, color: Colors.white),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-  );
+  /// A tile's name (Customise → Tiles → Name position / Name size).
+  Widget _label(String text) {
+    final top = TvLook.str('tileLabelPos') == 'top';
+    return Positioned(
+      left: 10,
+      right: 10,
+      top: top ? 8 : null,
+      bottom: top ? null : 8,
+      child: Text(
+        text,
+        style: TvDS.tileName.copyWith(fontSize: TvLook.number('tileLabelSize'), color: Colors.white),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
 
   Widget _face(TileSpec t, AppEntry? app) {
     final small = t.size == 's';
     final names = prefs.tileLabels && !small;
+    final k = TvLook.number('tileIconSize'); // Customise → Tiles → Icon size
     switch (t.id) {
       case 'clock':
-        return _ClockFace(prefs: prefs, big: t.size != 'm');
+        final date = switch (TvLook.str('tileClockDate')) {
+          'on' => true,
+          'off' => false,
+          _ => t.size != 'm',
+        };
+        return _ClockFace(prefs: prefs, date: date);
       case 'resume':
         return _ResumeFace(info: widget.resume, live: prefs.fx('live') && TvLook.str('motion') != 'reduced', names: names);
       case 'allapps':
         return Stack(
           fit: StackFit.expand,
           children: [
-            const Center(child: Icon(Icons.apps_rounded, color: Colors.white, size: 40)),
-            if (names) _label('all apps'),
+            Center(
+              child: Icon(Icons.apps_rounded, color: Colors.white, size: 40 * k),
+            ),
+            if (names) _label(TvMetro.cased('All apps')),
           ],
         );
     }
@@ -821,29 +971,30 @@ class TvTilesStartState extends State<TvTilesStart> {
         fit: StackFit.expand,
         children: [
           Center(
-            child: Icon(icon, color: Colors.white, size: small ? 26 : 40),
+            child: Icon(icon, color: Colors.white, size: (small ? 26 : 40) * k),
           ),
-          if (names) _label(label.toLowerCase()),
+          if (names) _label(TvMetro.cased(label)),
         ],
       );
     }
     if (app == null) return const SizedBox.shrink();
-    // App: its TV banner filling the tile (Customise → Tiles → Tile face), else its icon.
+    // App: its TV banner filling the tile (Customise → Tiles → App tiles show), else its icon.
     final banner = TvLook.str('tileFace') == 'banner' ? TvApps.instance.artNow(app.package) : null;
     if (banner != null && banner.banner && !small) {
+      final top = TvLook.str('tileLabelPos') == 'top';
       return Stack(
         fit: StackFit.expand,
         children: [
           Image(image: banner.image, fit: BoxFit.cover, gaplessPlayback: true),
           if (names)
-            const Positioned.fill(
+            Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0x99000000)],
-                    stops: [.55, 1],
+                    begin: top ? Alignment.bottomCenter : Alignment.topCenter,
+                    end: top ? Alignment.topCenter : Alignment.bottomCenter,
+                    colors: const [Color(0x00000000), Color(0x99000000)],
+                    stops: const [.55, 1],
                   ),
                 ),
               ),
@@ -852,29 +1003,25 @@ class TvTilesStartState extends State<TvTilesStart> {
         ],
       );
     }
-    final size = switch (t.size) {
-      's' => 34.0,
-      'l' => 96.0,
-      'w' => 56.0,
-      _ => 56.0,
-    };
-    final ready = TvApps.instance.iconNow(app.package);
+    final size =
+        switch (t.size) {
+          's' => 34.0,
+          'l' => 96.0,
+          _ => 56.0,
+        } *
+        k;
     return Stack(
       fit: StackFit.expand,
       children: [
         Center(
           child: SizedBox.square(
             dimension: size,
-            child: ready != null
-                ? Image(image: ready, gaplessPlayback: true)
-                : FutureBuilder<MemoryImage?>(
-                    future: TvApps.instance.icon(app.package),
-                    builder: (context, s) => s.data != null
-                        ? Image(image: s.data!, gaplessPlayback: true)
-                        : Center(
-                            child: Text(app.label.isEmpty ? '?' : app.label[0], style: TvDS.panelTitle.copyWith(fontSize: size * .55)),
-                          ),
-                  ),
+            child: _appIcon(
+              app,
+              fallback: Center(
+                child: Text(app.label.isEmpty ? '?' : app.label[0], style: TvDS.panelTitle.copyWith(fontSize: size * .55)),
+              ),
+            ),
           ),
         ),
         if (names) _label(app.label),
@@ -886,9 +1033,9 @@ class TvTilesStartState extends State<TvTilesStart> {
 /// The clock tile: the time in the tile clock style (Customise → Tiles → Clock style), the day
 /// and date on the bigger sizes. Ticks on the minute.
 class _ClockFace extends StatefulWidget {
-  const _ClockFace({required this.prefs, required this.big});
+  const _ClockFace({required this.prefs, required this.date});
   final Prefs prefs;
-  final bool big;
+  final bool date; // the day and date under the time
 
   @override
   State<_ClockFace> createState() => _ClockFaceState();
@@ -951,7 +1098,7 @@ class _ClockFaceState extends State<_ClockFace> {
               ),
             ),
           ),
-          if (widget.big) ...[
+          if (widget.date) ...[
             const SizedBox(height: 6),
             Text('${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', style: TvDS.tileName.copyWith(color: Colors.white, fontSize: 15)),
           ],
@@ -979,7 +1126,8 @@ class _ResumeFaceState extends State<_ResumeFace> {
   @override
   void initState() {
     super.initState();
-    _flip = Timer.periodic(const Duration(milliseconds: 5200), (_) {
+    // Customise → Tiles → Live tile speed.
+    _flip = Timer.periodic(Duration(milliseconds: (TvLook.number('tileFlip') * 1000).round()), (_) {
       if (mounted && widget.live && widget.info?.art != null) setState(() => _back = !_back);
     });
   }
@@ -994,16 +1142,16 @@ class _ResumeFaceState extends State<_ResumeFace> {
   Widget build(BuildContext context) {
     final i = widget.info;
     if (i == null) {
-      return const Stack(
+      return Stack(
         fit: StackFit.expand,
         children: [
-          Center(child: Icon(Icons.play_circle_outline_rounded, color: Colors.white54, size: 44)),
+          const Center(child: Icon(Icons.play_circle_outline_rounded, color: Colors.white54, size: 44)),
           Positioned(
             left: 10,
             bottom: 8,
             child: Text(
-              'nothing playing',
-              style: TextStyle(fontFamily: DS.font, fontSize: 13, color: Colors.white70),
+              TvMetro.cased('Nothing playing'),
+              style: const TextStyle(fontFamily: DS.font, fontSize: 13, color: Colors.white70),
             ),
           ),
         ],
@@ -1019,16 +1167,16 @@ class _ResumeFaceState extends State<_ResumeFace> {
             children: [
               Icon(i.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 4),
-              Text(i.playing ? 'now playing' : 'resume', style: TvDS.tileName.copyWith(color: Colors.white70)),
+              Text(TvMetro.cased(i.playing ? 'Now playing' : 'Resume'), style: TvDS.tileName.copyWith(color: Colors.white70)),
             ],
           ),
           const SizedBox(height: 4),
           Text(i.title, style: TvDS.panelTitle.copyWith(fontSize: 18, height: 1.15), maxLines: 2, overflow: TextOverflow.ellipsis),
-          if (i.app != null) Text(i.app!.toLowerCase(), style: TvDS.tileName.copyWith(color: Colors.white70)),
+          if (i.app != null) Text(TvMetro.cased(i.app!), style: TvDS.tileName.copyWith(color: Colors.white70)),
           if (i.progress != null) ...[
             const SizedBox(height: 8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(math.min(2, DS.metroRadius)),
               child: LinearProgressIndicator(value: i.progress, minHeight: 3, color: Colors.white, backgroundColor: Colors.white24),
             ),
           ],
@@ -1104,13 +1252,11 @@ class TvTileButton extends StatelessWidget {
           child: Container(
             height: size,
             constraints: const BoxConstraints(minWidth: size),
-            foregroundDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(prefs.tileRadius),
-              border: Border.all(color: f ? Colors.white : Colors.transparent, width: 2),
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: TvMetro.glow(f)),
+            foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
             child: ExcludeFocus(
               child: TileSurface(
-                colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+                colour: TvMetro.tileFill,
                 prefs: prefs,
                 onTap: onSelect,
                 child: Padding(
@@ -1123,7 +1269,10 @@ class TvTileButton extends StatelessWidget {
                         width: label == null ? size : null,
                         child: Icon(icon, color: Colors.white, size: 22),
                       ),
-                      if (label != null) ...[const SizedBox(width: 8), Text(label!, style: TvDS.tileName.copyWith(fontSize: 15, color: Colors.white))],
+                      if (label != null) ...[
+                        const SizedBox(width: 8),
+                        Text(TvMetro.cased(label!), style: TvDS.tileName.copyWith(fontSize: 15, color: Colors.white)),
+                      ],
                     ],
                   ),
                 ),

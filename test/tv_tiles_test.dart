@@ -72,12 +72,12 @@ void main() {
     expect(_focused(), 'tile:q:t:inputs');
     // Hold OK on a quick action → Move right / Move left: one place along, focus stays on it.
     await _hold(tester);
-    await tester.tap(find.text('Move right'));
+    await tester.tap(find.text('move right'));
     await tester.pumpAndSettle();
     expect(prefs.tvQuickActions.take(2), ['t:assistant', 't:inputs']);
     expect(_focused(), 'tile:q:t:inputs');
     await _hold(tester);
-    await tester.tap(find.text('Move left'));
+    await tester.tap(find.text('move left'));
     await tester.pumpAndSettle();
     expect(prefs.tvQuickActions.first, 't:inputs');
     expect(_focused(), 'tile:q:t:inputs');
@@ -88,7 +88,7 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowDown);
     expect(_focused(), startsWith('tile:r:h:com.spotify'));
     await _hold(tester);
-    await tester.tap(find.text('Remove from Continue watching'));
+    await tester.tap(find.text('remove from continue watching'));
     await tester.pumpAndSettle();
     expect(find.text('Midnight City'), findsNothing);
     expect(_focused(), startsWith('tile:r:'), reason: 'the remote keeps focus in the Resume row');
@@ -97,17 +97,17 @@ void main() {
 
     // Hold OK on the clock → Bigger; and a colour.
     await _hold(tester);
-    expect(find.text('Bigger'), findsOneWidget);
-    expect(find.text('Unpin from Start'), findsOneWidget);
-    await tester.tap(find.text('Bigger'));
+    expect(find.text('bigger'), findsOneWidget);
+    expect(find.text('unpin from start'), findsOneWidget);
+    await tester.tap(find.text('bigger'));
     await tester.pumpAndSettle();
     expect(prefs.tiles!.firstWhere((t) => t['id'] == 'clock')['size'], 'w');
     await _hold(tester);
-    await tester.tap(find.text('Colour'));
+    await tester.tap(find.text('colour'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Red'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.scrollUntilVisible(find.text('red'), 120, scrollable: find.byType(Scrollable).last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Red'));
+    await tester.tap(find.text('red'));
     await tester.pumpAndSettle();
     expect(prefs.tiles!.firstWhere((t) => t['id'] == 'clock')['colour'], 'ffc62828');
     await tester.tapAt(const Offset(40, 270));
@@ -130,17 +130,21 @@ void main() {
     }
     expect(_focused(), 'h:customise');
     await _press(tester, LogicalKeyboardKey.select);
-    expect(find.text('Home view'), findsOneWidget);
-    await tester.tap(find.text('Tiles').last); // the section (the first is Home view's value)
+    expect(find.text('home view'), findsOneWidget);
+    await tester.tap(find.text('tiles').last); // the section (the first is Home view's value)
     await tester.pumpAndSettle();
-    expect(find.text('Rows of tiles'), findsOneWidget);
-    expect(find.text('Background'), findsOneWidget);
+    await tester.tap(find.text('layout'));
+    await tester.pumpAndSettle();
+    expect(find.text('rows of tiles'), findsOneWidget);
+    expect(find.text('background'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_tiles_3_settings.png'));
-    await tester.tap(find.text('Back'));
+    await tester.tap(find.text('back'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('back'));
+    await tester.pumpAndSettle();
     // Home view → Cinematic: the rows are back.
-    await tester.tap(find.text('Home view'));
+    await tester.tap(find.text('home view'));
     await tester.pumpAndSettle();
     expect(prefs.homeView, 'classic');
     await tester.tapAt(const Offset(40, 270));

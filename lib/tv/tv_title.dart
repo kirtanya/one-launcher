@@ -8,6 +8,7 @@ import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
+import 'tv_metro.dart';
 import 'tv_parts.dart';
 
 // ---- Streaming service → the app on this TV ---------------------------------------
@@ -93,16 +94,19 @@ class TvPoster extends StatelessWidget {
                   duration: Motion.pressIn * 2,
                   width: w,
                   height: h,
-                  foregroundDecoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
-                    border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                  ),
+                  // Tiles: the Metro frame and the tile corners.
+                  foregroundDecoration: TvMetro.on
+                      ? TvMetro.frame(f, width: TvDS.focusRing)
+                      : BoxDecoration(
+                          borderRadius: BorderRadius.circular(TvDS.rTile),
+                          border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
+                        ),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
-                    boxShadow: f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
+                    borderRadius: TvMetro.corners(TvDS.rTile),
+                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(TvDS.rTile),
+                    borderRadius: TvMetro.corners(TvDS.rTile),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -121,7 +125,7 @@ class TvPoster extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                [if (t.year != null) t.year!, t.isTv ? 'Series' : 'Film'].join(' · '),
+                [if (t.year != null) t.year!, TvMetro.cased(t.isTv ? 'Series' : 'Film')].join(' · '),
                 style: TvDS.tileName.copyWith(fontSize: 12, color: TvDS.inkMuted),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -141,7 +145,7 @@ class _RatingBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(color: const Color(0xB3000000), borderRadius: BorderRadius.circular(6)),
+    decoration: BoxDecoration(color: const Color(0xB3000000), borderRadius: TvMetro.corners(6)),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -379,9 +383,12 @@ class _TvTitlePageState extends State<TvTitlePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(t.isTv ? 'SERIES' : 'FILM', style: TvDS.heroEyebrow),
+              // Tiles: the eyebrow in Metro's accent and case; the title big and light.
+              TvMetro.on
+                  ? Text(TvMetro.cased(t.isTv ? 'Series' : 'Film'), style: TvMetro.header.copyWith(fontSize: 16))
+                  : Text(t.isTv ? 'SERIES' : 'FILM', style: TvDS.heroEyebrow),
               const SizedBox(height: DS.s8),
-              Text(t.title, style: TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(t.title, style: TvMetro.on ? TvMetro.title(size: 44) : TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: DS.s12),
               Wrap(
                 spacing: DS.s12,
@@ -389,7 +396,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (t.rating != null) _Chip(icon: Icons.star_rounded, iconColor: const Color(0xFFF5C518), label: '${t.rating!.toStringAsFixed(1)} IMDb'),
-                  if (d?.status != null) _Chip(label: d!.status!),
+                  if (d?.status != null) _Chip(label: TvMetro.cased(d!.status!)),
                   if (meta.isNotEmpty) Text(meta.join(' · '), style: TvDS.heroMeta),
                 ],
               ),
@@ -411,7 +418,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
         const SizedBox(height: DS.s24),
 
         // ---- Where to watch ----
-        const Text('Where to watch', style: TvDS.rowTitleFocused),
+        Text(TvMetro.cased('Where to watch'), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
         const SizedBox(height: DS.s12),
         Wrap(
           spacing: DS.s12,
@@ -462,7 +469,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
         const SizedBox(height: DS.s12),
         Text(
           !_linksDone
-              ? 'Finding where it’s streaming…'
+              ? TvMetro.cased('Finding where it’s streaming…')
               : _linksError != null
               ? 'Couldn’t reach ${hub ?? 'WatchHub'}. Check the TV’s internet.'
               : _links.isEmpty
@@ -476,7 +483,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
         // ---- Cast ----
         if (d?.cast.isNotEmpty ?? false) ...[
           const SizedBox(height: DS.s24),
-          const Text('Cast', style: TvDS.rowTitleFocused),
+          Text(TvMetro.cased('Cast'), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
           const SizedBox(height: DS.s12),
           SizedBox(
             height: 150,
@@ -514,7 +521,7 @@ class _Chip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: DS.s8, vertical: 3),
     decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: TvMetro.corners(6),
       border: Border.all(color: TvDS.inkMuted),
     ),
     child: Row(
@@ -553,13 +560,22 @@ class _CastCard extends StatelessWidget {
             child: Container(
               width: 80,
               height: 80,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
-                border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-              ),
+              // Tiles: an accent square with the tile corners and the Metro frame; else a disc.
+              decoration: TvMetro.on
+                  ? BoxDecoration(borderRadius: TvMetro.corners(0), color: TvMetro.tileFill, boxShadow: TvMetro.glow(f))
+                  : BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
+                      border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
+                    ),
+              foregroundDecoration: TvMetro.on ? TvMetro.frame(f) : null,
               alignment: Alignment.center,
-              child: Text(_initials(person.name), style: TvDS.panelTitle.copyWith(color: f ? TvDS.onLight : TvDS.ink)),
+              child: Text(
+                _initials(person.name),
+                style: TvMetro.on
+                    ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300, color: Colors.white)
+                    : TvDS.panelTitle.copyWith(color: f ? TvDS.onLight : TvDS.ink),
+              ),
             ),
           ),
           const SizedBox(height: DS.s8),

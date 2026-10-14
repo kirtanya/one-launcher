@@ -5,6 +5,7 @@ import '../prefs.dart';
 import '../ui/ds.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
+import 'tv_metro.dart';
 import 'tv_parts.dart';
 import 'tv_tiles.dart';
 
@@ -74,6 +75,7 @@ class _TvAllAppsState extends State<TvAllApps> {
           for (final a in widget.apps)
             if (!hidden.contains(a.package)) a,
         ];
+        final metro = TvMetro.on;
         apps.sort(_newest ? (a, b) => b.installed.compareTo(a.installed) : (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
         return Scaffold(
           backgroundColor: TvDS.canvas,
@@ -86,9 +88,12 @@ class _TvAllAppsState extends State<TvAllApps> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Text('All apps', style: TvDS.heroTitle.copyWith(fontSize: 32)),
+                    if (metro)
+                      Text(TvMetro.cased('All apps'), style: TvMetro.title(size: 40).copyWith(height: 1))
+                    else
+                      Text('All apps', style: TvDS.heroTitle.copyWith(fontSize: 32)),
                     const SizedBox(width: DS.s12),
-                    Text('${apps.length}', style: TvDS.heroMeta.copyWith(color: TvDS.inkMuted)),
+                    Text('${apps.length}', style: TvDS.heroMeta.copyWith(color: metro ? TvMetro.accentText : TvDS.inkMuted)),
                     const Spacer(),
                     // Sort: A–Z / newest installed first.
                     TvActionPill(
@@ -103,7 +108,9 @@ class _TvAllAppsState extends State<TvAllApps> {
                 Wrap(
                   spacing: TvDS.gap,
                   children: [
-                    for (final (i, a) in apps.indexed)
+                    for (final (i, a) in apps.indexed) ...[
+                      // Tiles, A–Z: a letter tile opens each letter's group, like Metro's app list.
+                      if (metro && !_newest && (i == 0 || _letter(apps[i - 1]) != _letter(a))) _LetterTile(_letter(a)),
                       TvAppTile(
                         key: ValueKey(a.package),
                         app: a,
@@ -111,6 +118,7 @@ class _TvAllAppsState extends State<TvAllApps> {
                         onSelect: () => widget.onLaunch(a),
                         onOptions: () => _options(a),
                       ),
+                    ],
                   ],
                 ),
               ],
@@ -121,9 +129,36 @@ class _TvAllAppsState extends State<TvAllApps> {
     );
   }
 
+  static String _letter(AppEntry a) {
+    final c = a.label.isEmpty ? '#' : a.label[0].toLowerCase();
+    return RegExp(r'[a-z]').hasMatch(c) ? c : '#';
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _firstApp.requestFocus());
   }
+}
+
+/// Tiles' All apps: the letter that starts a group, as an outlined accent square (not focusable).
+class _LetterTile extends StatelessWidget {
+  const _LetterTile(this.letter);
+  final String letter;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: TvDS.rowPadTop),
+    child: Container(
+      width: TvDS.tileH,
+      height: TvDS.tileH,
+      padding: const EdgeInsets.all(DS.s12),
+      alignment: Alignment.bottomLeft,
+      decoration: BoxDecoration(
+        borderRadius: TvMetro.corners(0),
+        border: Border.all(color: TvMetro.accentText, width: 2),
+      ),
+      child: Text(letter, style: TvMetro.title(size: 40).copyWith(color: TvMetro.accentText, height: 1)),
+    ),
+  );
 }

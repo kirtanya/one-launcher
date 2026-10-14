@@ -8,6 +8,7 @@ import '../ui/ds.dart';
 import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
+import 'tv_metro.dart';
 import 'tv_parts.dart';
 import 'tv_title.dart';
 
@@ -142,6 +143,7 @@ class _TvSearchState extends State<TvSearch> {
   Widget build(BuildContext context) {
     final raw = _q.text.trim();
     final q = raw.toLowerCase();
+    final metro = TvMetro.on;
     final apps = q.isEmpty
         ? const <AppEntry>[]
         : (widget.apps.where((a) => a.label.toLowerCase().contains(q)).toList()
@@ -156,7 +158,7 @@ class _TvSearchState extends State<TvSearch> {
 
     List<Widget> googleRow(String title) => [
       const SizedBox(height: DS.s20),
-      Text(title, style: TvDS.rowTitleFocused),
+      Text(TvMetro.cased(title), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
       const SizedBox(height: DS.s12),
       Wrap(
         spacing: DS.s12,
@@ -200,6 +202,8 @@ class _TvSearchState extends State<TvSearch> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Tiles: the page's name, big and light, like "start".
+            if (metro) ...[Text(TvMetro.cased('Search'), style: TvMetro.title(size: 40).copyWith(height: 1)), const SizedBox(height: DS.s16)],
             Focus(
               // The field keeps ↓ for itself; send it to the results instead.
               onKeyEvent: (_, e) {
@@ -216,11 +220,11 @@ class _TvSearchState extends State<TvSearch> {
                 // Enter / Done on the keyboard: straight to Google TV's results (unless our own
                 // shows & films search is on — then into those results).
                 onSubmitted: (_) => raw.isNotEmpty && !searchOn ? TvApps.instance.searchEverywhere(raw) : down(),
-                style: TvDS.panelTitle,
+                style: metro ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300) : TvDS.panelTitle,
                 cursorColor: TvDS.ink,
                 decoration: InputDecoration(
-                  hintText: 'Shows, films, YouTube, apps',
-                  hintStyle: TvDS.panelTitle.copyWith(color: TvDS.inkMuted),
+                  hintText: TvMetro.cased('Shows, films, YouTube, apps'),
+                  hintStyle: (metro ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300) : TvDS.panelTitle).copyWith(color: TvDS.inkMuted),
                   prefixIcon: const Icon(Icons.search_rounded, color: TvDS.inkMuted, size: 28),
                   suffixIcon: _loading
                       ? const Padding(
@@ -231,10 +235,11 @@ class _TvSearchState extends State<TvSearch> {
                   filled: true,
                   fillColor: TvDS.surface,
                   contentPadding: const EdgeInsets.symmetric(vertical: DS.s16),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(32), borderSide: BorderSide.none),
+                  // Tiles: a flat field with the tile corners and the Metro focus frame.
+                  border: OutlineInputBorder(borderRadius: TvMetro.corners(32), borderSide: BorderSide.none),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(32),
-                    borderSide: const BorderSide(color: TvDS.ink, width: 2),
+                    borderRadius: TvMetro.corners(32),
+                    borderSide: BorderSide(color: metro ? TvMetro.focus : TvDS.ink, width: 2),
                   ),
                 ),
               ),
@@ -253,10 +258,10 @@ class _TvSearchState extends State<TvSearch> {
                     // ---- Shows & films ----
                     if (searchOn) ...[
                       const SizedBox(height: DS.s24),
-                      Text(q.isEmpty ? 'Popular now' : 'Shows & films', style: TvDS.rowTitleFocused),
+                      Text(TvMetro.cased(q.isEmpty ? 'Popular now' : 'Shows & films'), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
                       const SizedBox(height: DS.s16),
                       if (posters.isEmpty)
-                        Text(_emptyNote(raw), style: TvDS.heroBody)
+                        Text(TvMetro.cased(_emptyNote(raw)), style: TvDS.heroBody)
                       else
                         Wrap(
                           spacing: DS.s16,
@@ -268,7 +273,7 @@ class _TvSearchState extends State<TvSearch> {
                     // ---- Apps ----
                     if (apps.isNotEmpty) ...[
                       const SizedBox(height: DS.s24),
-                      Text('${apps.length} ${apps.length == 1 ? 'app' : 'apps'}', style: TvDS.rowTitleFocused),
+                      Text('${apps.length} ${apps.length == 1 ? 'app' : 'apps'}', style: TvMetro.headerOr(TvDS.rowTitleFocused)),
                       Wrap(
                         spacing: TvDS.gap,
                         children: [
