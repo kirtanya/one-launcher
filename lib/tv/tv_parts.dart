@@ -219,12 +219,12 @@ Future<void> showTvPanel(
                                     ),
                                   )
                                 else
-                                  Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : DS.ink) : (a.danger ? DS.alert : TvDS.inkMuted)),
+                                  Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : TvDS.onLight) : (a.danger ? DS.alert : TvDS.inkMuted)),
                                 const SizedBox(width: DS.s16),
                                 Expanded(
                                   child: Text(
                                     a.label,
-                                    style: TvDS.panelRow.copyWith(color: f ? DS.ink : TvDS.ink),
+                                    style: TvDS.panelRow.copyWith(color: f ? TvDS.onLight : TvDS.ink),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -232,9 +232,9 @@ Future<void> showTvPanel(
                                 if (a.value != null)
                                   Text(
                                     a.value!,
-                                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w400, color: f ? DS.inkMuted : TvDS.inkMuted),
+                                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
                                   ),
-                                if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? DS.ink : TvDS.ink),
+                                if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
                               ],
                             ),
                           ),
@@ -340,14 +340,14 @@ class TvActionPill extends StatelessWidget {
                 if (leading != null)
                   ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
                 else if (icon != null)
-                  Icon(icon, size: 22, color: f ? DS.ink : TvDS.ink),
+                  Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
                 const SizedBox(width: DS.s12),
-                Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? DS.ink : TvDS.ink)),
+                Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink)),
                 if (detail != null) ...[
                   const SizedBox(width: DS.s8),
                   Text(
                     detail!,
-                    style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? DS.inkMuted : TvDS.inkMuted),
+                    style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
                   ),
                 ],
               ],

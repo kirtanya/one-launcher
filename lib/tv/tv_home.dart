@@ -19,6 +19,8 @@ import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_search.dart';
+import 'tv_tiles.dart';
+import '../tiles/tiles_home.dart' show TileSpec;
 import 'tv_settings.dart';
 
 enum TvKind { app, resume, program, action }
@@ -113,7 +115,10 @@ class _TvHomeState extends State<TvHome> {
     super.initState();
     tv.onAppsChanged = _load;
     tv.onHomePressed = _home;
-    tv.onResumed = _loadContent;
+    tv.onResumed = () {
+      _loadContent();
+      if (_tilesView) _tilesKey.currentState?.land(); // back from an app: tiles fly in again
+    };
     tv.media.addListener(_regroup);
     prefs.addListener(_regroup);
     _load();
@@ -270,6 +275,10 @@ class _TvHomeState extends State<TvHome> {
           for (final (f, list) in groups) TvRow(f.id, prefs.folderNames[f.id] ?? f.name, [for (final a in _ordered(f.id, list)) appItem(a)]),
       ];
     });
+    // Tiles view: the Resume tile shows what's playing / the latest from history.
+    final now = cont.firstOrNull?.kind == TvKind.resume ? cont.first : null;
+    _resumeItem = now;
+    _resumeInfo = now == null ? null : TvResumeInfo(title: now.title, app: now.appName, art: now.art, progress: now.progress, playing: now.playing);
     // The title block follows focus; keep it pointing at a live item.
     final firstContent = _rows.where((r) => !r.chips).firstOrNull;
     if (_hero == null && firstContent != null) _show(firstContent.items.first, now: true);
@@ -328,13 +337,67 @@ class _TvHomeState extends State<TvHome> {
 
   void _home() {
     Navigator.of(context).popUntil((r) => r.isFirst);
+    if (_tilesView) {
+      _tilesKey.currentState?.endMove();
+      _tilesKey.currentState?.land();
+      return;
+    }
     _endMove();
     _focusDefault();
   }
 
+  // ---- Tiles view (Customise → Home view → Tiles) ----
+
+  final _tilesKey = GlobalKey<TvTilesStartState>();
+  bool get _tilesView => prefs.homeView == 'tiles';
+  TvItem? _resumeItem;
+  TvResumeInfo? _resumeInfo;
+
+  /// Customise → Tiles → Add a tile: clock, resume, all apps, any quick action. (Apps: All apps →
+  /// Hold OK → Pin to Start.)
+  void _addTile() {
+    final have = tvTiles(prefs, _apps).map((t) => t.id).toSet();
+    void add(String id, String size) => saveTvTiles(prefs, [...tvTiles(prefs, _apps), TileSpec(id, size)]);
+    showTvPanel(
+      context,
+      title: 'Add a tile',
+      actions: [
+        if (!have.contains('clock')) TvAction(Icons.schedule_rounded, 'Clock', () => add('clock', 'm')),
+        if (!have.contains('resume')) TvAction(Icons.play_circle_outline_rounded, 'Resume', () => add('resume', 'w')),
+        if (!have.contains('allapps')) TvAction(Icons.apps_rounded, 'All apps', () => add('allapps', 'm')),
+        for (final MapEntry(key: id, value: (label, icon)) in tvActions.entries)
+          if (!have.contains('qa:$id')) TvAction(icon, label, () => add('qa:$id', 's')),
+        TvAction(Icons.push_pin_outlined, 'An app: All apps → Hold OK → Pin to Start', _allApps),
+      ],
+    );
+  }
+
+  Widget _tilesHeader() => Row(
+    mainAxisAlignment: MainAxisAlignment.end,
+    children: [
+      for (final (i, id) in _header.indexed) ...[
+        if (i > 0) const SizedBox(width: DS.s8),
+        _TopButton(
+          id: id,
+          focusNode: _node(-1, i),
+          onSelect: () => _headerAction(id),
+          // ↓ into the tiles; ← → along the buttons.
+          onMove: (d) {
+            if (d == AxisDirection.down) {
+              _tilesKey.currentState?.focusFirst();
+              return true;
+            }
+            return _move(-1, i, d);
+          },
+        ),
+      ],
+    ],
+  );
+
   /// Landing, Home and Back all go to the default spot: the first quick action, or — with no
   /// quick actions — the first app. (Search is one ↑ away from either.)
   void _focusDefault() {
+    if (_tilesView) return _tilesKey.currentState?.land();
     final quick = _rows.indexWhere((r) => r.id == 'quick' && r.items.any((it) => it.key != 'q:edit'));
     final resume = _rows.indexWhere((r) => r.id == 'resume');
     final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
@@ -733,6 +796,10 @@ class _TvHomeState extends State<TvHome> {
   /// Customise: every look & behaviour setting (tv_settings.dart), plus the editors that
   /// live here (quick actions, colours, apps).
   void _customise() {
+    tilesExtras = [
+      TvAction(Icons.add_box_outlined, 'Add a tile', _addTile),
+      TvAction(Icons.restart_alt_rounded, 'Reset Start', () => prefs.resetTiles(), danger: true),
+    ];
     final hidden = [
       for (final a in _apps)
         if (prefs.hidden.contains(a.package)) a,
@@ -761,6 +828,19 @@ class _TvHomeState extends State<TvHome> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_moving != null) return _endMove(); // Back while moving an app = done
+        if (_tilesView) {
+          final tiles = _tilesKey.currentState;
+          if (tiles == null || tiles.endMove()) return;
+          switch (TvLook.str('back')) {
+            case 'search':
+              _focus(-1, 0);
+            case 'none':
+              break;
+            default:
+              tiles.land();
+          }
+          return;
+        }
         switch (TvLook.str('back')) {
           case 'search':
             _focus(-1, 0);
@@ -770,86 +850,106 @@ class _TvHomeState extends State<TvHome> {
             _focusDefault();
         }
       },
-      child: Scaffold(
-        backgroundColor: TvDS.canvas,
-        body: LayoutBuilder(
-          builder: (context, c) {
-            TvLook.read(prefs);
-            final rowsTop = c.maxHeight * TvLook.number('rowsAt');
-            return Stack(
-              fit: StackFit.expand,
-              children: [
-                // ---- The big picture, fading into the canvas on the left and bottom ----
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  width: c.maxWidth * .74,
-                  height: c.maxHeight * .8,
-                  child: TvLook.str('backdrop') == 'off' ? const SizedBox.expand() : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
-                ),
-                TvScrims(strength: TvLook.number('dim')),
-
-                // ---- Title block: what's focused ----
-                Positioned(
-                  left: TvDS.safe.left,
-                  top: TvDS.heroTop,
-                  width: TvDS.heroW,
-                  height: rowsTop - TvDS.heroTop - DS.s12,
-                  child: _HeroInfo(
-                    item: TvLook.on('hero') || _moving != null ? _hero : null,
-                    chip: _chip,
-                    rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
-                    moving: _moving != null,
-                  ),
-                ),
-
-                // ---- Rows ----
-                Positioned(
-                  top: rowsTop,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: ClipRect(
-                    child: SingleChildScrollView(
-                      controller: _v,
-                      physics: const ClampingScrollPhysics(),
-                      clipBehavior: Clip.none,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final (r, row) in _rows.indexed) _buildRow(r, row),
-                          // Room for the last row to reach the top of this area.
-                          SizedBox(height: math.max(0, c.maxHeight - rowsTop - (_rows.lastOrNull?.height ?? 0))),
-                        ],
+      child: _tilesView
+          ? Scaffold(
+              backgroundColor: TvDS.canvas,
+              body: TvTilesStart(
+                key: _tilesKey,
+                prefs: prefs,
+                apps: [
+                  for (final a in _apps)
+                    if (!prefs.hidden.contains(a.package)) a,
+                ],
+                header: _tilesHeader(),
+                resume: _resumeInfo,
+                onLaunch: (a) => _open(TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a)),
+                onResume: () => _resumeItem != null ? _open(_resumeItem!) : tv.mediaResume(),
+                onAllApps: _allApps,
+                onTop: () => _focus(-1, 0),
+              ),
+            )
+          : Scaffold(
+              backgroundColor: TvDS.canvas,
+              body: LayoutBuilder(
+                builder: (context, c) {
+                  TvLook.read(prefs);
+                  final rowsTop = c.maxHeight * TvLook.number('rowsAt');
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // ---- The big picture, fading into the canvas on the left and bottom ----
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        width: c.maxWidth * .74,
+                        height: c.maxHeight * .8,
+                        child: TvLook.str('backdrop') == 'off'
+                            ? const SizedBox.expand()
+                            : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
                       ),
-                    ),
-                  ),
-                ),
+                      TvScrims(strength: TvLook.number('dim')),
 
-                // ---- Top bar ----
-                Positioned(
-                  top: TvDS.safe.top,
-                  left: TvDS.safe.left,
-                  right: TvDS.safe.right,
-                  child: _TopBar(
-                    prefs: prefs,
-                    buttons: [
-                      for (final (i, id) in _header.indexed)
-                        _TopButton(
-                          id: id,
-                          focusNode: _node(-1, i),
-                          onSelect: () => _headerAction(id),
-                          onMove: (d) => _move(-1, i, d),
-                          onFocus: () => _onFocus(-1, i),
+                      // ---- Title block: what's focused ----
+                      Positioned(
+                        left: TvDS.safe.left,
+                        top: TvDS.heroTop,
+                        width: TvDS.heroW,
+                        height: rowsTop - TvDS.heroTop - DS.s12,
+                        child: _HeroInfo(
+                          item: TvLook.on('hero') || _moving != null ? _hero : null,
+                          chip: _chip,
+                          rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
+                          moving: _moving != null,
                         ),
+                      ),
+
+                      // ---- Rows ----
+                      Positioned(
+                        top: rowsTop,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: ClipRect(
+                          child: SingleChildScrollView(
+                            controller: _v,
+                            physics: const ClampingScrollPhysics(),
+                            clipBehavior: Clip.none,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (final (r, row) in _rows.indexed) _buildRow(r, row),
+                                // Room for the last row to reach the top of this area.
+                                SizedBox(height: math.max(0, c.maxHeight - rowsTop - (_rows.lastOrNull?.height ?? 0))),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // ---- Top bar ----
+                      Positioned(
+                        top: TvDS.safe.top,
+                        left: TvDS.safe.left,
+                        right: TvDS.safe.right,
+                        child: _TopBar(
+                          prefs: prefs,
+                          buttons: [
+                            for (final (i, id) in _header.indexed)
+                              _TopButton(
+                                id: id,
+                                focusNode: _node(-1, i),
+                                onSelect: () => _headerAction(id),
+                                onMove: (d) => _move(-1, i, d),
+                                onFocus: () => _onFocus(-1, i),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
+                  );
+                },
+              ),
+            ),
     );
   }
 
@@ -1234,8 +1334,8 @@ class _TopButton extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, size: 22, color: f ? DS.ink : TvDS.ink),
-                    if (pill) ...[const SizedBox(width: DS.s8), Text(label, style: TvDS.hint.copyWith(fontSize: 15, color: f ? DS.ink : TvDS.ink))],
+                    Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                    if (pill) ...[const SizedBox(width: DS.s8), Text(label, style: TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink))],
                   ],
                 ),
               ),
@@ -1520,16 +1620,16 @@ class _QuickChip extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (moving) Icon(Icons.chevron_left_rounded, size: 18, color: f ? DS.ink : TvDS.ink),
+                if (moving) Icon(Icons.chevron_left_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
                 if (item.app != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: SizedBox(width: 32, height: 18, child: TvAppArt(app: item.app!, width: 32)),
                   )
                 else if (icon != null)
-                  Icon(icon, size: 20, color: f ? DS.ink : TvDS.ink),
-                if (!edit) ...[const SizedBox(width: DS.s8), Text(item.title, style: TvDS.hint.copyWith(fontSize: 14, color: f ? DS.ink : TvDS.ink))],
-                if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? DS.ink : TvDS.ink),
+                  Icon(icon, size: 20, color: f ? TvDS.onLight : TvDS.ink),
+                if (!edit) ...[const SizedBox(width: DS.s8), Text(item.title, style: TvDS.hint.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink))],
+                if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
               ],
             ),
           ),
@@ -1576,18 +1676,18 @@ class _ResumeButton extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(item.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, size: 24, color: f ? DS.ink : DS.heroInk),
+                Icon(item.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, size: 24, color: f ? TvDS.onLight : DS.heroInk),
                 const SizedBox(width: DS.s4),
                 Text(
                   item.playing ? 'Now playing' : 'Resume',
-                  style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? DS.ink : DS.heroInk),
+                  style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? TvDS.onLight : DS.heroInk),
                 ),
                 const SizedBox(width: DS.s8),
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
                   child: Text(
                     [item.title, if (app != null && app.isNotEmpty) 'on $app'].join(' '),
-                    style: TvDS.hint.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: (f ? DS.ink : DS.heroInk).withValues(alpha: .75)),
+                    style: TvDS.hint.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: (f ? TvDS.onLight : DS.heroInk).withValues(alpha: .75)),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1638,7 +1738,7 @@ class _MediaButton extends StatelessWidget {
               shape: BoxShape.circle,
               border: Border.all(color: f ? Colors.transparent : TvDS.line),
             ),
-            child: Icon(icon, size: 24, color: f ? DS.ink : TvDS.ink),
+            child: Icon(icon, size: 24, color: f ? TvDS.onLight : TvDS.ink),
           ),
         ),
       ),
@@ -1691,9 +1791,9 @@ class _AllAppsTile extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.apps_rounded, size: 32, color: f ? DS.ink : TvDS.ink),
+                Icon(Icons.apps_rounded, size: 32, color: f ? TvDS.onLight : TvDS.ink),
                 const SizedBox(height: DS.s8),
-                Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? DS.ink : TvDS.ink)),
+                Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink)),
               ],
             ),
           ),

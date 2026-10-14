@@ -129,6 +129,28 @@ class TvApps {
     });
   }
 
+  /// Tiles: the app's own icon (square), and its main colour for "each app's colour" tiles.
+  final _icons = <String, Future<MemoryImage?>>{};
+  final _iconsReady = <String, MemoryImage>{};
+  MemoryImage? iconNow(String package) => _iconsReady[package];
+  Future<MemoryImage?> icon(String package) {
+    if (demo) return Future.value(null);
+    return _icons.putIfAbsent(package, () async {
+      final bytes = await _ch.invokeMethod<Uint8List>('getIcon', {'package': package});
+      if (bytes == null) return null;
+      return _iconsReady[package] = MemoryImage(bytes);
+    });
+  }
+
+  final _colours = <String, Future<Color?>>{};
+  Future<Color?> iconColour(String package) {
+    if (demo) return Future.value(null);
+    return _colours.putIfAbsent(package, () async {
+      final c = await _ch.invokeMethod<int>('getIconColour', {'package': package});
+      return c == null ? null : Color(c);
+    });
+  }
+
   /// The app's banner pre-blurred on the TV side (soft backdrop wash); cached.
   final _backdrops = <String, Future<MemoryImage?>>{};
   final _backdropsReady = <String, MemoryImage>{};

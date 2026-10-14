@@ -6,6 +6,7 @@ import '../ui/ds.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_parts.dart';
+import 'tv_tiles.dart';
 
 /// Every app on the TV in one grid (Your apps → All apps). Sort A–Z or newest first;
 /// Hold OK for an app's options. Back returns home.
@@ -40,6 +41,13 @@ class _TvAllAppsState extends State<TvAllApps> {
       leading: TvAppArt(app: a, width: 128),
       actions: [
         TvAction(Icons.open_in_new_rounded, 'Open', () => widget.onLaunch(a)),
+        // Tiles view: pin the app to Start as a tile.
+        if (prefs.homeView == 'tiles')
+          TvAction(
+            Icons.push_pin_outlined,
+            tvPinned(prefs, widget.apps, a.package) ? 'Unpin from Start' : 'Pin to Start',
+            () => tvTogglePin(prefs, widget.apps, a.package),
+          ),
         if (fav)
           TvAction(Icons.star_outline_rounded, 'Remove from Your apps', () => prefs.toggleFavourite(a.package))
         else if (!prefs.favouritesFull)

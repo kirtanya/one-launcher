@@ -74,6 +74,21 @@ class TvActivity : FlutterActivity() {
                         main.post { result.success(art) }
                     }
                 }
+                // Tiles: the app's own icon (not the banner) and its main colour ("each app's colour").
+                "getIcon" -> {
+                    val pkg = call.argument<String>("package")!!
+                    images.execute {
+                        val bytes = loadIcon(pkg)
+                        main.post { result.success(bytes) }
+                    }
+                }
+                "getIconColour" -> {
+                    val pkg = call.argument<String>("package")!!
+                    images.execute {
+                        val c = iconColour(pkg)
+                        main.post { result.success(c) }
+                    }
+                }
                 "getBackdrop" -> {
                     val pkg = call.argument<String>("package")!!
                     images.execute {
@@ -262,6 +277,36 @@ class TvActivity : FlutterActivity() {
         pass(src, tmp, true)
         pass(tmp, src, false)
         bmp.setPixels(src, 0, w, 0, 0, w, h)
+    }
+
+    private fun iconBitmap(pkg: String, size: Int): Bitmap? = try {
+        val d = packageManager.getApplicationIcon(pkg)
+        Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { b ->
+            d.setBounds(0, 0, size, size)
+            d.draw(Canvas(b))
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun loadIcon(pkg: String): ByteArray? = iconBitmap(pkg, 192)?.let { b ->
+        ByteArrayOutputStream().also { b.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+    }
+
+    /** The icon's main colour: the average of its colourful pixels (greys and see-through skipped). */
+    private fun iconColour(pkg: String): Int? {
+        val b = iconBitmap(pkg, 48) ?: return null
+        var r = 0L; var g = 0L; var bl = 0L; var n = 0
+        val hsv = FloatArray(3)
+        for (y in 0 until 48) for (x in 0 until 48) {
+            val p = b.getPixel(x, y)
+            if ((p ushr 24) < 200) continue
+            android.graphics.Color.colorToHSV(p, hsv)
+            if (hsv[1] < .25f || hsv[2] < .2f) continue
+            r += (p shr 16) and 0xFF; g += (p shr 8) and 0xFF; bl += p and 0xFF; n++
+        }
+        if (n < 20) return null
+        return (0xFF shl 24) or ((r / n).toInt() shl 16) or ((g / n).toInt() shl 8) or (bl / n).toInt()
     }
 
     private fun launch(pkg: String): Boolean {

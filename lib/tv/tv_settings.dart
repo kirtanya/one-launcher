@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../prefs.dart';
+import '../tiles/landing.dart' show landingStyles;
+import '../top/header_fonts.dart' show clockPresets;
 import 'tv_apps.dart';
 import 'tv_parts.dart';
 
 /// One TV setting: a key in [Prefs.tvSettings], its choices (value → label) and default.
 /// On/off settings are just two choices.
 class TvOption {
-  const TvOption(this.key, this.label, this.choices, this.fallback);
+  const TvOption(this.key, this.label, this.choices, this.fallback, {this.read, this.write});
   final String key, label;
   final List<(Object, String)> choices;
   final Object fallback;
+
+  /// Settings shared with the phone's Tiles (their own prefs keys) read / write through these
+  /// instead of the TV settings map.
+  final Object Function(Prefs p)? read;
+  final Future<void> Function(Prefs p, Object v)? write;
 
   static TvOption onOff(String key, String label, {bool on = true}) => TvOption(key, label, const [(true, 'On'), (false, 'Off')], on);
 }
@@ -72,6 +79,130 @@ const tvSections = <(String, IconData, List<TvOption>)>[
   ),
 ];
 
+/// Customise → Tiles: the Tiles design language on TV. Most are the phone's own Tiles settings
+/// (same prefs keys: tile look, glass, corners, colours, animation, interactions, clock).
+final tvTilesOptions = <TvOption>[
+  TvOption(
+    'homeView',
+    'Home view',
+    const [('classic', 'Cinematic'), ('tiles', 'Tiles')],
+    'classic',
+    read: (p) => p.homeView,
+    write: (p, v) => p.setHomeView(v as String),
+  ),
+  const TvOption('tileRows', 'Rows of tiles', [(3.0, '3 (big)'), (4.0, '4'), (5.0, '5'), (6.0, '6 (small)')], 4.0),
+  const TvOption('tileFace', 'App tiles show', [('icon', 'Icon'), ('banner', 'TV banner')], 'icon'),
+  const TvOption('tileBg', 'Background', [('black', 'Black'), ('glow', 'Accent glow')], 'black'),
+  TvOption(
+    'tileRadius',
+    'Corner roundness',
+    const [(0.0, 'Square'), (4.0, 'Slight'), (8.0, 'Soft'), (16.0, 'Round'), (24.0, 'Very round')],
+    0.0,
+    read: (p) => p.tileRadius,
+    write: (p, v) => p.setTileLook(radius: v as double),
+  ),
+  TvOption(
+    'tileLabels',
+    'Names on tiles',
+    const [(true, 'On'), (false, 'Off')],
+    true,
+    read: (p) => p.tileLabels,
+    write: (p, v) => p.setTileLook(labels: v as bool),
+  ),
+  TvOption(
+    'tileColours',
+    'Tile colours',
+    const [('accent', 'Accent'), ('colourful', 'Each app’s colour')],
+    'accent',
+    read: (p) => p.tileColours,
+    write: (p, v) => p.setTileColours(v as String),
+  ),
+  TvOption(
+    'tileOpacity',
+    'Tile transparency',
+    const [(1.0, 'None'), (.85, '15%'), (.7, '30%'), (.55, '45%'), (.4, '60%')],
+    1.0,
+    read: (p) => p.tileOpacity,
+    write: (p, v) => p.setTileLook(opacity: v as double),
+  ),
+  TvOption(
+    'tileStyle',
+    'Tile look',
+    const [('solid', 'Solid'), ('glass', 'Glass')],
+    'solid',
+    read: (p) => p.tileStyle,
+    write: (p, v) => p.setGlass(style: v as String),
+  ),
+  TvOption(
+    'glassBlur',
+    'Glass frost',
+    const [(0.0, 'Off'), (10.0, 'Light'), (18.0, 'Medium'), (30.0, 'Heavy')],
+    18.0,
+    read: (p) => p.glassBlur,
+    write: (p, v) => p.setGlass(blur: v as double),
+  ),
+  TvOption(
+    'glassTint',
+    'Glass tint',
+    const [(.15, 'Clear'), (.25, 'Light'), (.4, 'Medium'), (.55, 'Strong')],
+    .25,
+    read: (p) => p.glassTint,
+    write: (p, v) => p.setGlass(tint: v as double),
+  ),
+  TvOption(
+    'glassEdge',
+    'Glass bright edge',
+    const [(true, 'On'), (false, 'Off')],
+    true,
+    read: (p) => p.glassEdge,
+    write: (p, v) => p.setGlass(edge: v as bool),
+  ),
+  TvOption(
+    'glassSheen',
+    'Glass sheen',
+    const [(true, 'On'), (false, 'Off')],
+    true,
+    read: (p) => p.glassSheen,
+    write: (p, v) => p.setGlass(sheen: v as bool),
+  ),
+  TvOption(
+    'tileAnim',
+    'Start animation',
+    [for (final (id, label) in landingStyles) (id, label)],
+    'turnstile',
+    read: (p) => p.tileAnim,
+    write: (p, v) => p.setLandingAnims(tiles: v as String),
+  ),
+  TvOption('fx.live', 'Live tiles', const [(true, 'On'), (false, 'Off')], true, read: (p) => p.fx('live'), write: (p, v) => p.setFx('live', v as bool)),
+  TvOption(
+    'fx.turnstile',
+    'Turnstile on launch',
+    const [(true, 'On'), (false, 'Off')],
+    true,
+    read: (p) => p.fx('turnstile'),
+    write: (p, v) => p.setFx('turnstile', v as bool),
+  ),
+  TvOption('fx.tilt', 'Tilt on focus', const [(true, 'On'), (false, 'Off')], true, read: (p) => p.fx('tilt'), write: (p, v) => p.setFx('tilt', v as bool)),
+  TvOption(
+    'tileClock',
+    'Clock tile style',
+    [for (final c in clockPresets) (c.$1, c.$1)],
+    'Classic',
+    read: (p) {
+      for (final (name, w, wd, sl, r) in clockPresets) {
+        if ((p.tileClockWeight - w).abs() < 1 && (p.tileClockWidth - wd).abs() < 1 && (p.tileClockSlant - sl).abs() < .1 && (p.tileClockRound - r).abs() < 1) {
+          return name;
+        }
+      }
+      return 'Custom';
+    },
+    write: (p, v) {
+      final c = clockPresets.firstWhere((c) => c.$1 == v);
+      return p.setTileClockStyle(weight: c.$2, width: c.$3, slant: c.$4, round: c.$5);
+    },
+  ),
+];
+
 /// The settings as the home screen reads them (refreshed from prefs on every build).
 class TvLook {
   static Map<String, dynamic> _s = const {};
@@ -82,10 +213,8 @@ class TvLook {
     final v = _s[key];
     if (v is T) return v;
     if (T == double && v is num) return v.toDouble() as T;
-    for (final (_, _, opts) in tvSections) {
-      for (final o in opts) {
-        if (o.key == key) return o.fallback as T;
-      }
+    for (final o in [for (final (_, _, opts) in tvSections) ...opts, ...tvTilesOptions]) {
+      if (o.key == key) return o.fallback as T;
     }
     throw ArgumentError('unknown TV setting $key');
   }
@@ -106,7 +235,9 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
     context,
     title: 'Customise',
     actions: [
+      _optionRow(prefs, tvTilesOptions.first), // Home view: Cinematic / Tiles
       for (final (name, icon, opts) in tvSections) TvAction(icon, name, () => _section(context, prefs, name, opts, extras)),
+      TvAction(Icons.grid_view_rounded, 'Tiles', () => _section(context, prefs, 'Tiles', tvTilesOptions.skip(1).toList(), extras)),
       ...extras,
       TvAction(Icons.restart_alt_rounded, 'Reset everything', () async {
         await prefs.resetTvSettings();
@@ -115,6 +246,9 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
     ],
   );
 }
+
+/// Extra rows at the end of Customise → Tiles (Add a tile, Reset Start), set by the home screen.
+List<TvAction> tilesExtras = const [];
 
 void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opts, List<TvAction> extras) {
   showTvPanel(
@@ -127,6 +261,7 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
         TvAction(Icons.arrow_back_rounded, 'Back', () => showTvCustomise(context, prefs: prefs, extras: extras)),
         for (final o in opts) _optionRow(prefs, o),
         if (name == 'Remote & behaviour') TvAction(Icons.delete_sweep_outlined, 'Clear watch history', TvApps.instance.clearHistory, keepOpen: true),
+        if (name == 'Tiles') ...tilesExtras,
       ];
     },
   );
@@ -134,7 +269,7 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
 
 /// A setting row: label, its current choice on the right; OK moves to the next choice.
 TvAction _optionRow(Prefs prefs, TvOption o) {
-  final current = TvLook.get<Object>(o.key);
+  final current = o.read?.call(prefs) ?? TvLook.get<Object>(o.key);
   final i = o.choices.indexWhere((c) => c.$1 == current || (c.$1 is num && current is num && (c.$1 as num) == current));
   final label = i < 0 ? o.choices.first.$2 : o.choices[i].$2;
   final icon = o.choices.length == 2 && o.choices.first.$1 is bool
@@ -145,7 +280,11 @@ TvAction _optionRow(Prefs prefs, TvOption o) {
     o.label,
     () async {
       final next = o.choices[(i + 1) % o.choices.length].$1;
-      await prefs.setTvSetting(o.key, next);
+      if (o.write != null) {
+        await o.write!(prefs, next);
+      } else {
+        await prefs.setTvSetting(o.key, next);
+      }
       if (o.key == 'history') await TvApps.instance.setHistoryEnabled(next == true);
     },
     keepOpen: true,

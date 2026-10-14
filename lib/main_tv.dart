@@ -5,6 +5,7 @@ import 'prefs.dart';
 import 'tv/tv_apps.dart';
 import 'tv/tv_home.dart';
 import 'ui/ds.dart';
+import 'ui/glass.dart';
 import 'ui/theme.dart';
 
 /// One Launcher TV (build with `--flavor tv -t lib/main_tv.dart`).
@@ -36,12 +37,29 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
   void initState() {
     super.initState();
     theme.addListener(_repaint);
+    _syncGlass(repaint: false); // no rebuild needed before the first frame
+    prefs.addListener(_syncGlass);
   }
 
   @override
   void dispose() {
     theme.removeListener(_repaint);
+    prefs.removeListener(_syncGlass);
     super.dispose();
+  }
+
+  /// Tiles' glass look (frost / tint / edge / sheen) lives in statics the tile surfaces read —
+  /// kept in step with prefs, like the phone app does.
+  void _syncGlass({bool repaint = true}) {
+    final p = prefs;
+    final g = (p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
+    if (g == (Glass.blur, Glass.tint, Glass.edge, Glass.sheen, Glass.tiles)) return;
+    Glass.blur = g.$1;
+    Glass.tint = g.$2;
+    Glass.edge = g.$3;
+    Glass.sheen = g.$4;
+    Glass.tiles = g.$5;
+    if (repaint) _repaint();
   }
 
   /// New colours: rebuild everything (const widgets included), like the phone app.

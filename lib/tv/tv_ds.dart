@@ -40,6 +40,9 @@ class TvDS {
   static const line = DS.onCanvasLine;
   static const surface = Color(0x14FFFFFF); // icon-only tiles, buttons (8% white)
   static const surfaceFocused = Color(0xFFFFFFFF);
+  // Text / icons on a focused (white) surface: fixed dark, whatever the theme (Tiles' ink is white).
+  static const onLight = Color(0xFF161616);
+  static const onLightMuted = Color(0xFF5F5F5F);
   static const glow = Color(0x40FFFFFF);
 
   // ---- Type (≈1.4× the phone sizes) ----
