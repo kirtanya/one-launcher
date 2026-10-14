@@ -171,6 +171,13 @@ class TvApps {
   Future<void> openUri(String uri, {String? package}) => _call('openUri', {'uri': uri, 'package': package});
   Future<void> searchEverywhere(String query) => _call('searchEverywhere', {'query': query});
 
+  /// GET through Android's network stack (TvActivity "httpGet") → (status, body). Status -1 =
+  /// no connection (body says why).
+  Future<(int, String)> httpGet(String url, {Map<String, String> headers = const {}}) async {
+    final m = await _ch.invokeMapMethod<String, Object?>('httpGet', {'url': url, 'headers': headers});
+    return ((m?['status'] as int?) ?? -1, (m?['body'] as String?) ?? '');
+  }
+
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});

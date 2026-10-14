@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 
@@ -57,18 +56,10 @@ class Tmdb {
     final uri = Uri.https('api.themoviedb.org', '/3$path', {...params, 'language': 'en-US', if (!bearer) 'api_key': _key});
     final cacheKey = uri.toString();
     if (_cache.containsKey(cacheKey)) return _cache[cacheKey];
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-    try {
-      final req = await client.getUrl(uri);
-      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      if (bearer) req.headers.set(HttpHeaders.authorizationHeader, 'Bearer $_key');
-      final res = await req.close().timeout(const Duration(seconds: 12));
-      final body = await res.transform(utf8.decoder).join();
-      if (res.statusCode != 200) throw TmdbException(res.statusCode);
-      return _cache[cacheKey] = jsonDecode(body);
-    } finally {
-      client.close();
-    }
+    final (status, body) = await TvApps.instance.httpGet(uri.toString(), headers: {'Accept': 'application/json', if (bearer) 'Authorization': 'Bearer $_key'});
+    if (status == -1) throw TmdbException(-1, body);
+    if (status != 200) throw TmdbException(status);
+    return _cache[cacheKey] = jsonDecode(body);
   }
 
   // ---- Sample data (tests / previews, no network) ----
@@ -100,10 +91,15 @@ class Tmdb {
 }
 
 class TmdbException implements Exception {
-  const TmdbException(this.status);
+  const TmdbException(this.status, [this.detail]);
   final int status;
+  final String? detail;
   @override
-  String toString() => status == 401 ? 'The TMDB key was not accepted' : 'TMDB error $status';
+  String toString() => switch (status) {
+    401 => 'The TMDB key was not accepted',
+    -1 => 'No connection to TMDB${detail == null ? '' : ' ($detail)'}',
+    _ => 'TMDB error $status',
+  };
 }
 
 /// A show or film in a list (search, trending).

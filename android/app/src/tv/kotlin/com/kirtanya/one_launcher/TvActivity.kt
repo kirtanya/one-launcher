@@ -89,6 +89,27 @@ class TvActivity : FlutterActivity() {
                         main.post { result.success(c) }
                     }
                 }
+                // Network for the shows & films search (TMDB) through Android's own stack — the same one
+                // the streaming apps use (Flutter's sockets failed on some TVs).
+                "httpGet" -> {
+                    val url = call.argument<String>("url")!!
+                    val headers = call.argument<Map<String, String>>("headers") ?: emptyMap()
+                    images.execute {
+                        val res = try {
+                            (java.net.URL(url).openConnection() as java.net.HttpURLConnection).run {
+                                connectTimeout = 8000
+                                readTimeout = 12000
+                                headers.forEach { (k, v) -> setRequestProperty(k, v) }
+                                val code = responseCode
+                                val body = (if (code in 200..299) inputStream else errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+                                mapOf("status" to code, "body" to body)
+                            }
+                        } catch (e: Exception) {
+                            mapOf("status" to -1, "body" to (e.message ?: e.javaClass.simpleName))
+                        }
+                        main.post { result.success(res) }
+                    }
+                }
                 "getBackdrop" -> {
                     val pkg = call.argument<String>("package")!!
                     images.execute {

@@ -165,15 +165,18 @@ class TmdbImage extends StatelessWidget {
             ),
     );
     if (path == null || TvApps.demo) return fallback;
-    return Image.network(
-      Tmdb.image(path!, size: size),
-      fit: BoxFit.cover,
-      alignment: alignment,
-      cacheWidth: decodeWidth,
-      gaplessPlayback: true,
-      errorBuilder: (_, _, _) => fallback,
-      frameBuilder: (context, child, frame, sync) =>
-          sync ? child : AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 300), child: child),
+    // Through Android's network (TvApps.image → TvActivity), downsized on the TV side.
+    final url = Tmdb.image(path!, size: size);
+    final ready = TvApps.instance.imageNow(url);
+    if (ready != null) return Image(image: ready, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true);
+    return FutureBuilder<MemoryImage?>(
+      future: TvApps.instance.image(url, width: decodeWidth),
+      builder: (context, s) => AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: s.data == null
+            ? KeyedSubtree(key: const ValueKey(0), child: fallback)
+            : Image(key: const ValueKey(1), image: s.data!, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true),
+      ),
     );
   }
 }

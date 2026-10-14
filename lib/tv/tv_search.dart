@@ -46,6 +46,7 @@ class _TvSearchState extends State<TvSearch> {
           if (mounted) setState(() => _trending = t);
         },
         onError: (Object e) {
+          debugPrint('TMDB trending failed: $e');
           if (mounted) setState(() => _error = e);
         },
       );
@@ -83,6 +84,7 @@ class _TvSearchState extends State<TvSearch> {
           _error = null;
         });
       } catch (e) {
+        debugPrint('TMDB search failed: $e');
         if (mounted) setState(() => _error = e);
       } finally {
         if (mounted) setState(() => _loading = false);
