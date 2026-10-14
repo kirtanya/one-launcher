@@ -5,15 +5,16 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../ui/ds.dart';
-import 'tmdb.dart';
+import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_parts.dart';
 import 'tv_title.dart';
 
-/// Search, content first: type a show or film → posters (TMDB) → its page with ratings, cast
-/// and where to watch. Before typing: what's trending. Matching apps and "search everywhere /
-/// in an app" come after. ↓ from the field moves into the results.
+/// Search, content first: type a show or film → posters from the TV's own catalog (instant, built
+/// from the Stremio addons — see catalog.dart), joined by the addons' live search → its page with
+/// rating, cast and where to watch. Before typing: what's popular. Matching apps and "search
+/// everywhere / in an app" come after. ↓ from the field moves into the results.
 class TvSearch extends StatefulWidget {
   const TvSearch({super.key, required this.apps, required this.onLaunch});
   final List<AppEntry> apps;
@@ -25,12 +26,19 @@ class TvSearch extends StatefulWidget {
 
 class _TvSearchState extends State<TvSearch> {
   final _q = TextEditingController();
-  final _firstPoster = FocusNode(), _firstApp = FocusNode(), _firstAction = FocusNode();
+  final _firstApp = FocusNode(), _firstAction = FocusNode();
+  // One focus node per poster, kept by title: when the results re-rank, focus stays on the poster
+  // it was on (a node never moves to another poster).
+  final _posterNodes = <String, FocusNode>{};
+  Set<String> _shown = const {};
   List<String> _targets = const []; // apps that accept a search
 
   Timer? _debounce;
-  String _searched = '';
-  List<TmdbTitle> _trending = const [], _results = const [];
+  Catalog get _catalog => Catalog.instance;
+  int _seen = -1; // the catalog version the results come from
+  List<ShowTitle> _local = const []; // from the TV's catalog (as you type)
+  String _searched = ''; // what the live search last asked
+  List<ShowTitle> _live = const []; // the sources' own search (Cinemeta…)
   bool _loading = false;
   Object? _error;
 
@@ -40,60 +48,95 @@ class _TvSearchState extends State<TvSearch> {
     TvApps.instance.searchTargets().then((t) {
       if (mounted) setState(() => _targets = t);
     });
-    if (Tmdb.enabled) {
-      Tmdb.instance.trending().then(
-        (t) {
-          if (mounted) setState(() => _trending = t);
-        },
-        onError: (Object e) {
-          debugPrint('TMDB trending failed: $e');
-          if (mounted) setState(() => _error = e);
-        },
-      );
-    }
+    _catalog.addListener(_onCatalog);
+    // No catalog yet (first run): make it now rather than at the next automatic check.
+    _catalog.load().then((_) {
+      if (_catalog.count == 0) _catalog.maybeUpdate();
+    });
+  }
+
+  /// The catalog loaded / updated (or is updating): refresh what's shown.
+  void _onCatalog() {
+    if (!mounted) return;
+    setState(() {
+      if (_seen != _catalog.version) {
+        _seen = _catalog.version;
+        _local = _catalog.search(_q.text);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _catalog.removeListener(_onCatalog);
     _debounce?.cancel();
     _q.dispose();
-    _firstPoster.dispose();
+    for (final n in _posterNodes.values) {
+      n.dispose();
+    }
     _firstApp.dispose();
     _firstAction.dispose();
     super.dispose();
   }
 
-  /// Ask TMDB once typing pauses (each key on a TV keyboard is slow; don't search per letter).
+  /// Each letter searches the TV's catalog right away; once typing pauses the sources' own search
+  /// joins in (each key on a TV keyboard is slow; don't ask the internet per letter).
   void _onType(String _) {
-    setState(() {});
-    _debounce?.cancel();
     final q = _q.text.trim();
-    if (!Tmdb.enabled) return;
-    if (q.isEmpty) {
-      setState(() => _results = const []);
-      return;
-    }
+    setState(() {
+      _local = _catalog.search(q);
+      _error = null;
+    });
+    _debounce?.cancel();
+    if (!Catalog.enabled || q.length < 2) return;
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       setState(() => _loading = true);
       try {
-        final r = await Tmdb.instance.search(q);
+        final r = await _catalog.searchOnline(q);
         if (!mounted || _q.text.trim() != q) return;
         setState(() {
           _searched = q;
-          _results = r;
-          _error = null;
+          _live = r;
         });
       } catch (e) {
-        debugPrint('TMDB search failed: $e');
-        if (mounted) setState(() => _error = e);
+        debugPrint('Live search failed: ${e is CatalogException ? e : e.runtimeType}'); // addon names only, never links
+        if (mounted && _q.text.trim() == q) setState(() => _error = e);
       } finally {
         if (mounted) setState(() => _loading = false);
       }
     });
   }
 
-  void _openTitle(TmdbTitle t) =>
+  FocusNode _posterNode(ShowTitle t) => _posterNodes[t.key] ??= FocusNode(debugLabel: 'poster');
+
+  /// After a frame: let go of the nodes of posters no longer shown.
+  void _dropStaleNodes() {
+    if (!mounted) return;
+    _posterNodes.removeWhere((k, n) {
+      if (_shown.contains(k)) return false;
+      n.dispose();
+      return true;
+    });
+  }
+
+  void _openTitle(ShowTitle t) =>
       Navigator.of(context).push(tvFade(TvTitlePage(title: t, apps: widget.apps, searchTargets: _targets, onOpenApp: widget.onLaunch)));
+
+  /// No posters to show: why, in words.
+  String _emptyNote(String raw) {
+    final c = _catalog;
+    if (raw.isEmpty) {
+      if (!c.loaded) return 'Loading…';
+      if (c.syncing) return 'Getting the catalog ready… ${(c.progress * 100).round()}%';
+      if (c.error != null) return c.error!;
+      return c.updated == null
+          ? 'No catalog yet. Make it in Customise → Search → Update catalog now.'
+          : 'The catalog is empty. Check its sources in Customise → Search.';
+    }
+    if (_loading || (raw.length >= 2 && _searched != raw && _error == null)) return 'Searching…';
+    if (_error is CatalogException && (_error as CatalogException).status == -1) return 'Couldn’t reach the catalogs. Check the TV’s internet.';
+    return 'No shows or films called “$raw”.';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,7 +148,11 @@ class _TvSearchState extends State<TvSearch> {
             ..sort((a, b) => (a.label.toLowerCase().startsWith(q) ? 0 : 1).compareTo(b.label.toLowerCase().startsWith(q) ? 0 : 1)));
     final byPkg = {for (final a in widget.apps) a.package: a};
     final targets = [for (final p in _targets) ?byPkg[p]];
-    final posters = q.isEmpty ? _trending : (_searched.toLowerCase() == q ? _results : const <TmdbTitle>[]);
+    final posters = q.isEmpty ? _catalog.trending() : combineResults(raw, _local, _searched == raw ? _live : const []);
+    final searchOn = Catalog.enabled;
+    final shown = posters.take(18).toList();
+    _shown = {for (final t in shown) t.key};
+    if (_posterNodes.length > _shown.length) WidgetsBinding.instance.addPostFrameCallback((_) => _dropStaleNodes());
 
     List<Widget> googleRow(String title) => [
       const SizedBox(height: DS.s20),
@@ -139,8 +186,12 @@ class _TvSearchState extends State<TvSearch> {
       ),
     ];
 
-    // ↓ from the box: the first poster when there are shows & films, else the Google TV row.
-    void down() => (Tmdb.enabled && posters.isNotEmpty ? _firstPoster : _firstAction).requestFocus();
+    // ↓ from the box: the first poster when there are shows & films, else the first matching app,
+    // else the Google TV row.
+    void down() {
+      final to = searchOn && shown.isNotEmpty ? _posterNode(shown.first) : (apps.isNotEmpty ? _firstApp : _firstAction);
+      to.requestFocus();
+    }
 
     return Scaffold(
       backgroundColor: TvDS.canvas,
@@ -164,7 +215,7 @@ class _TvSearchState extends State<TvSearch> {
                 onChanged: _onType,
                 // Enter / Done on the keyboard: straight to Google TV's results (unless our own
                 // shows & films search is on — then into those results).
-                onSubmitted: (_) => raw.isNotEmpty && !Tmdb.enabled ? TvApps.instance.searchEverywhere(raw) : down(),
+                onSubmitted: (_) => raw.isNotEmpty && !searchOn ? TvApps.instance.searchEverywhere(raw) : down(),
                 style: TvDS.panelTitle,
                 cursorColor: TvDS.ink,
                 decoration: InputDecoration(
@@ -197,25 +248,20 @@ class _TvSearchState extends State<TvSearch> {
                   children: [
                     // With our own shows & films search on, those come first; Google TV's search
                     // and voice follow ("More ways to search"). Without it, Google TV leads.
-                    if (!Tmdb.enabled) ...googleRow('Search with Google TV'),
+                    if (!searchOn) ...googleRow('Search with Google TV'),
 
                     // ---- Shows & films ----
-                    if (Tmdb.enabled) ...[
+                    if (searchOn) ...[
                       const SizedBox(height: DS.s24),
-                      Text(q.isEmpty ? 'Trending this week' : 'Shows & films', style: TvDS.rowTitleFocused),
+                      Text(q.isEmpty ? 'Popular now' : 'Shows & films', style: TvDS.rowTitleFocused),
                       const SizedBox(height: DS.s16),
-                      if (_error != null && posters.isEmpty)
-                        Text(_error is TmdbException ? '$_error.' : 'Couldn’t reach TMDB. Check the TV’s internet.', style: TvDS.heroBody)
-                      else if (posters.isEmpty)
-                        Text(q.isEmpty || _loading || _searched.toLowerCase() != q ? 'Loading…' : 'No shows or films called “$raw”.', style: TvDS.heroBody)
+                      if (posters.isEmpty)
+                        Text(_emptyNote(raw), style: TvDS.heroBody)
                       else
                         Wrap(
                           spacing: DS.s16,
                           runSpacing: DS.s20,
-                          children: [
-                            for (final (i, t) in posters.take(18).indexed)
-                              TvPoster(key: ValueKey(t.key), title: t, focusNode: i == 0 ? _firstPoster : null, onSelect: () => _openTitle(t)),
-                          ],
+                          children: [for (final t in shown) TvPoster(key: ValueKey(t.key), title: t, focusNode: _posterNode(t), onSelect: () => _openTitle(t))],
                         ),
                     ],
 
@@ -237,7 +283,7 @@ class _TvSearchState extends State<TvSearch> {
                         ],
                       ),
                     ],
-                    if (Tmdb.enabled) ...googleRow('More ways to search'),
+                    if (searchOn) ...googleRow('More ways to search'),
                   ],
                 ),
               ),

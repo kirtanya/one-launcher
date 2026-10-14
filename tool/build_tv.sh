@@ -2,19 +2,31 @@
 # Builds One Launcher TV (Android TV / Google TV) for release → ~/Desktop/OneLauncherTV-<version>.apk
 #  - 32- and 64-bit ARM (many TVs, incl. the Acer R4 we test on, are 32-bit only), engine compressed
 #  - Dart symbols split out + obfuscated, like the phone build
-#  - Shows & films search: TMDB key read from ./tmdb.key (gitignored; never printed or committed).
-#    Without it the TV app still builds; search then covers apps only.
+#  - Shows & films search: Stremio addon manifest links read from ./catalog_sources.txt (gitignored —
+#    links can hold personal tokens; never printed or committed). One link per line, '#' comments.
+#    Without the file the TV uses the public Cinemeta + WatchHub. After install the TV keeps its own
+#    list (Customise → Search → Sources); links new to a later build are added to it.
 # Usage: tool/build_tv.sh            tool/build_tv.sh --install <tv-ip:port>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT=build/app/outputs/flutter-apk
 V=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
-TMDB=()
-if [ -s tmdb.key ]; then TMDB=(--dart-define=TMDB_KEY="$(tr -d '[:space:]' < tmdb.key)"); echo "› TMDB key found"; else echo "› No tmdb.key: shows & films search off"; fi
+CATALOG=()
+SOURCES=""
+if [ -s catalog_sources.txt ]; then
+  # First word of each line that isn't blank or a comment, joined by spaces (links never contain one).
+  SOURCES=$(awk '{ sub(/^[ \t\r]+/, ""); sub(/[ \t\r]+$/, ""); if ($0 == "" || substr($0, 1, 1) == "#") next; print $1 }' catalog_sources.txt | paste -sd ' ' -)
+fi
+if [ -n "$SOURCES" ]; then
+  CATALOG=(--dart-define=CATALOG_SOURCES="$SOURCES")
+  echo "› Catalog sources: $(wc -w <<<"$SOURCES" | tr -d ' ') (catalog_sources.txt)"
+else
+  echo "› No catalog_sources.txt: search uses the public Cinemeta + WatchHub"
+fi
 
 echo "› TV build (arm + arm64, compressed)"
 flutter build apk --release --flavor tv -t lib/main_tv.dart --split-debug-info=symbols --obfuscate \
-  --target-platform android-arm,android-arm64 -P compressLibs=true ${TMDB[@]+"${TMDB[@]}"} >/dev/null
+  --target-platform android-arm,android-arm64 -P compressLibs=true ${CATALOG[@]+"${CATALOG[@]}"} >/dev/null
 cp "$OUT/app-tv-release.apk" ~/Desktop/OneLauncherTV-$V.apk
 ls -lh ~/Desktop/OneLauncherTV-$V.apk | awk '{print $5, $9}'
 

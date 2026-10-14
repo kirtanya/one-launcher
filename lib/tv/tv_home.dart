@@ -12,6 +12,7 @@ import '../ui/ds.dart';
 import '../ui/palette.dart';
 import '../ui/theme.dart';
 import '../ui/motion.dart';
+import 'catalog.dart';
 import 'tv_actions.dart';
 import 'tv_all_apps.dart';
 import 'tv_apps.dart';
@@ -118,10 +119,12 @@ class _TvHomeState extends State<TvHome> {
     tv.onResumed = () {
       _loadContent();
       if (_tilesView) _tilesKey.currentState?.land(); // back from an app: tiles fly in again
+      Catalog.instance.maybeUpdate(); // shows & films catalog: update in the background when due
     };
     tv.media.addListener(_regroup);
     prefs.addListener(_regroup);
     _load();
+    Catalog.instance.start(prefs); // search's catalog: load the saved one, update when due
   }
 
   @override
@@ -1186,7 +1189,7 @@ class _Backdrop extends StatelessWidget {
     );
     if (it.art != null) return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true));
     if (it.image != null) {
-      final ready = TvApps.instance.imageNow(it.image!);
+      final ready = TvApps.instance.imageNow(it.image!, width: 960);
       return FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(it.image!, width: 960),
         builder: (context, s) =>

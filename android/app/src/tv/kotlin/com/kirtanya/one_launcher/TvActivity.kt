@@ -29,6 +29,7 @@ class TvActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
     private val images = Executors.newFixedThreadPool(3) // artwork downloads in parallel
+    private val net = Executors.newFixedThreadPool(4) // catalog / details requests (artwork keeps its own threads)
     private val main = Handler(Looper.getMainLooper())
     private val content by lazy { TvContent(this) }
     // What's playing / paused right now (needs Notification access, like the phone's Now playing).
@@ -89,12 +90,12 @@ class TvActivity : FlutterActivity() {
                         main.post { result.success(c) }
                     }
                 }
-                // Network for the shows & films search (TMDB) through Android's own stack — the same one
-                // the streaming apps use (Flutter's sockets failed on some TVs).
+                // Network for the shows & films catalog (Stremio addons) through Android's own stack —
+                // the same one the streaming apps use (Flutter's sockets failed on some TVs).
                 "httpGet" -> {
                     val url = call.argument<String>("url")!!
                     val headers = call.argument<Map<String, String>>("headers") ?: emptyMap()
-                    images.execute {
+                    net.execute {
                         val res = try {
                             (java.net.URL(url).openConnection() as java.net.HttpURLConnection).run {
                                 connectTimeout = 8000
@@ -134,6 +135,14 @@ class TvActivity : FlutterActivity() {
                     val pkg = call.argument<String>("package")
                     result.success((pkg != null && open(Intent(i).setPackage(pkg))) || open(i))
                 }
+                // A show's page: "Watch on …" (WatchHub's official links) and "Open in Nuvio".
+                "openLink" -> {
+                    val pkg = call.argument<String>("package")
+                    result.success(openLink(call.argument<String>("uri"), pkg) || openLink(call.argument<String>("fallback"), pkg))
+                }
+                "linkHandlers" -> result.success(linkHandlers(call.argument<String>("uri")!!))
+                // Where the shows & films catalog is saved.
+                "filesDir" -> result.success(filesDir.absolutePath)
                 // Google TV's own search: shows films & shows from every streaming app.
                 "searchEverywhere" -> {
                     val q = call.argument<String>("query") ?: ""
@@ -355,6 +364,55 @@ class TvActivity : FlutterActivity() {
             else -> emptyList()
         }
         return candidates.any { open(it) } || open(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    /**
+     * A link from the internet (WatchHub) or our own stremio:///detail/… → a plain "view this"
+     * intent: only its address, the app it names (or [pkg]) and its text extras survive — never a
+     * named screen, selector, flags or permission grants. Local addresses (file:, content:…) are refused.
+     */
+    private fun linkIntent(uri: String, pkg: String?): Intent? = try {
+        // Some links leave off the closing "end"; Android won't read them without it.
+        val fixed = if (uri.startsWith("intent:") && uri.contains("#Intent;") && !uri.endsWith(";end")) uri.trimEnd(';') + ";end" else uri
+        val parsed = if (fixed.startsWith("intent:")) Intent.parseUri(fixed, Intent.URI_INTENT_SCHEME) else Intent(Intent.ACTION_VIEW, Uri.parse(fixed))
+        val data = parsed.data
+        val scheme = data?.scheme?.lowercase()
+        if (data == null || scheme == null || scheme in setOf("file", "content", "android.resource", "javascript", "data")) {
+            null
+        } else {
+            Intent(Intent.ACTION_VIEW, data).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                (parsed.`package` ?: pkg)?.let { setPackage(it) }
+                copyTextExtras(parsed, this)
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    @Suppress("DEPRECATION") // Bundle.get: any type; only text is copied
+    private fun copyTextExtras(from: Intent, to: Intent) {
+        val ex = from.extras ?: return
+        for (k in ex.keySet()) (ex.get(k) as? String)?.let { to.putExtra(k, it) }
+    }
+
+    private fun openLink(uri: String?, pkg: String?): Boolean {
+        val i = linkIntent(uri ?: return false, pkg) ?: return false
+        if (open(Intent(i))) return true
+        // Some TV apps take their links without the "browsable" mark; only try that inside a named app.
+        return i.`package` != null && open(i.apply { removeCategory(Intent.CATEGORY_BROWSABLE) })
+    }
+
+    /** Installed apps that open [uri] (e.g. stremio:///detail/… → Nuvio): package + name. */
+    private fun linkHandlers(uri: String): List<Map<String, String>> = try {
+        val pm = packageManager
+        pm.queryIntentActivities(Intent(Intent.ACTION_VIEW, Uri.parse(uri)), 0)
+            .map { it.activityInfo }
+            .filter { it.packageName != packageName }
+            .distinctBy { it.packageName }
+            .map { mapOf("package" to it.packageName, "label" to it.applicationInfo.loadLabel(pm).toString()) }
+    } catch (e: Exception) {
+        emptyList()
     }
 
     private fun open(i: Intent): Boolean = try {

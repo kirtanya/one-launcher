@@ -255,7 +255,9 @@ void main() {
     // Search: type → shows & films actions (everywhere / in an app) + matching apps.
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('Trending this week'), findsOneWidget, reason: 'before typing: what’s trending');
+    expect(find.text('Popular now'), findsOneWidget, reason: 'before typing: the catalog’s most popular');
+    expect(find.text('Coastline'), findsWidgets);
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4a_popular.png'));
     await tester.enterText(find.byType(TextField), 'night');
     await tester.pump(const Duration(milliseconds: 500)); // search waits for typing to pause
     await tester.pumpAndSettle();
@@ -270,20 +272,26 @@ void main() {
     expect(find.text('Search Google TV for “night”'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4_search.png'));
 
-    // ↓ to the posters; OK on one → its page: ratings, where to watch (apps on this TV), cast.
+    // ↓ to the posters; OK on one → its page: IMDb rating, where to watch (WatchHub links into
+    // apps on this TV), Open in Nuvio, cast; the sources named at the bottom.
     TvPoster? poster() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>();
     for (var k = 0; k < 4 && poster() == null; k++) {
       await _press(tester, LogicalKeyboardKey.arrowDown); // through the search pills (they wrap)
     }
+    expect(poster()?.title.title, 'Night Shift', reason: 'a title starting with the words leads, then the more popular word match');
+    await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(poster()?.title.title, 'The Long Night');
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.text('Where to watch'), findsOneWidget);
     expect(find.text('Watch on Netflix'), findsOneWidget);
     expect(find.text('Watch on Hotstar'), findsOneWidget, reason: 'JioHotstar → the Hotstar app');
     expect(find.text('Watch on Prime Video'), findsOneWidget, reason: 'Amazon Video → Prime Video app');
-    expect(find.text('8.4 TMDB'), findsOneWidget);
+    expect(find.text('8.4 IMDb'), findsOneWidget);
+    expect(find.text('Open in Nuvio'), findsOneWidget, reason: 'an installed app opens stremio:///detail/…');
+    expect(find.text('Also on Google Play Movies (rent, buy)'), findsOneWidget, reason: 'no app for it here: listed');
     expect(find.text('Mira Rao'), findsOneWidget);
     expect(find.text('Trailer'), findsOneWidget);
+    expect(find.text('Data: Cinemeta · WatchHub'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_6_title.png'));
   });
 }

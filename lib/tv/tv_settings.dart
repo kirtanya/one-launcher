@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../prefs.dart';
 import '../tiles/landing.dart' show landingStyles;
 import '../top/header_fonts.dart' show clockPresets;
+import 'catalog.dart';
 import 'tv_apps.dart';
+import 'tv_catalog_settings.dart';
 import 'tv_parts.dart';
 
 /// One TV setting: a key in [Prefs.tvSettings], its choices (value → label) and default.
@@ -77,6 +79,12 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('history', 'Remember what I watch', [(true, 'On'), (false, 'Off')], true),
     ],
   ),
+];
+
+/// Customise → Search: how often the shows & films catalog updates itself (the rest of that
+/// section — update now, sources — is in tv_catalog_settings.dart).
+const tvSearchOptions = <TvOption>[
+  TvOption('catalogAuto', 'Auto-update', [('daily', 'Daily'), ('weekly', 'Weekly'), ('off', 'Off')], 'daily'),
 ];
 
 /// Customise → Tiles: the Tiles design language on TV. Most are the phone's own Tiles settings
@@ -213,7 +221,7 @@ class TvLook {
     final v = _s[key];
     if (v is T) return v;
     if (T == double && v is num) return v.toDouble() as T;
-    for (final o in [for (final (_, _, opts) in tvSections) ...opts, ...tvTilesOptions]) {
+    for (final o in [for (final (_, _, opts) in tvSections) ...opts, ...tvTilesOptions, ...tvSearchOptions]) {
       if (o.key == key) return o.fallback as T;
     }
     throw ArgumentError('unknown TV setting $key');
@@ -238,6 +246,7 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
       _optionRow(prefs, tvTilesOptions.first), // Home view: Cinematic / Tiles
       for (final (name, icon, opts) in tvSections) TvAction(icon, name, () => _section(context, prefs, name, opts, extras)),
       TvAction(Icons.grid_view_rounded, 'Tiles', () => _section(context, prefs, 'Tiles', tvTilesOptions.skip(1).toList(), extras)),
+      TvAction(Icons.search_rounded, 'Search', () => _section(context, prefs, 'Search', tvSearchOptions, extras)),
       ...extras,
       TvAction(Icons.restart_alt_rounded, 'Reset everything', () async {
         await prefs.resetTvSettings();
@@ -254,11 +263,13 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
   showTvPanel(
     context,
     title: name,
-    refresh: prefs,
+    // Search also follows the catalog (updating…, titles, last updated).
+    refresh: name == 'Search' ? Listenable.merge([prefs, Catalog.instance]) : prefs,
     build: () {
       TvLook.read(prefs);
       return [
         TvAction(Icons.arrow_back_rounded, 'Back', () => showTvCustomise(context, prefs: prefs, extras: extras)),
+        if (name == 'Search') ...catalogRows(context, prefs, reopen: () => _section(context, prefs, name, opts, extras)),
         for (final o in opts) _optionRow(prefs, o),
         if (name == 'Remote & behaviour') TvAction(Icons.delete_sweep_outlined, 'Clear watch history', TvApps.instance.clearHistory, keepOpen: true),
         if (name == 'Tiles') ...tilesExtras,
@@ -286,6 +297,7 @@ TvAction _optionRow(Prefs prefs, TvOption o) {
         await prefs.setTvSetting(o.key, next);
       }
       if (o.key == 'history') await TvApps.instance.setHistoryEnabled(next == true);
+      if (o.key == 'catalogAuto') Catalog.instance.maybeUpdate(); // e.g. Off → Daily: update if it's due
     },
     keepOpen: true,
     value: label,

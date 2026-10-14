@@ -652,4 +652,19 @@ class Prefs extends ChangeNotifier {
     await _sp.setStringList(key, v);
     notifyListeners();
   }
+
+  // ---- TV: shows & films catalog (lib/tv/catalog.dart) ----------------------------
+
+  /// TV search: the Stremio addon manifest links the catalog is built from, in order (null = not
+  /// set up yet: the build's list is used). Links can hold personal tokens — they stay on the TV.
+  List<String>? get catalogSources => _sp.getStringList('catalogSources');
+  Future<void> setCatalogSources(List<String> urls) => _setList('catalogSources', urls);
+
+  /// Sources switched off (kept in the list, not read).
+  List<String> get catalogSourcesOff => _sp.getStringList('catalogSourcesOff') ?? const [];
+  Future<void> setCatalogSourcesOff(List<String> urls) => _setList('catalogSourcesOff', urls);
+
+  /// Every source a build has brought, so one the user removed doesn't come back with the next build.
+  List<String> get catalogSourcesSeen => _sp.getStringList('catalogSourcesSeen') ?? const [];
+  Future<void> setCatalogSourcesSeen(List<String> urls) => _sp.setStringList('catalogSourcesSeen', urls);
 }

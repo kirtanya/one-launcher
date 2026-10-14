@@ -118,14 +118,15 @@ class TvApps {
   Future<void> openNotificationAccess() => _call('openNotificationAccess');
   Future<void> openProgram(String? intent, String package) => _call('openProgram', {'intent': intent, 'package': package});
 
-  /// Artwork from a program uri, downsized on the TV side; cached.
-  MemoryImage? imageNow(String uri) => _imagesReady[uri];
+  /// Artwork from a program uri, downsized on the TV side; cached per size (a small grid poster
+  /// never stands in for a big backdrop, and a big one never fills a small tile's memory).
+  MemoryImage? imageNow(String uri, {int width = 480}) => _imagesReady['$uri@$width'];
   Future<MemoryImage?> image(String uri, {int width = 480}) {
     if (demo) return Future.value(null);
     return _images.putIfAbsent('$uri@$width', () async {
       final bytes = await _ch.invokeMethod<Uint8List>('getImage', {'uri': uri, 'width': width});
       if (bytes == null) return null;
-      return _imagesReady[uri] = MemoryImage(bytes);
+      return _imagesReady['$uri@$width'] = MemoryImage(bytes);
     });
   }
 
@@ -177,6 +178,24 @@ class TvApps {
     final m = await _ch.invokeMapMethod<String, Object?>('httpGet', {'url': url, 'headers': headers});
     return ((m?['status'] as int?) ?? -1, (m?['body'] as String?) ?? '');
   }
+
+  /// Opens a show's link in an app: WatchHub's "watch on" links (intent://… or https://…) or
+  /// "Open in Nuvio" (stremio:///detail/…), in [package] when given; [fallback] (the web link)
+  /// when the first doesn't open. → whether something opened.
+  Future<bool> openLink(String uri, {String? package, String? fallback}) async {
+    if (demo) return false;
+    return await _ch.invokeMethod<bool>('openLink', {'uri': uri, 'package': package, 'fallback': fallback}) ?? false;
+  }
+
+  /// Installed apps that open [uri] (stremio:///detail/… → Nuvio, Stremio): (package, name).
+  Future<List<(String, String)>> linkHandlers(String uri) async {
+    if (demo) return uri.startsWith('stremio:') ? const [('com.nuvio.app', 'Nuvio')] : const [];
+    final raw = await _ch.invokeListMethod<Map>('linkHandlers', {'uri': uri}) ?? const [];
+    return [for (final m in raw) (m['package'] as String, m['label'] as String)];
+  }
+
+  /// The app's own storage folder (the shows & films catalog is saved there).
+  Future<String?> filesDir() async => demo ? null : await _ch.invokeMethod<String>('filesDir');
 
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});

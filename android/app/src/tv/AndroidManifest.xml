@@ -7,7 +7,7 @@
     <!-- Streaming apps' Watch Next / channels. Android grants other apps' rows only to the TV's
          system launcher; where a TV allows more, those rows appear. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
-    <!-- Shows & films search (TMDB) and artwork -->
+    <!-- Shows & films search (Stremio addon catalogs, WatchHub links) and artwork -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Brightness from the phone's remote (granted once: "Modify system settings") -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions"/>
@@ -66,6 +66,15 @@
         <intent>
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
+        </intent>
+        <!-- A show's page: "Open in Nuvio" (apps that open stremio:// / nuvio:// details) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="stremio"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="nuvio"/>
         </intent>
     </queries>
 </manifest>

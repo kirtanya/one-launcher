@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
-import 'tmdb.dart';
+import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
@@ -11,28 +12,35 @@ import 'tv_parts.dart';
 
 // ---- Streaming service → the app on this TV ---------------------------------------
 
-/// Known services → their Android TV apps (India first). Anything else is matched by name.
-const _servicePackages = <String, String>{
-  'netflix': 'com.netflix.ninja',
-  'amazonprimevideo': 'com.amazon.amazonvideo.livingroom',
-  'amazonvideo': 'com.amazon.amazonvideo.livingroom',
-  'primevideo': 'com.amazon.amazonvideo.livingroom',
-  'jiohotstar': 'in.startv.hotstar',
-  'hotstar': 'in.startv.hotstar',
-  'disneyplushotstar': 'in.startv.hotstar',
-  'jiocinema': 'in.startv.hotstar',
-  'zee5': 'com.graymatrix.did',
-  'sonyliv': 'com.sonyliv',
-  'youtube': 'com.google.android.youtube.tv',
-  'youtubepremium': 'com.google.android.youtube.tv',
-  'appletvplus': 'com.apple.atve.androidtv.appletv',
-  'appletv': 'com.apple.atve.androidtv.appletv',
-  'mxplayer': 'com.mxtech.videoplayer.television',
-  'sunnxt': 'com.suntv.sunnxt',
-  'aha': 'ahaflix.tv',
-  'lionsgateplay': 'com.lionsgateplay.videoapp',
-  'mubi': 'com.mubi',
-  'crunchyroll': 'com.crunchyroll.crunchyroid',
+/// Known services → their Android TV apps (India first; the first one installed wins).
+/// Anything else is matched by name.
+const _servicePackages = <String, List<String>>{
+  'netflix': ['com.netflix.ninja'],
+  'amazonprimevideo': ['com.amazon.amazonvideo.livingroom'],
+  'amazonvideo': ['com.amazon.amazonvideo.livingroom'],
+  'amazon': ['com.amazon.amazonvideo.livingroom'],
+  'primevideo': ['com.amazon.amazonvideo.livingroom'],
+  'jiohotstar': ['in.startv.hotstar'],
+  'hotstar': ['in.startv.hotstar'],
+  'disneyplushotstar': ['in.startv.hotstar'],
+  'disneyplus': ['in.startv.hotstar', 'com.disney.disneyplus'],
+  'disney': ['in.startv.hotstar', 'com.disney.disneyplus'],
+  'jiocinema': ['in.startv.hotstar'],
+  'hbomax': ['com.wbd.stream', 'com.hbo.hbonow'],
+  'max': ['com.wbd.stream'],
+  'zee5': ['com.graymatrix.did'],
+  'sonyliv': ['com.sonyliv'],
+  'youtube': ['com.google.android.youtube.tv'],
+  'googleplaymovies': ['com.google.android.videos'],
+  'googletv': ['com.google.android.videos'],
+  'appletvplus': ['com.apple.atve.androidtv.appletv'],
+  'appletv': ['com.apple.atve.androidtv.appletv'],
+  'mxplayer': ['com.mxtech.videoplayer.television'],
+  'sunnxt': ['com.suntv.sunnxt'],
+  'aha': ['ahaflix.tv'],
+  'lionsgateplay': ['com.lionsgateplay.videoapp'],
+  'mubi': ['com.mubi'],
+  'crunchyroll': ['com.crunchyroll.crunchyroid'],
 };
 
 String _norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
@@ -42,21 +50,22 @@ AppEntry? appForService(String service, List<AppEntry> apps) {
   final n = _norm(service.replaceAll(RegExp(r'(with ads|amazon channel|apple tv channel)', caseSensitive: false), ''));
   final byPkg = {for (final a in apps) a.package: a};
   for (final e in _servicePackages.entries) {
-    if (n.startsWith(e.key) && byPkg[e.value] != null) return byPkg[e.value];
+    if (!n.startsWith(e.key)) continue;
+    for (final p in e.value) {
+      if (byPkg[p] case final app?) return app;
+    }
   }
   final first = _norm(service.split(' ').first);
   if (first.length < 3) return null;
   return apps.where((a) => _norm(a.label).contains(first) || n.contains(_norm(a.label))).firstOrNull;
 }
 
-const _kindLabel = {'stream': 'Stream', 'free': 'Free', 'ads': 'Free with ads', 'rent': 'Rent', 'buy': 'Buy'};
-
 // ---- Poster tile ------------------------------------------------------------------
 
 /// A show / film as a 2:3 poster: rating badge, title + year underneath.
 class TvPoster extends StatelessWidget {
   const TvPoster({super.key, required this.title, required this.onSelect, this.focusNode});
-  final TmdbTitle title;
+  final ShowTitle title;
   final VoidCallback onSelect;
   final FocusNode? focusNode;
 
@@ -97,7 +106,7 @@ class TvPoster extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        TmdbImage(path: t.poster, size: 'w342', decodeWidth: 240, fallbackTitle: t.title),
+                        ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title),
                         if (t.rating != null) Positioned(top: DS.s8, right: DS.s8, child: _RatingBadge(t.rating!)),
                       ],
                     ),
@@ -111,7 +120,12 @@ class TvPoster extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              Text([if (t.year != null) t.year!, t.isTv ? 'Series' : 'Film'].join(' · '), style: TvDS.tileName.copyWith(fontSize: 12, color: TvDS.inkMuted)),
+              Text(
+                [if (t.year != null) t.year!, t.isTv ? 'Series' : 'Film'].join(' · '),
+                style: TvDS.tileName.copyWith(fontSize: 12, color: TvDS.inkMuted),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
         ),
@@ -139,14 +153,23 @@ class _RatingBadge extends StatelessWidget {
   );
 }
 
-/// A TMDB picture, decoded small (TVs have little memory); a tinted title card if missing.
-class TmdbImage extends StatelessWidget {
-  const TmdbImage({super.key, required this.path, this.size = 'w500', this.decodeWidth = 400, this.fallbackTitle, this.alignment = Alignment.center});
-  final String? path;
-  final String size;
+/// A poster / backdrop: the first of [urls] that loads (fetched through Android, decoded small —
+/// TVs have little memory); a tinted title card while loading or when none does.
+class ShowImage extends StatelessWidget {
+  const ShowImage({super.key, required this.urls, this.decodeWidth = 400, this.fallbackTitle, this.alignment = Alignment.center});
+  final List<String> urls;
   final int decodeWidth;
   final String? fallbackTitle;
   final Alignment alignment;
+
+  /// The first picture that loads (each is cached, so a failed one isn't asked again).
+  static Future<MemoryImage?> _first(List<String> urls, int width) async {
+    for (final u in urls) {
+      final m = await TvApps.instance.image(u, width: width).catchError((Object _) => null);
+      if (m != null) return m;
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -164,18 +187,20 @@ class TmdbImage extends StatelessWidget {
               ),
             ),
     );
-    if (path == null || TvApps.demo) return fallback;
-    // Through Android's network (TvApps.image → TvActivity), downsized on the TV side.
-    final url = Tmdb.image(path!, size: size);
-    final ready = TvApps.instance.imageNow(url);
-    if (ready != null) return Image(image: ready, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true);
+    if (urls.isEmpty || TvApps.demo) return fallback;
+    // The best picture already here at this size: shown at once. A lesser one that's here (e.g. the
+    // poster while the backdrop loads) holds the place until the best one arrives.
+    final best = TvApps.instance.imageNow(urls.first, width: decodeWidth);
+    if (best != null) return Image(image: best, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true);
+    final meanwhile = urls.skip(1).map((u) => TvApps.instance.imageNow(u, width: decodeWidth)).nonNulls.firstOrNull;
     return FutureBuilder<MemoryImage?>(
-      future: TvApps.instance.image(url, width: decodeWidth),
+      future: _first(urls, decodeWidth),
+      initialData: meanwhile,
       builder: (context, s) => AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
         child: s.data == null
             ? KeyedSubtree(key: const ValueKey(0), child: fallback)
-            : Image(key: const ValueKey(1), image: s.data!, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true),
+            : Image(key: ValueKey(s.data), image: s.data!, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true),
       ),
     );
   }
@@ -183,11 +208,12 @@ class TmdbImage extends StatelessWidget {
 
 // ---- Details page ---------------------------------------------------------------
 
-/// A show or film, cinematic: backdrop, title, ratings, where to watch (open it on this TV),
-/// trailer, cast.
+/// A show or film, cinematic: backdrop, title, IMDb rating, where to watch (open it in its app on
+/// this TV), Open in Nuvio, trailer, cast. Details from the catalog sources (Cinemeta first);
+/// where to watch from WatchHub.
 class TvTitlePage extends StatefulWidget {
   const TvTitlePage({super.key, required this.title, required this.apps, required this.searchTargets, required this.onOpenApp});
-  final TmdbTitle title;
+  final ShowTitle title;
   final List<AppEntry> apps;
   final List<String> searchTargets; // apps that accept a search → we can jump to the title
   final void Function(AppEntry app) onOpenApp; // records "Jump back in" too
@@ -196,21 +222,83 @@ class TvTitlePage extends StatefulWidget {
   State<TvTitlePage> createState() => _TvTitlePageState();
 }
 
-class _TvTitlePageState extends State<TvTitlePage> {
-  late final Future<TmdbDetails> _details = Tmdb.instance.details(widget.title);
+/// One "watch" button: the app, and WatchHub's link when there is one (else the app's own search).
+typedef _Watch = ({AppEntry app, ShowLink? link});
 
-  /// Watch on an app: straight to the title when the app takes searches, else just open it.
-  void _watch(AppEntry app) {
-    if (widget.searchTargets.contains(app.package)) {
-      TvApps.instance.searchIn(app.package, widget.title.title);
-    } else {
-      widget.onOpenApp(app);
-    }
+class _TvTitlePageState extends State<TvTitlePage> {
+  ShowDetails? _details;
+  Object? _detailsError;
+  List<ShowLink> _links = const [];
+  Object? _linksError;
+  bool _linksDone = false;
+  List<(String, String)> _openers = const []; // apps that open stremio:///detail/… (Nuvio)
+  // Focus starts on "Search everywhere" (always there); when the Watch on … buttons arrive and the
+  // remote hasn't been touched yet, it moves to the first of them.
+  final _everywhere = FocusNode(debugLabel: 'everywhere'), _firstWatch = FocusNode(debugLabel: 'watch');
+  bool _moved = false; // a key was pressed on this page
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.title;
+    Catalog.instance
+        .details(t)
+        .then(
+          (d) => _update(() => _details = d),
+          onError: (Object e) {
+            debugPrint('Title details: ${e is CatalogException ? e : e.runtimeType}'); // addon names only, never links
+            _update(() => _detailsError = e);
+          },
+        );
+    // "Search everywhere" is there at once; the Watch on … buttons join ahead of it when WatchHub
+    // answers (that can take a while on a slow network — the page stays usable meanwhile).
+    Catalog.instance
+        .whereToWatch(t)
+        .then<void>(
+          (l) {
+            _links = l;
+          },
+          onError: (Object e) {
+            _linksError = e;
+          },
+        )
+        .whenComplete(() {
+          _update(() => _linksDone = true);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && !_moved && _everywhere.hasPrimaryFocus && _firstWatch.context != null) _firstWatch.requestFocus();
+          });
+        });
+    TvApps.instance.linkHandlers(Catalog.detailLink(t)).then<void>((o) => _update(() => _openers = o), onError: (Object _) {});
   }
 
   @override
+  void dispose() {
+    _everywhere.dispose();
+    _firstWatch.dispose();
+    super.dispose();
+  }
+
+  void _update(VoidCallback f) {
+    if (mounted) setState(f);
+  }
+
+  /// Watch on an app: WatchHub's deep link into the title; if that doesn't open, the app's own
+  /// search for it, else just the app.
+  Future<void> _watch(_Watch w) async {
+    final l = w.link;
+    if (l != null && await TvApps.instance.openLink(l.tvUrl ?? l.webUrl!, package: w.app.package, fallback: l.webUrl)) return;
+    if (widget.searchTargets.contains(w.app.package)) {
+      TvApps.instance.searchIn(w.app.package, widget.title.title);
+    } else {
+      widget.onOpenApp(w.app);
+    }
+  }
+
+  AppEntry? _installed(String package) => widget.apps.where((a) => a.package == package).firstOrNull;
+
+  @override
   Widget build(BuildContext context) {
-    final t = widget.title;
+    final t = _details?.title ?? widget.title;
     return Scaffold(
       backgroundColor: TvDS.canvas,
       body: LayoutBuilder(
@@ -227,15 +315,19 @@ class _TvTitlePageState extends State<TvTitlePage> {
                 duration: const Duration(milliseconds: 2200),
                 curve: Curves.easeOutCubic,
                 builder: (context, s, child) => Transform.scale(scale: s, alignment: Alignment.topRight, child: child),
-                child: TmdbImage(path: t.backdrop ?? t.poster, size: 'w1280', decodeWidth: 1280, alignment: Alignment.topCenter),
+                child: ShowImage(urls: [...t.backdrops, ...t.posters], decodeWidth: 1280, alignment: Alignment.topCenter),
               ),
             ),
             const TvScrims(),
-            FutureBuilder<TmdbDetails>(
-              future: _details,
-              builder: (context, s) => SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(TvDS.safe.left, 64, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
-                child: FocusTraversalGroup(child: _body(s.data, s.error, s.connectionState == ConnectionState.done)),
+            SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(TvDS.safe.left, 64, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
+              child: Focus(
+                skipTraversal: true,
+                onKeyEvent: (_, e) {
+                  if (e is KeyDownEvent) _moved = true;
+                  return KeyEventResult.ignored;
+                },
+                child: FocusTraversalGroup(child: _body(t)),
               ),
             ),
           ],
@@ -244,31 +336,40 @@ class _TvTitlePageState extends State<TvTitlePage> {
     );
   }
 
-  Widget _body(TmdbDetails? d, Object? error, bool done) {
-    final t = d?.title ?? widget.title;
+  Widget _body(ShowTitle t) {
+    final d = _details;
     final meta = [
       if (t.year != null) t.year!,
-      if (d?.genres.isNotEmpty ?? false) d!.genres.take(3).join(', '),
+      if ((d?.genres ?? t.genres).isNotEmpty) (d?.genres ?? t.genres).take(3).join(', '),
       if (d?.runtime != null && d!.runtime! > 0) '${d.runtime! ~/ 60 > 0 ? '${d.runtime! ~/ 60} h ' : ''}${d.runtime! % 60} min',
       if (d?.seasons != null) '${d!.seasons} ${d.seasons == 1 ? 'season' : 'seasons'}',
     ];
-    // Where to watch: services with an app here first (they're buttons), the rest listed.
-    final here = <(TmdbProvider, AppEntry)>[];
-    final elsewhere = <TmdbProvider>[];
-    for (final p in d?.providers ?? const <TmdbProvider>[]) {
-      final app = appForService(p.name, widget.apps);
-      if (app != null && !here.any((h) => h.$2.package == app.package)) {
-        here.add((p, app));
-      } else if (app == null) {
-        elsewhere.add(p);
+
+    // Where to watch: WatchHub's services with an app here (buttons), the rest listed underneath.
+    final watch = <_Watch>[];
+    final elsewhere = <ShowLink>[];
+    bool shown(String package) => watch.any((w) => w.app.package == package);
+    for (final l in _links) {
+      final app = (l.package == null ? null : _installed(l.package!)) ?? appForService(l.service, widget.apps);
+      if (app == null) {
+        elsewhere.add(l);
+      } else if (!shown(app.package)) {
+        watch.add((app: app, link: l));
       }
     }
-
-    var autofocused = false;
-    bool first() {
-      if (autofocused) return false;
-      return autofocused = true;
+    // Services whose catalogs list it (e.g. Netflix's), when WatchHub didn't link them: the app's search.
+    final searchable = <AppEntry>[
+      for (final s in t.services) ?appForService(s, widget.apps),
+      for (final p in widget.searchTargets)
+        if (p != 'com.android.vending') ?_installed(p),
+    ];
+    final searchIn = <AppEntry>[];
+    for (final a in searchable) {
+      if (!shown(a.package) && !searchIn.any((x) => x.package == a.package)) searchIn.add(a);
     }
+
+    final hub = Catalog.instance.watchSourceName;
+    final dataFrom = {?d?.source, if (_linksDone && hub != null) hub};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,22 +382,28 @@ class _TvTitlePageState extends State<TvTitlePage> {
               Text(t.isTv ? 'SERIES' : 'FILM', style: TvDS.heroEyebrow),
               const SizedBox(height: DS.s8),
               Text(t.title, style: TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-              if (d?.tagline != null) ...[const SizedBox(height: DS.s8), Text(d!.tagline!, style: TvDS.heroBody.copyWith(fontStyle: FontStyle.italic))],
               const SizedBox(height: DS.s12),
               Wrap(
                 spacing: DS.s12,
                 runSpacing: DS.s8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  if (t.rating != null) _Chip(icon: Icons.star_rounded, iconColor: const Color(0xFFF5C518), label: '${t.rating!.toStringAsFixed(1)} TMDB'),
-                  if (d?.votes != null && d!.votes! > 0) Text('${_compact(d.votes!)} ratings', style: TvDS.heroMeta.copyWith(fontSize: 13)),
-                  if (d?.certification != null) _Chip(label: d!.certification!),
+                  if (t.rating != null) _Chip(icon: Icons.star_rounded, iconColor: const Color(0xFFF5C518), label: '${t.rating!.toStringAsFixed(1)} IMDb'),
+                  if (d?.status != null) _Chip(label: d!.status!),
                   if (meta.isNotEmpty) Text(meta.join(' · '), style: TvDS.heroMeta),
                 ],
               ),
               if (t.overview != null) ...[
                 const SizedBox(height: DS.s16),
                 Text(t.overview!, style: TvDS.heroBody, maxLines: 4, overflow: TextOverflow.ellipsis),
+              ] else if (_detailsError != null) ...[
+                const SizedBox(height: DS.s16),
+                Text(
+                  _detailsError is CatalogException && (_detailsError as CatalogException).status == -1
+                      ? 'Couldn’t load the details. Check the TV’s internet.'
+                      : 'No details for this one yet.',
+                  style: TvDS.heroBody,
+                ),
               ],
             ],
           ),
@@ -306,49 +413,65 @@ class _TvTitlePageState extends State<TvTitlePage> {
         // ---- Where to watch ----
         const Text('Where to watch', style: TvDS.rowTitleFocused),
         const SizedBox(height: DS.s12),
-        if (!done)
-          const Text('Finding where it’s streaming…', style: TvDS.heroBody)
-        else if (error != null)
-          Text(error is TmdbException ? '$error.' : 'Couldn’t reach TMDB. Check the TV’s internet.', style: TvDS.heroBody)
-        else
-          Wrap(
-            spacing: DS.s12,
-            runSpacing: DS.s12,
-            children: [
-              for (final (p, app) in here)
-                TvActionPill(
-                  autofocus: first(),
-                  leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: app, width: 40)),
-                  label: 'Watch on ${app.label}',
-                  detail: _kindLabel[p.kind],
-                  onSelect: () => _watch(app),
-                ),
-              if (d?.trailer != null)
-                TvActionPill(
-                  autofocus: first(),
-                  icon: Icons.play_circle_outline_rounded,
-                  label: 'Trailer',
-                  onSelect: () => TvApps.instance.openUri('https://www.youtube.com/watch?v=${d!.trailer}', package: 'com.google.android.youtube.tv'),
-                ),
+        Wrap(
+          spacing: DS.s12,
+          runSpacing: DS.s12,
+          children: [
+            // Keyed: buttons that arrive later never take over the focused one's place.
+            for (final (i, w) in watch.indexed)
               TvActionPill(
-                autofocus: first(),
-                icon: Icons.travel_explore_rounded,
-                label: 'Search everywhere',
-                onSelect: () => TvApps.instance.searchEverywhere(t.title),
+                key: ValueKey('watch:${w.app.package}'),
+                focusNode: i == 0 ? _firstWatch : null,
+                leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: w.app, width: 40)),
+                label: 'Watch on ${w.app.label}',
+                detail: w.link?.kind,
+                onSelect: () => _watch(w),
               ),
-            ],
-          ),
-        if (done && error == null) ...[
-          const SizedBox(height: DS.s12),
-          Text(
-            here.isEmpty && elsewhere.isEmpty
-                ? 'Not streaming in your country right now.'
-                : elsewhere.isEmpty
-                ? ''
-                : 'Also on ${elsewhere.take(5).map((p) => '${p.name} (${_kindLabel[p.kind]!.toLowerCase()})').join(', ')}',
-            style: TvDS.heroBody.copyWith(fontSize: 13),
-          ),
-        ],
+            for (final (pkg, name) in _openers)
+              TvActionPill(
+                key: ValueKey('nuvio:$pkg'),
+                leading: _installed(pkg) == null ? null : SizedBox(width: 40, height: 22.5, child: TvAppArt(app: _installed(pkg)!, width: 40)),
+                icon: Icons.open_in_new_rounded,
+                label: 'Open in $name',
+                onSelect: () => TvApps.instance.openLink(Catalog.detailLink(t), package: pkg),
+              ),
+            if (d?.trailer != null)
+              TvActionPill(
+                key: const ValueKey('trailer'),
+                icon: Icons.play_circle_outline_rounded,
+                label: 'Trailer',
+                onSelect: () => TvApps.instance.openUri('https://www.youtube.com/watch?v=${d!.trailer}', package: 'com.google.android.youtube.tv'),
+              ),
+            TvActionPill(
+              key: const ValueKey('everywhere'),
+              focusNode: _everywhere,
+              autofocus: true,
+              icon: Icons.travel_explore_rounded,
+              label: 'Search everywhere',
+              onSelect: () => TvApps.instance.searchEverywhere(t.title),
+            ),
+            for (final a in searchIn.take(3))
+              TvActionPill(
+                key: ValueKey('search:${a.package}'),
+                leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
+                label: widget.searchTargets.contains(a.package) ? 'Search in ${a.label}' : 'Open ${a.label}',
+                onSelect: () => _watch((app: a, link: null)),
+              ),
+          ],
+        ),
+        const SizedBox(height: DS.s12),
+        Text(
+          !_linksDone
+              ? 'Finding where it’s streaming…'
+              : _linksError != null
+              ? 'Couldn’t reach ${hub ?? 'WatchHub'}. Check the TV’s internet.'
+              : _links.isEmpty
+              ? (hub == null ? 'Turn on WatchHub (Customise → Search → Sources) to see where it’s streaming.' : 'No streaming links for this one yet.')
+              : elsewhere.isEmpty
+              ? ''
+              : 'Also on ${elsewhere.take(5).map((l) => l.kind == null ? l.service : '${l.service} (${l.kind!.toLowerCase()})').join(', ')}',
+          style: TvDS.heroBody.copyWith(fontSize: 13),
+        ),
 
         // ---- Cast ----
         if (d?.cast.isNotEmpty ?? false) ...[
@@ -369,16 +492,16 @@ class _TvTitlePageState extends State<TvTitlePage> {
             ),
           ),
         ],
-        const SizedBox(height: DS.s12),
-        const Text(
-          'Data: TMDB · where to watch by JustWatch',
-          style: TextStyle(fontFamily: DS.font, fontSize: 11, color: TvDS.inkMuted),
-        ),
+        if (dataFrom.isNotEmpty) ...[
+          const SizedBox(height: DS.s12),
+          Text(
+            'Data: ${dataFrom.join(' · ')}',
+            style: const TextStyle(fontFamily: DS.font, fontSize: 11, color: TvDS.inkMuted),
+          ),
+        ],
       ],
     );
   }
-
-  static String _compact(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(n >= 10000 ? 0 : 1)}K' : '$n';
 }
 
 class _Chip extends StatelessWidget {
@@ -404,10 +527,18 @@ class _Chip extends StatelessWidget {
   );
 }
 
-/// Round photo, name, role. Focusable so the remote can scroll through the cast.
+/// Initials disc, name, role. Focusable so the remote can scroll through the cast.
 class _CastCard extends StatelessWidget {
   const _CastCard({required this.person});
-  final TmdbPerson person;
+  final ShowPerson person;
+
+  /// "Mira Rao" → "MR".
+  static String _initials(String name) {
+    final parts = name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    final a = parts.first.characters.first;
+    return parts.length == 1 ? a.toUpperCase() : '$a${parts.last.characters.first}'.toUpperCase();
+  }
 
   @override
   Widget build(BuildContext context) => TvFocusable(
@@ -424,16 +555,11 @@ class _CastCard extends StatelessWidget {
               height: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
                 border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
               ),
-              child: ClipOval(
-                child: person.photo == null
-                    ? ColoredBox(
-                        color: TvDS.surface,
-                        child: Center(child: Text(person.name.isEmpty ? '?' : person.name[0], style: TvDS.panelTitle)),
-                      )
-                    : TmdbImage(path: person.photo, size: 'w185', decodeWidth: 160),
-              ),
+              alignment: Alignment.center,
+              child: Text(_initials(person.name), style: TvDS.panelTitle.copyWith(color: f ? TvDS.onLight : TvDS.ink)),
             ),
           ),
           const SizedBox(height: DS.s8),
@@ -444,9 +570,9 @@ class _CastCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
           ),
-          if (person.character != null && person.character!.isNotEmpty)
+          if (person.role != null)
             Text(
-              person.character!,
+              person.role!,
               style: TvDS.tileName.copyWith(fontSize: 11, color: TvDS.inkMuted, fontWeight: FontWeight.w400),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
