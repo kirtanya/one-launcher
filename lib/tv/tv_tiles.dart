@@ -405,12 +405,21 @@ class TvTilesStartState extends State<TvTilesStart> {
                     ),
                   ),
                 // "start", Metro style: big, light, lowercase — and the top bar's buttons.
+                // "start" and the top bar's tile buttons on one line, centred on each other.
                 Positioned(
                   left: TvDS.safe.left,
+                  right: TvDS.safe.right,
                   top: TvDS.safe.top - 6,
-                  child: Text('start', style: TvDS.heroTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, letterSpacing: -1)),
+                  height: 60,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text('start', style: TvDS.heroTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, letterSpacing: -1, height: 1)),
+                      const Spacer(),
+                      widget.header,
+                    ],
+                  ),
                 ),
-                Positioned(top: TvDS.safe.top, left: TvDS.safe.left + 150, right: TvDS.safe.right, child: widget.header),
                 Positioned(
                   top: top,
                   left: 0,
@@ -807,6 +816,67 @@ class _ResumeFaceState extends State<_ResumeFace> {
         ),
       ),
       child: KeyedSubtree(key: ValueKey(_back), child: _back ? details : art),
+    );
+  }
+}
+
+/// A top-bar button drawn as a tile (Tiles view): the tile colour / glass, the tile corners and
+/// the tiles' white focus frame. Search carries its word; the others are square icons.
+class TvTileButton extends StatelessWidget {
+  const TvTileButton({super.key, required this.prefs, required this.icon, required this.focusNode, required this.onSelect, this.label, this.onMove});
+  final Prefs prefs;
+  final IconData icon;
+  final String? label;
+  final FocusNode focusNode;
+  final VoidCallback onSelect;
+  final bool Function(AxisDirection)? onMove;
+
+  static const size = 44.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onMove: onMove,
+        builder: (context, f) => AnimatedScale(
+          scale: f ? 1.08 : 1,
+          duration: TvLook.anim(Motion.popDuration),
+          curve: Motion.pop,
+          child: Container(
+            height: size,
+            constraints: const BoxConstraints(minWidth: size),
+            foregroundDecoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(prefs.tileRadius),
+              border: Border.all(color: f ? Colors.white : Colors.transparent, width: 2),
+            ),
+            child: ExcludeFocus(
+              child: TileSurface(
+                colour: tileAccent().withValues(alpha: prefs.tileOpacity),
+                prefs: prefs,
+                onTap: onSelect,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 14),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: label == null ? size : null,
+                        child: Icon(icon, color: Colors.white, size: 22),
+                      ),
+                      if (label != null) ...[const SizedBox(width: 8), Text(label!, style: TvDS.tileName.copyWith(fontSize: 15, color: Colors.white))],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

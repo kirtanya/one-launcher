@@ -372,13 +372,21 @@ class _TvHomeState extends State<TvHome> {
     );
   }
 
+  /// The top bar in the Tiles view: tile-shaped buttons (search · voice · customise).
   Widget _tilesHeader() => Row(
-    mainAxisAlignment: MainAxisAlignment.end,
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       for (final (i, id) in _header.indexed) ...[
         if (i > 0) const SizedBox(width: DS.s8),
-        _TopButton(
-          id: id,
+        TvTileButton(
+          prefs: prefs,
+          icon: switch (id) {
+            'search' => Icons.search_rounded,
+            'voice' => Icons.mic_none_rounded,
+            _ => Icons.tune_rounded,
+          },
+          label: id == 'search' ? 'search' : null,
           focusNode: _node(-1, i),
           onSelect: () => _headerAction(id),
           // ↓ into the tiles; ← → along the buttons.
