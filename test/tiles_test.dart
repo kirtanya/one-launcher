@@ -518,6 +518,32 @@ void main() {
     expect(tester.widget<BackdropFilter>(face).enabled, isTrue, reason: 'blur back');
   });
 
+  testWidgets('today page: swipe right from Start; glance, notes (add / tick / delete), sections', (tester) async {
+    final prefs = await _setUp(tester, {'homeView': 'tiles'});
+    expect(find.text('today'), findsNothing, reason: 'Start is home');
+    await tester.fling(find.byType(PageView), const Offset(500, 0), 1500); // swipe right
+    await tester.pumpAndSettle();
+    expect(find.text('today'), findsOneWidget);
+    for (final h in ['now playing', 'notifications', 'notes']) {
+      expect(find.text(h), findsOneWidget, reason: h);
+    }
+    await tester.enterText(find.byType(TextField), 'buy milk');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(prefs.todayNotes.single['t'], 'buy milk');
+    await tester.tap(find.text('buy milk'));
+    await tester.pumpAndSettle();
+    expect(prefs.todayNotes.single['done'], isTrue, reason: 'ticked off');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/42_tiles_today.png'));
+    await tester.longPress(find.text('buy milk'));
+    await tester.pumpAndSettle();
+    expect(prefs.todayNotes, isEmpty, reason: 'deleted');
+    // Back from today → Start.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('today'), findsNothing);
+  });
+
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));

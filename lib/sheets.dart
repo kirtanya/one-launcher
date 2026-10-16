@@ -889,7 +889,8 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
 );
 
 /// Every app widget on the phone, grouped by app. Tap one to add it as a top page.
-Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) async {
+/// [onAdded]: where the new widget goes (the Tiles today page); default: a new top page.
+Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs, void Function(int id, String label)? onAdded}) async {
   final providers = Apps.instance.widgetProviders(); // load once, not on every keystroke
   var query = '';
   await showOneSheetWith(
@@ -968,7 +969,8 @@ Future<void> showWidgetPicker(BuildContext context, {required Prefs prefs}) asyn
                                       final id = await Apps.instance.addWidget(p);
                                       if (id == null) return; // cancelled
                                       HapticFeedback.mediumImpact();
-                                      await prefs.addWidgetPage(id, p.label == p.app ? p.label : '${p.app} · ${p.label}');
+                                      final label = p.label == p.app ? p.label : '${p.app} · ${p.label}';
+                                      onAdded != null ? onAdded(id, label) : await prefs.addWidgetPage(id, label);
                                       if (ctx.mounted) Navigator.pop(ctx);
                                     },
                                   ),

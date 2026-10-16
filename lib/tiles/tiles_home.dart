@@ -25,6 +25,7 @@ import '../ui/perf.dart';
 import '../ui/theme.dart';
 import '../widgets.dart';
 import 'landing.dart';
+import 'today_panel.dart';
 
 /// The "Tiles" home view (Settings → Look → Home view): a Start screen of live tiles, and — one
 /// swipe to the left — every app A–Z. The layout and navigation follow the Lumia launcher; the
@@ -157,7 +158,8 @@ class _Signal extends ChangeNotifier {
 
 class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   Prefs get prefs => widget.prefs;
-  final _pages = PageController();
+  // Pages: today (0) ← Start (1, home) → all apps (2).
+  final _pages = PageController(initialPage: 1);
   final _start = ScrollController();
   List<AppEntry> _apps = const [];
   bool _editing = false;
@@ -198,7 +200,10 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   }
 
   /// Plays the landing animation of whichever page shows.
-  void _land() => ((_pages.hasClients && (_pages.page ?? 0) > .5) ? listLanding : startLanding).play();
+  void _land() {
+    final page = _pages.hasClients ? (_pages.page ?? 1) : 1.0;
+    (page > 1.5 ? listLanding : (page < .5 ? todayLanding : startLanding)).play();
+  }
 
   @override
   void dispose() {
@@ -430,7 +435,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
       _editing = false;
       _selected = null;
     });
-    if (_pages.hasClients) _pages.animateToPage(0, duration: Motion.snapDuration, curve: Motion.settle);
+    if (_pages.hasClients) _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle);
     if (_start.hasClients) _start.animateTo(0, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
@@ -482,7 +487,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
       _editing = false;
       _selected = null;
     });
-    if (_pages.hasClients) _pages.animateToPage(0, duration: Motion.snapDuration, curve: Motion.settle);
+    if (_pages.hasClients) _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle);
     if (_start.hasClients) _start.animateTo(0, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
@@ -528,7 +533,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
             _selected = null;
           });
         }
-        if (_pages.hasClients && (_pages.page ?? 0) > .5) _pages.animateToPage(0, duration: Motion.snapDuration, curve: Motion.settle);
+        if (_pages.hasClients && ((_pages.page ?? 1) - 1).abs() > .5) _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle);
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -597,9 +602,11 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                     controller: _pages,
                     onPageChanged: (i) {
                       _closeSearch(); // going between Start and all apps ends a search
-                      (i == 0 ? startLanding : listLanding).play();
+                      [todayLanding, startLanding, listLanding][i].play();
                     },
                     children: [
+                      // Swipe right from Start: what's happening today.
+                      TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch),
                       NotificationListener<ScrollNotification>(
                         onNotification: _onStartScroll,
                         child: _StartPage(
@@ -634,7 +641,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                           onResize: _resize,
                           onRecolour: _recolour,
                           onMove: _move,
-                          onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
+                          onAllApps: () => _pages.animateToPage(2, duration: Motion.snapDuration, curve: Motion.settle),
                           onSettings: _settings,
                           onDoubleTap: _lock,
                         ),

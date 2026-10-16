@@ -269,7 +269,7 @@ class Prefs extends ChangeNotifier {
 
   /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
   /// the phone they were added on, so they can't be restored elsewhere.
-  static const _phoneOnly = {'widgetLabels', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
+  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
 
   String exportBackup() {
     final out = <String, Object>{};
@@ -605,6 +605,21 @@ class Prefs extends ChangeNotifier {
     final set = tileFx;
     on ? set.add(name) : set.remove(name);
     await _sp.setStringList('tileFx', set.toList());
+    notifyListeners();
+  }
+
+  /// The Tiles "today" page: notes ({t, done}) and the app widgets placed there ({id, label}).
+  List<Map<String, Object?>> get todayNotes => [for (final m in jsonDecode(_sp.getString('todayNotes') ?? '[]') as List) Map<String, Object?>.from(m as Map)];
+  Future<void> setTodayNotes(List<Map<String, Object>> notes) async {
+    await _sp.setString('todayNotes', jsonEncode(notes));
+    notifyListeners();
+  }
+
+  List<Map<String, Object?>> get panelWidgets => [
+    for (final m in jsonDecode(_sp.getString('panelWidgets') ?? '[]') as List) Map<String, Object?>.from(m as Map),
+  ];
+  Future<void> setPanelWidgets(List<Map<String, Object>> list) async {
+    await _sp.setString('panelWidgets', jsonEncode(list));
     notifyListeners();
   }
 

@@ -28,7 +28,7 @@ class Landing extends ChangeNotifier {
   }
 }
 
-final startLanding = Landing(), listLanding = Landing();
+final startLanding = Landing(), listLanding = Landing(), todayLanding = Landing();
 
 /// Entrance styles the user picks from (Settings → Home view).
 const landingStyles = [('turnstile', 'Turnstile'), ('cascade', 'Cascade'), ('zoom', 'Zoom'), ('slide', 'Slide'), ('none', 'None')];
