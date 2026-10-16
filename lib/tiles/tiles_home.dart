@@ -165,7 +165,11 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   final _searchText = TextEditingController();
 
   /// Search: 0 = closed … 1 = the bar is down from the top (results show once you type).
-  late final _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 460));
+  late final AnimationController _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))
+    ..addListener(() {
+      final off = _search.value > 0;
+      if (Glass.suspended.value != off) Glass.suspended.value = off;
+    });
   bool get _searching => _search.status == AnimationStatus.forward || _search.status == AnimationStatus.completed;
   double _pull = 0; // pull-down on Start past the top, in px
   String? _selected; // the tile showing its edit controls
@@ -560,8 +564,8 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                   return IgnorePointer(
                     ignoring: t > 0,
                     child: Opacity(
-                      // Gone by about two thirds of the way: it fades as it goes, never travels far.
-                      opacity: (1 - t * 1.5).clamp(0.0, 1.0),
+                      // Fades across the whole motion (smooth, like the app list), never travels far.
+                      opacity: (1 - Curves.easeIn.transform(_search.value)).clamp(0.0, 1.0),
                       child: Transform.translate(
                         // At most a quarter of the screen down…
                         offset: Offset(0, MediaQuery.sizeOf(context).height * .25 * t),
@@ -1496,13 +1500,20 @@ class TileSurface extends StatelessWidget {
     );
     final blur = prefs.glassBlur;
     if (blur <= 0 || Perf.lite.value) return face;
-    // Grouped: all tiles share one backdrop pass (see BackdropGroup in TilesHome).
-    return ClipRRect(
-      borderRadius: radius,
-      child: BackdropFilter.grouped(
-        filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: face,
-      ),
+    // Grouped: all tiles share one backdrop pass (see BackdropGroup in TilesHome). Dropped
+    // while the page fades out for search (blurs don't fade).
+    return ValueListenableBuilder<bool>(
+      valueListenable: Glass.suspended,
+      child: face,
+      builder: (context, off, face) => off
+          ? face!
+          : ClipRRect(
+              borderRadius: radius,
+              child: BackdropFilter.grouped(
+                filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                child: face,
+              ),
+            ),
     );
   }
 }

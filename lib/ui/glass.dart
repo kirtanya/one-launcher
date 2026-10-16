@@ -9,6 +9,10 @@ import 'perf.dart';
 /// [classic] is the Classic home's switch; the Frost / Tint / Edge / Sheen values are shared
 /// with glass tiles. Kept in sync with prefs by the app (see main.dart).
 abstract final class Glass {
+  /// Live blurs ignore fades: while a page fades out (Tiles search), its glass drops the
+  /// blur and keeps only the tint, so it fades smoothly with everything else.
+  static final suspended = ValueNotifier<bool>(false);
+
   static bool classic = false;
   static bool tiles = false; // glass tiles: Metro sheets and search frost too
   static double blur = 18, tint = .25;
