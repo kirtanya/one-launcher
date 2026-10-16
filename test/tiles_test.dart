@@ -275,6 +275,12 @@ void main() {
     await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
+    // The close button above the keyboard closes it.
+    await tester.tap(ci('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing, reason: 'close button');
+    await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsNothing, reason: 'Back closes search');

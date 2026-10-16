@@ -2110,6 +2110,28 @@ class _TileSearchState extends State<_TileSearch> {
             // No dark cover: the page behind has stepped back; tap the empty space to close.
             GestureDetector(behavior: HitTestBehavior.opaque, onTap: widget.onClose),
             // The pill comes down from above the screen.
+            // Close, right above the keyboard: a plain button in the search field's own
+            // translucency (and glass when the tiles are), no icon.
+            Positioned(
+              left: DS.gutter,
+              right: DS.gutter,
+              bottom: math.max(keyboard, pad.bottom) + DS.s8,
+              height: 48,
+              child: Opacity(
+                opacity: Curves.easeOut.transform(((widget.anim.value - .45) / .55).clamp(0.0, 1.0)),
+                child: _MetroField(
+                  child: InkWell(
+                    onTap: widget.onClose,
+                    child: Center(
+                      child: Text(
+                        DS.cased('Close'),
+                        style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 17, fontWeight: FontWeight.w400),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // The bar drops in from above the screen first…
             Positioned(
               left: DS.gutter,
@@ -2121,7 +2143,7 @@ class _TileSearchState extends State<_TileSearch> {
               left: DS.gutter,
               right: DS.gutter,
               top: pad.top + DS.s12 + 52 + DS.s12,
-              bottom: math.max(keyboard, pad.bottom) + DS.s8,
+              bottom: math.max(keyboard, pad.bottom) + DS.s8 + 48 + DS.s8, // above the close button
               // …then the results rise in behind it.
               child: Opacity(
                 opacity: Curves.easeOut.transform(((widget.anim.value - .45) / .55).clamp(0.0, 1.0)),
