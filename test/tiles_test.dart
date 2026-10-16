@@ -7,6 +7,7 @@ import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/quick_chips.dart';
 import 'package:one_launcher/tiles/tiles_home.dart';
+import 'package:one_launcher/tiles/today_panel.dart';
 import 'package:one_launcher/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -518,26 +519,76 @@ void main() {
     expect(tester.widget<BackdropFilter>(face).enabled, isTrue, reason: 'blur back');
   });
 
-  testWidgets('today page: swipe right from Start; glance, notes (add / tick / delete), sections', (tester) async {
+  testWidgets('today page: our widgets as tiles or a list; edit → add, resize, remove; notes; search from here', (tester) async {
+    Apps.instance.notifCounts.value = const {}; // earlier tests leave counts behind
     final prefs = await _setUp(tester, {'homeView': 'tiles'});
+    final title = find.text('today').first;
     expect(find.text('today'), findsNothing, reason: 'Start is home');
     await tester.fling(find.byType(PageView), const Offset(500, 0), 1500); // swipe right
     await tester.pumpAndSettle();
-    expect(find.text('today'), findsOneWidget);
-    for (final h in ['now playing', 'notifications', 'notes']) {
-      expect(find.text(h), findsOneWidget, reason: h);
+    expect(title, findsOneWidget);
+    expect(find.text('nothing playing'), findsOneWidget, reason: 'music tile');
+    expect(find.text('all caught up'), findsOneWidget, reason: 'notifications tile');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/42_tiles_today.png'));
+
+    // Edit: add the clock widget, make it wide, then list layout.
+    await tester.tap(find.byTooltip('Edit today'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('+ add widget'));
+    await tester.pumpAndSettle();
+    await tester.tap(ci('Clock'));
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs).last.id, 'today:clock');
+    await tester.ensureVisible(find.text('done'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byWidgetPredicate((w) => w is Icon && w.icon == Icons.more_horiz_rounded).last, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.tap(ci('Wide'));
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs).last.size, 'w');
+    await tester.tap(ci('Remove'));
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs).any((t) => t.id == 'today:clock'), isFalse);
+    // Back to the top without dragging (a pull past the top opens search here).
+    Future<void> top() async {
+      tester.state<ScrollableState>(find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first).position.jumpTo(0);
+      await tester.pumpAndSettle();
     }
-    await tester.enterText(find.byType(TextField), 'buy milk');
+
+    await top();
+    await tester.tap(find.text('list'));
+    await tester.pumpAndSettle();
+    expect(prefs.todayLayout, 'list');
+    await top();
+    await tester.tap(find.text('done'));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/43_tiles_today_list.png'));
+
+    // Notes: a sheet — add, tick, delete.
+    await tester.ensureVisible(find.text('add a note'));
+    await tester.tap(find.text('add a note'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'buy milk');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(prefs.todayNotes.single['t'], 'buy milk');
-    await tester.tap(find.text('buy milk'));
+    await tester.tap(find.text('buy milk').last);
     await tester.pumpAndSettle();
-    expect(prefs.todayNotes.single['done'], isTrue, reason: 'ticked off');
-    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/42_tiles_today.png'));
-    await tester.longPress(find.text('buy milk'));
+    expect(prefs.todayNotes.single['done'], isTrue);
+    await tester.longPress(find.text('buy milk').last);
     await tester.pumpAndSettle();
-    expect(prefs.todayNotes, isEmpty, reason: 'deleted');
+    expect(prefs.todayNotes, isEmpty);
+    Navigator.of(tester.element(find.byType(BottomSheet)), rootNavigator: true).pop();
+    await tester.pumpAndSettle();
+
+    // Pull down here → search, as on Start.
+    await top();
+    await tester.fling(find.byType(ListView).first, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Close search'), findsOneWidget, reason: 'search from today');
+    await tester.tap(find.byTooltip('Close search'));
+    await tester.pumpAndSettle();
     // Back from today → Start.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

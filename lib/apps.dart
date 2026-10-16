@@ -232,6 +232,16 @@ class Apps {
     return await _ch.invokeMapMethod('getBattery') ?? const {};
   }
 
+  /// The next few calendar events: {granted, events: [{id, title, begin, end, allDay, color}]}.
+  Future<Map> events({int limit = 6}) async {
+    if (isDemo) return const {'granted': true, 'events': []};
+    try {
+      return await _ch.invokeMapMethod('getEvents', {'limit': limit}) ?? const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// {granted, id?, title?, begin?, end?, allDay?}
   Future<Map> nextEvent() async {
     if (isDemo) {

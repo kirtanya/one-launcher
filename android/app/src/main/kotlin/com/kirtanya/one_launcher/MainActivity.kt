@@ -170,6 +170,11 @@ class MainActivity : FlutterActivity() {
                     startActivity(Intent(Intent.ACTION_POWER_USAGE_SUMMARY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
+                // The today page's calendar: the next few events (now → 3 days).
+                "getEvents" -> worker.execute {
+                    val data = events(call.argument<Int>("limit") ?: 6)
+                    main.post { result.success(data) }
+                }
                 "getNextEvent" -> worker.execute {
                     val data = nextEvent()
                     main.post { result.success(data) }
@@ -468,6 +473,34 @@ class MainActivity : FlutterActivity() {
     }
 
     /** The next timed event in the next 2 days (falls back to an all-day one). */
+    private fun events(limit: Int): Map<String, Any> {
+        if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) return mapOf("granted" to false)
+        val now = System.currentTimeMillis()
+        val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
+            ContentUris.appendId(it, now - 86_400_000L)
+            ContentUris.appendId(it, now + 3 * 86_400_000L)
+        }.build()
+        val cols = arrayOf(
+            CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
+            CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.DISPLAY_COLOR,
+        )
+        val list = mutableListOf<Map<String, Any>>()
+        contentResolver.query(uri, cols, "${CalendarContract.Instances.VISIBLE} = 1 AND ${CalendarContract.Instances.END} > ?", arrayOf(now.toString()),
+            "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
+            while (c.moveToNext() && list.size < limit) {
+                list += mapOf(
+                    "id" to c.getLong(0),
+                    "title" to (c.getString(1) ?: "(No title)"),
+                    "begin" to c.getLong(2),
+                    "end" to c.getLong(3),
+                    "allDay" to (c.getInt(4) == 1),
+                    "color" to c.getInt(5),
+                )
+            }
+        }
+        return mapOf("granted" to true, "events" to list)
+    }
+
     private fun nextEvent(): Map<String, Any> {
         if (checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) return mapOf("granted" to false)
         val now = System.currentTimeMillis()

@@ -269,7 +269,7 @@ class Prefs extends ChangeNotifier {
 
   /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
   /// the phone they were added on, so they can't be restored elsewhere.
-  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
+  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'todayTiles', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
 
   String exportBackup() {
     final out = <String, Object>{};
@@ -612,6 +612,27 @@ class Prefs extends ChangeNotifier {
   List<Map<String, Object?>> get todayNotes => [for (final m in jsonDecode(_sp.getString('todayNotes') ?? '[]') as List) Map<String, Object?>.from(m as Map)];
   Future<void> setTodayNotes(List<Map<String, Object>> notes) async {
     await _sp.setString('todayNotes', jsonEncode(notes));
+    notifyListeners();
+  }
+
+  /// The today page's widgets as tiles ({id, size, colour?, name?}); null = the defaults.
+  /// ids: `today:<kind>` for One Launcher's own widgets, `aw:<id>` for an app widget.
+  List<Map<String, dynamic>>? get todayTiles {
+    final raw = _sp.getString('todayTiles');
+    return raw == null ? null : [for (final m in jsonDecode(raw) as List) Map<String, dynamic>.from(m as Map)];
+  }
+
+  Future<void> setTodayTiles(List<Map<String, dynamic>>? v) async {
+    v == null ? await _sp.remove('todayTiles') : await _sp.setString('todayTiles', jsonEncode(v));
+    notifyListeners();
+  }
+
+  /// The today page's layout ('tiles' | 'list') and background ('wallpaper' | 'black').
+  String get todayLayout => _sp.getString('todayLayout') ?? 'tiles';
+  String get todayBg => _sp.getString('todayBg') ?? 'wallpaper';
+  Future<void> setTodayLook({String? layout, String? bg}) async {
+    if (layout != null) await _sp.setString('todayLayout', layout);
+    if (bg != null) await _sp.setString('todayBg', bg);
     notifyListeners();
   }
 

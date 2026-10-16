@@ -606,7 +606,10 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                     },
                     children: [
                       // Swipe right from Start: what's happening today.
-                      TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch),
+                      NotificationListener<ScrollNotification>(
+                        onNotification: _onStartScroll, // pull down here too: search
+                        child: TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch),
+                      ),
                       NotificationListener<ScrollNotification>(
                         onNotification: _onStartScroll,
                         child: _StartPage(
@@ -1953,6 +1956,13 @@ Future<void> showAppMenu(BuildContext context, Prefs prefs, AppEntry a, {require
         if (!a.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(a.package), danger: true),
       ],
     );
+
+/// The tile colour palette (Start default, accent, the app's colour, Material colours) for
+/// any tile-like thing — today widgets use it too. Returns null (cancelled), 'default', or a colour.
+Future<String?> pickTileColour(BuildContext context, {String? current, String? app}) async => await showOneSheetWith(
+  context,
+  builder: (ctx) => _Palette(current: current, app: app),
+) as String?;
 
 /// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
 Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
