@@ -168,6 +168,10 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   late final AnimationController _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))
     ..addListener(() {
       final off = _search.value > .03;
+      if (_focusPending && _search.value >= .5 && _search.status == AnimationStatus.forward) {
+        _focusPending = false;
+        _searchFocus.requestFocus();
+      }
       if (Glass.suspended.value != off) Glass.suspended.value = off;
     });
   bool get _searching => _search.status == AnimationStatus.forward || _search.status == AnimationStatus.completed;
@@ -453,13 +457,16 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     if (_search.isCompleted || _search.status == AnimationStatus.forward && _search.isAnimating) return;
     HapticFeedback.selectionClick();
     _searchText.clear();
-    // The keyboard rises once the bar has landed, not while the page is still leaving.
-    _search.forward().whenComplete(() {
-      if (mounted && _search.isCompleted) _searchFocus.requestFocus();
-    });
+    // The keyboard starts rising halfway (the page has mostly gone, the bar is nearly in), so
+    // both land together — not while the page is still leaving, nor after a wait.
+    _focusPending = true;
+    _search.forward();
   }
 
+  bool _focusPending = false; // open search: focus the field once the motion is halfway
+
   void _closeSearch() {
+    _focusPending = false;
     if (!_searching) return;
     _searchFocus.unfocus();
     _search.reverse().whenComplete(_searchText.clear);
