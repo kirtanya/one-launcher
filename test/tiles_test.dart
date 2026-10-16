@@ -459,6 +459,41 @@ void main() {
     expect(prefs.themedIcons, isTrue);
   });
 
+  testWidgets('app menu: actions always on top; shortcuts show four, then "show all"', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.88;
+    addTearDown(tester.view.reset);
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'getApps') return [{'package': 'com.whatsapp', 'label': 'WhatsApp', 'system': false, 'category': -1, 'installed': 0}];
+      if (call.method == 'listShortcuts') {
+        return {
+          'allowed': true,
+          'shortcuts': [
+            for (var i = 1; i <= 12; i++) {'id': 's:com.whatsapp|c$i|0', 'label': 'Contact $i', 'app': 'WhatsApp', 'package': 'com.whatsapp', 'work': false},
+          ],
+        };
+      }
+      return null;
+    });
+    SharedPreferences.setMockInitialValues({'homeView': 'tiles'});
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncher(prefs: prefs));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('All apps'));
+    await tester.pumpAndSettle();
+    await tester.longPress(ci('WhatsApp').last); // the list row (Start has a tile too)
+    await tester.pumpAndSettle();
+    // The main actions come first, then four shortcuts and a way to see the rest.
+    expect(tester.getTopLeft(ci('Unpin from Start')).dy, lessThan(tester.getTopLeft(find.text('Contact 1')).dy));
+    expect(find.text('Contact 4'), findsOneWidget);
+    expect(find.text('Contact 5'), findsNothing);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/41_app_menu_tiles.png'));
+    await tester.tap(ci('Show all (8 more)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Contact 12', skipOffstage: false), findsOneWidget);
+    expect(ci('Uninstall'), findsOneWidget, reason: 'still right there at the top');
+  });
+
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));

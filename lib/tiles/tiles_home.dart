@@ -165,7 +165,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   final _searchText = TextEditingController();
 
   /// Search: 0 = closed … 1 = the bar is down from the top (results show once you type).
-  late final _search = AnimationController(vsync: this, duration: Motion.snapDuration);
+  late final _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 460));
   bool get _searching => _search.status == AnimationStatus.forward || _search.status == AnimationStatus.completed;
   double _pull = 0; // pull-down on Start past the top, in px
   String? _selected; // the tile showing its edit controls
@@ -425,11 +425,18 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   bool _onStartScroll(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical || _editing || !prefs.pullToSearch) return false;
     if (n is OverscrollNotification && n.overscroll < 0 && n.dragDetails != null) {
+      if (_search.isCompleted) return false;
       final was = _pull;
       _pull -= n.overscroll;
       if (was < _pullAt && _pull >= _pullAt) HapticFeedback.selectionClick(); // far enough
+      // The page follows the finger down as one sheet; the bar starts to peek in.
+      _search.value = (_pull / (_pullAt * 4)).clamp(0.0, .4);
     } else if (n is ScrollEndNotification || (n is ScrollUpdateNotification && n.metrics.pixels > 0)) {
-      if (_pull >= _pullAt) _openSearch();
+      if (_pull >= _pullAt) {
+        _openSearch();
+      } else if (_pull > 0 && !_search.isCompleted) {
+        _search.animateBack(0, curve: Curves.easeOutCubic); // not far enough: spring back
+      }
       _pull = 0;
     }
     return false;
@@ -439,7 +446,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
 
   /// The search bar slides down from the top over whichever page shows.
   void _openSearch() {
-    if (_searching) return;
+    if (_search.isCompleted || _search.status == AnimationStatus.forward && _search.isAnimating) return;
     HapticFeedback.selectionClick();
     _searchText.clear();
     _search.forward();
@@ -536,8 +543,15 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
               IgnorePointer(
                 child: ColoredBox(color: Colors.black.withValues(alpha: (prefs.wallpaperDim + (prefs.fx('window') ? 0 : .35)).clamp(0.0, .85))),
               ),
-              // Search doesn't cover the page: the page itself steps back (fades, sinks a
-              // little) as the search pill comes down and the results take its place.
+              // Searching: the wallpaper goes — a black stage for the results.
+              IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _search,
+                  builder: (context, _) => ColoredBox(color: Colors.black.withValues(alpha: _search.value.clamp(0.0, 1.0))),
+                ),
+              ),
+              // Search doesn't cover the page: the whole page (Start or all apps) slides down
+              // out of the way as one sheet as the search bar drops in from the top.
               AnimatedBuilder(
                 animation: _search,
                 builder: (context, page) {
@@ -545,11 +559,8 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                   return IgnorePointer(
                     ignoring: t > 0,
                     child: Opacity(
-                      opacity: (1 - t * 1.4).clamp(0.0, 1.0),
-                      child: Transform.translate(
-                        offset: Offset(0, 40 * t),
-                        child: Transform.scale(scale: 1 - .06 * t, child: page),
-                      ),
+                      opacity: (1 - t * 1.2).clamp(0.0, 1.0),
+                      child: Transform.translate(offset: Offset(0, MediaQuery.sizeOf(context).height * .6 * t), child: page),
                     ),
                   );
                 },
@@ -627,6 +638,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                 apps: _apps,
                 prefs: prefs,
                 onClose: _closeSearch,
+                onAppMenu: (a) => showAppMenu(context, prefs, a, pinned: isPinned(a.package), onPin: () => _pin(a), onUnpin: () => _unpin('app:${a.package}')),
                 onLaunch: (a) {
                   _closeSearch();
                   _launch(a);
@@ -1854,40 +1866,16 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-/// The app's own shortcuts (New message, Scan QR…) as sheet rows (Interactions → Shortcuts).
-Future<List<SheetAction>> appShortcutActions(BuildContext context, AppEntry a) async {
-  final all = await Apps.instance.shortcuts() ?? const <AppShortcut>[];
-  final pkg = a.package.split('@').first;
-  // The app's top four, as Android itself shows (a messaging app can have dozens of contacts).
-  return [
-    for (final sc in all.where((sc) => sc.package == pkg && sc.work == a.work).take(4))
-      SheetAction(yours: true, Icons.bolt_rounded, sc.label, () {
-        Navigator.pop(context);
-        Apps.instance.quickAction(sc.id);
-      }),
-  ];
-}
-
 /// Edit mode → ⋯ on an app tile: its shortcuts, App info, Uninstall.
-Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) async {
-  final shortcuts = prefs.fx('shortcuts') ? await appShortcutActions(context, a) : const <SheetAction>[];
-  if (!context.mounted) return;
-  showOneSheet(
-    context,
-    header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40), yours: true),
-    actions: [
-      ...shortcuts,
-      SheetAction(Icons.info_outline_rounded, 'App info', () {
-        Navigator.pop(context);
-        Apps.instance.appInfo(a.package);
-      }),
-      SheetAction(Icons.delete_outline_rounded, 'Uninstall', () {
-        Navigator.pop(context);
-        Apps.instance.uninstall(a.package);
-      }, danger: true),
-    ],
-  );
-}
+Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) => showAppActions(
+  context,
+  app: a,
+  shortcuts: prefs.fx('shortcuts'),
+  actions: [
+    AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(a.package)),
+    if (!a.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(a.package), danger: true),
+  ],
+);
 
 /// A filled square in the app list (icon backs, jump letters) in the tile look: glass tiles →
 /// a tinted pane with the bright edge and sheen.
@@ -1906,6 +1894,20 @@ BoxDecoration listSquare(Prefs prefs, Color colour, double radius) {
     ),
   );
 }
+
+/// An app's menu in the Tiles view — the same from the app list and from search: its
+/// shortcuts (Interactions → Shortcuts), Pin / Unpin to Start, App info, Uninstall.
+Future<void> showAppMenu(BuildContext context, Prefs prefs, AppEntry a, {required bool pinned, required VoidCallback onPin, required VoidCallback onUnpin}) =>
+    showAppActions(
+      context,
+      app: a,
+      shortcuts: prefs.fx('shortcuts'),
+      actions: [
+        AppAction(pinned ? Icons.push_pin : Icons.push_pin_outlined, pinned ? 'Unpin from Start' : 'Pin to Start', pinned ? onUnpin : onPin),
+        AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(a.package)),
+        if (!a.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(a.package), danger: true),
+      ],
+    );
 
 /// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
 Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
@@ -2021,7 +2023,9 @@ class _TileSearch extends StatefulWidget {
     required this.prefs,
     required this.onClose,
     required this.onLaunch,
+    required this.onAppMenu,
   });
+  final ValueChanged<AppEntry> onAppMenu; // long-press a result: the app list's menu
   final Animation<double> anim;
   final TextEditingController text;
   final FocusNode focus;
@@ -2091,7 +2095,7 @@ class _TileSearchState extends State<_TileSearch> {
       apps: widget.apps,
       shortcuts: _shortcuts,
       onLaunch: widget.onLaunch,
-      onLongPress: (a) => showTileMenu(context, widget.prefs, a),
+      onLongPress: widget.onAppMenu,
       onRun: _run,
     );
 
@@ -2106,24 +2110,29 @@ class _TileSearchState extends State<_TileSearch> {
             // No dark cover: the page behind has stepped back; tap the empty space to close.
             GestureDetector(behavior: HitTestBehavior.opaque, onTap: widget.onClose),
             // The pill comes down from above the screen.
+            // The bar drops in from above the screen first…
             Positioned(
               left: DS.gutter,
               right: DS.gutter,
               top: pad.top + DS.s12 - (1 - t) * (pad.top + 90),
-              child: Opacity(opacity: t, child: bar),
+              child: Opacity(opacity: t.clamp(0.0, 1.0), child: bar),
             ),
             Positioned(
               left: DS.gutter,
               right: DS.gutter,
               top: pad.top + DS.s12 + 52 + DS.s12,
               bottom: math.max(keyboard, pad.bottom) + DS.s8,
+              // …then the results rise in behind it.
               child: Opacity(
-                opacity: t,
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // keep typing while scrolling
-                  child: AnimatedSwitcher(
-                    duration: Motion.snapDuration,
-                    child: KeyedSubtree(key: ValueKey(q.isEmpty), child: results),
+                opacity: Curves.easeOut.transform(((widget.anim.value - .45) / .55).clamp(0.0, 1.0)),
+                child: Transform.translate(
+                  offset: Offset(0, 28 * (1 - Curves.easeOutCubic.transform(((widget.anim.value - .45) / .55).clamp(0.0, 1.0)))),
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // keep typing while scrolling
+                    child: AnimatedSwitcher(
+                      duration: Motion.snapDuration,
+                      child: KeyedSubtree(key: ValueKey(q.isEmpty), child: results),
+                    ),
                   ),
                 ),
               ),
@@ -2644,31 +2653,8 @@ class _AppListPageState extends State<_AppListPage> {
     return out;
   }
 
-  Future<void> _menu(AppEntry a) async {
-    HapticFeedback.mediumImpact();
-    final pinned = widget.isPinned(a.package);
-    final shortcuts = widget.prefs.fx('shortcuts') ? await appShortcutActions(context, a) : const <SheetAction>[];
-    if (!mounted) return;
-    showOneSheet(
-      context,
-      header: SheetHeader(title: a.label, leading: AppIcon(a, size: 40), yours: true),
-      actions: [
-        ...shortcuts,
-        SheetAction(pinned ? Icons.push_pin : Icons.push_pin_outlined, pinned ? 'Unpin from Start' : 'Pin to Start', () {
-          Navigator.pop(context);
-          pinned ? widget.onUnpin(a) : widget.onPin(a);
-        }),
-        SheetAction(Icons.info_outline_rounded, 'App info', () {
-          Navigator.pop(context);
-          Apps.instance.appInfo(a.package);
-        }),
-        SheetAction(Icons.delete_outline_rounded, 'Uninstall', () {
-          Navigator.pop(context);
-          Apps.instance.uninstall(a.package);
-        }, danger: true),
-      ],
-    );
-  }
+  Future<void> _menu(AppEntry a) =>
+      showAppMenu(context, widget.prefs, a, pinned: widget.isPinned(a.package), onPin: () => widget.onPin(a), onUnpin: () => widget.onUnpin(a));
 
   @override
   Widget build(BuildContext context) {

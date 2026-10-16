@@ -24,42 +24,195 @@ import 'ui/motion.dart';
 import 'ui/perf.dart';
 import 'widgets.dart';
 
+/// One of an app menu's main actions (the strip at the top of the menu).
+class AppAction {
+  const AppAction(this.icon, this.label, this.onTap, {this.danger = false, this.enabled = true});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool danger, enabled;
+}
+
+/// An app's long-press menu, in both views. A clear hierarchy so nothing gets lost however
+/// many shortcuts an app has:
+///  1. the app (icon, name, where it lives),
+///  2. its main actions as one strip of big buttons — always at the top,
+///  3. its shortcuts (New message, Scan QR, contacts…): the first four, then "Show all".
+/// Classic: rounded buttons on the card; Metro (Tiles): flat boxes, lowercase.
+Future<void> showAppActions(BuildContext context, {required AppEntry app, String? subtitle, required List<AppAction> actions, bool shortcuts = true}) async {
+  final all = shortcuts ? await Apps.instance.shortcuts() ?? const <AppShortcut>[] : const <AppShortcut>[];
+  final pkg = app.package.split('@').first;
+  final mine = [
+    for (final sc in all)
+      if (sc.package == pkg && sc.work == app.work) sc,
+  ];
+  if (!context.mounted) return;
+  HapticFeedback.mediumImpact();
+  await showOneSheetWith(
+    context,
+    builder: (ctx) => _AppActionsBody(app: app, subtitle: subtitle, actions: actions, shortcuts: mine),
+  );
+}
+
+class _AppActionsBody extends StatefulWidget {
+  const _AppActionsBody({required this.app, required this.subtitle, required this.actions, required this.shortcuts});
+  final AppEntry app;
+  final String? subtitle;
+  final List<AppAction> actions;
+  final List<AppShortcut> shortcuts;
+
+  @override
+  State<_AppActionsBody> createState() => _AppActionsBodyState();
+}
+
+class _AppActionsBodyState extends State<_AppActionsBody> {
+  static const _first = 4;
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final metro = DS.metro;
+    final shown = _all ? widget.shortcuts : widget.shortcuts.take(_first).toList();
+    final more = widget.shortcuts.length - _first;
+    Widget action(AppAction a) {
+      final colour = !a.enabled ? DS.inkFaint : (a.danger ? DS.alert : DS.ink);
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Material(
+            color: metro ? Colors.transparent : DS.cardMuted,
+            shape: metro
+                ? RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(DS.rMedia),
+                    side: BorderSide(color: DS.hairline),
+                  )
+                : RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: a.enabled
+                  ? () {
+                      Navigator.pop(context);
+                      a.onTap();
+                    }
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: DS.s12, horizontal: 4),
+                child: Column(
+                  children: [
+                    Icon(a.icon, color: colour),
+                    const SizedBox(height: 6),
+                    Text(
+                      DS.cased(a.label),
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      style: DS.rowSub.copyWith(color: colour, fontSize: 12, height: 1.2, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 1. The app.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+          child: SheetHeader(title: widget.app.label, subtitle: widget.subtitle, leading: AppIcon(widget.app, size: 48), yours: true),
+        ),
+        // 2. Its main actions: one strip, always at the top.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s16 - 4),
+          child: IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final a in widget.actions) action(a)]),
+          ),
+        ),
+        // 3. Its shortcuts: the first few, the rest on request.
+        if (widget.shortcuts.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s24, DS.s20, DS.s24, DS.s4),
+            child: Text(
+              metro ? 'shortcuts' : 'SHORTCUTS',
+              style: metro ? DS.eyebrow : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
+            ),
+          ),
+          for (final sc in shown)
+            InkWell(
+              onTap: () {
+                Navigator.pop(context);
+                Apps.instance.quickAction(sc.id);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s12),
+                child: Row(
+                  children: [
+                    ShortcutIcon(id: sc.id, size: 28, color: DS.ink),
+                    const SizedBox(width: DS.s16),
+                    Expanded(
+                      child: Text(
+                        sc.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (more > 0 && !_all)
+            InkWell(
+              onTap: () {
+                HapticFeedback.selectionClick();
+                setState(() => _all = true);
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s12),
+                child: Row(
+                  children: [
+                    SizedBox(width: 28, child: Icon(Icons.expand_more_rounded, color: metro ? DS.accentText : DS.inkMuted)),
+                    const SizedBox(width: DS.s16),
+                    Text(
+                      DS.cased('Show all ($more more)'),
+                      style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500, color: metro ? DS.accentText : DS.inkMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+        const SizedBox(height: DS.s8),
+      ],
+    );
+  }
+}
+
 /// Long-press an app in the app view.
 Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required AppEntry app}) {
   final fav = prefs.isFavourite(app.package);
   final hidden = prefs.hidden.contains(app.package);
   final full = !fav && prefs.favouritesFull;
   final folder = folderFor(app, prefs.folderOverrides);
-  void done(Future<void> Function() f) {
-    Navigator.pop(context);
-    f();
-  }
-
-  return showOneSheet(
+  return showAppActions(
     context,
-    header: SheetHeader(
-      title: app.label,
-      subtitle: '${app.work ? 'Work profile · ' : ''}In ${prefs.folderName(folder)}${app.paused ? ' · paused' : ''}',
-      leading: AppIcon(app, size: 48),
-    ),
+    app: app,
+    subtitle: '${app.work ? 'Work profile · ' : ''}In ${prefs.folderName(folder)}${app.paused ? ' · paused' : ''}',
     actions: [
-      SheetAction(
+      AppAction(
         fav ? Icons.push_pin : Icons.push_pin_outlined,
-        fav ? 'Unpin' : (full ? 'Pins are full (${Prefs.maxFavourites})' : 'Pin to top'),
-        () => done(() => prefs.toggleFavourite(app.package)),
+        fav ? 'Unpin' : (full ? 'Pins full' : 'Pin to top'),
+        () => prefs.toggleFavourite(app.package),
         enabled: !full,
       ),
-      SheetAction(Icons.drive_file_move_outline, 'Move to folder', () {
-        Navigator.pop(context);
-        showFolderPicker(context, prefs: prefs, app: app);
-      }),
-      SheetAction(
-        hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined,
-        hidden ? 'Show in app list' : 'Hide from app list',
-        () => done(() => prefs.toggleHidden(app.package)),
-      ),
-      SheetAction(Icons.info_outline_rounded, 'App info', () => done(() => Apps.instance.appInfo(app.package))),
-      if (!app.system) SheetAction(Icons.delete_outline_rounded, 'Uninstall', () => done(() => Apps.instance.uninstall(app.package)), danger: true),
+      AppAction(Icons.drive_file_move_outline, 'Move to folder', () => showFolderPicker(context, prefs: prefs, app: app)),
+      AppAction(hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined, hidden ? 'Show in list' : 'Hide', () => prefs.toggleHidden(app.package)),
+      AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(app.package)),
+      if (!app.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(app.package), danger: true),
     ],
   );
 }
