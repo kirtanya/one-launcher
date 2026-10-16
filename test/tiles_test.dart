@@ -500,6 +500,24 @@ void main() {
     expect(ci('Uninstall'), findsOneWidget, reason: 'still right there at the top');
   });
 
+  testWidgets('search with glass tiles: tiles keep their state (no rebuild flicker), blur pauses while the page fades', (tester) async {
+    final prefs = await _setUp(tester, {'homeView': 'tiles', 'tileStyle': 'glass'});
+    expect(prefs.tileStyle, 'glass');
+    final face = find.byType(BackdropFilter).first;
+    final before = tester.element(face);
+    expect(tester.widget<BackdropFilter>(face).enabled, isTrue);
+    await tester.fling(find.byType(SingleChildScrollView).first, const Offset(0, 400), 1000);
+    await tester.pump(const Duration(milliseconds: 120)); // mid-transition
+    expect(identical(tester.element(face), before), isTrue, reason: 'same element: the tile was not rebuilt');
+    expect(tester.widget<BackdropFilter>(face).enabled, isFalse, reason: 'blur paused while fading');
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus, isTrue, reason: 'keyboard once the bar landed');
+    await tester.tap(find.byTooltip('Close search'));
+    await tester.pumpAndSettle();
+    expect(identical(tester.element(face), before), isTrue);
+    expect(tester.widget<BackdropFilter>(face).enabled, isTrue, reason: 'blur back');
+  });
+
   testWidgets('long-press the remote button → hide it (back on in Settings)', (tester) async {
     final prefs = await _setUp(tester, {'remoteButton': true});
     await tester.longPress(find.byTooltip('TV remote'));

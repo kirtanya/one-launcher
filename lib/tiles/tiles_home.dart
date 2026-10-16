@@ -167,7 +167,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   /// Search: 0 = closed … 1 = the bar is down from the top (results show once you type).
   late final AnimationController _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))
     ..addListener(() {
-      final off = _search.value > 0;
+      final off = _search.value > .03;
       if (Glass.suspended.value != off) Glass.suspended.value = off;
     });
   bool get _searching => _search.status == AnimationStatus.forward || _search.status == AnimationStatus.completed;
@@ -453,8 +453,10 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     if (_search.isCompleted || _search.status == AnimationStatus.forward && _search.isAnimating) return;
     HapticFeedback.selectionClick();
     _searchText.clear();
-    _search.forward();
-    _searchFocus.requestFocus();
+    // The keyboard rises once the bar has landed, not while the page is still leaving.
+    _search.forward().whenComplete(() {
+      if (mounted && _search.isCompleted) _searchFocus.requestFocus();
+    });
   }
 
   void _closeSearch() {
@@ -551,7 +553,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
               IgnorePointer(
                 child: AnimatedBuilder(
                   animation: _search,
-                  builder: (context, _) => ColoredBox(color: Colors.black.withValues(alpha: _search.value.clamp(0.0, 1.0))),
+                  builder: (context, _) => ColoredBox(color: Colors.black.withValues(alpha: Curves.easeOut.transform((_search.value / .65).clamp(0.0, 1.0)))),
                 ),
               ),
               // Search doesn't cover the page: the whole page (Start or all apps) moves down a
@@ -564,8 +566,8 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                   return IgnorePointer(
                     ignoring: t > 0,
                     child: Opacity(
-                      // Fades across the whole motion (smooth, like the app list), never travels far.
-                      opacity: (1 - Curves.easeIn.transform(_search.value)).clamp(0.0, 1.0),
+                      // Fades early and evenly — gone about two thirds of the way — never travels far.
+                      opacity: 1 - Curves.easeOut.transform((_search.value / .65).clamp(0.0, 1.0)),
                       child: Transform.translate(
                         // At most a quarter of the screen down…
                         offset: Offset(0, MediaQuery.sizeOf(context).height * .25 * t),
@@ -575,71 +577,76 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                     ),
                   );
                 },
-                child: PageView(
-                  controller: _pages,
-                  onPageChanged: (i) {
-                    _closeSearch(); // going between Start and all apps ends a search
-                    (i == 0 ? startLanding : listLanding).play();
-                  },
-                  children: [
-                    NotificationListener<ScrollNotification>(
-                      onNotification: _onStartScroll,
-                      child: _StartPage(
-                        tiles: _tiles,
-                        apps: {for (final a in _apps) a.package: a},
-                        scroll: _start,
-                        editing: _editing,
-                        selected: _selected,
-                        prefs: prefs,
-                        onLaunch: _launchFromStart,
-                        onOpenClock: () {
-                          final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
-                          if (clock != null) _launch(clock);
-                        },
-                        openFolder: _openFolder,
-                        gridKey: _gridKey,
-                        onFolder: _toFolder,
-                        onOutOfFolder: _outOfFolder,
-                        onFolderMenu: _folderMenu,
-                        onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
-                        onEdit: (id) => setState(() {
-                          if (!_editing) HapticFeedback.mediumImpact();
-                          _openFolder = null; // editing works on closed folders
-                          _editing = true;
-                          _selected = id;
-                        }),
-                        onDone: () => setState(() {
-                          _editing = false;
-                          _selected = null;
-                        }),
-                        onUnpin: _unpin,
-                        onResize: _resize,
-                        onRecolour: _recolour,
-                        onMove: _move,
-                        onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
-                        onSettings: _settings,
-                        onDoubleTap: _lock,
-                      ),
-                    ),
-                    NotificationListener<ScrollNotification>(
-                      onNotification: _onStartScroll, // pull down on the list: search too
-                      // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
-                      child: ColoredBox(
-                        color: prefs.fx('window') ? Colors.black : Colors.transparent,
-                        child: _AppListPage(
-                          onSearch: _openSearch,
-                          apps: _apps,
+                child: ScrollConfiguration(
+                  // No Android stretch when pulling past the top: the pull is the search gesture,
+                  // and stretching the page while it also moves made it jump.
+                  behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+                  child: PageView(
+                    controller: _pages,
+                    onPageChanged: (i) {
+                      _closeSearch(); // going between Start and all apps ends a search
+                      (i == 0 ? startLanding : listLanding).play();
+                    },
+                    children: [
+                      NotificationListener<ScrollNotification>(
+                        onNotification: _onStartScroll,
+                        child: _StartPage(
+                          tiles: _tiles,
+                          apps: {for (final a in _apps) a.package: a},
+                          scroll: _start,
+                          editing: _editing,
+                          selected: _selected,
                           prefs: prefs,
-                          isPinned: isPinned,
-                          onLaunch: _launch,
-                          onPin: _pin,
-                          onUnpin: (a) => _unpin('app:${a.package}'),
+                          onLaunch: _launchFromStart,
+                          onOpenClock: () {
+                            final clock = _apps.where((a) => a.label.toLowerCase() == 'clock').firstOrNull;
+                            if (clock != null) _launch(clock);
+                          },
+                          openFolder: _openFolder,
+                          gridKey: _gridKey,
+                          onFolder: _toFolder,
+                          onOutOfFolder: _outOfFolder,
+                          onFolderMenu: _folderMenu,
+                          onToggleFolder: (id) => setState(() => _openFolder = _openFolder == id ? null : id),
+                          onEdit: (id) => setState(() {
+                            if (!_editing) HapticFeedback.mediumImpact();
+                            _openFolder = null; // editing works on closed folders
+                            _editing = true;
+                            _selected = id;
+                          }),
+                          onDone: () => setState(() {
+                            _editing = false;
+                            _selected = null;
+                          }),
+                          onUnpin: _unpin,
+                          onResize: _resize,
+                          onRecolour: _recolour,
+                          onMove: _move,
+                          onAllApps: () => _pages.animateToPage(1, duration: Motion.snapDuration, curve: Motion.settle),
                           onSettings: _settings,
-                          onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                          onDoubleTap: _lock,
                         ),
                       ),
-                    ),
-                  ],
+                      NotificationListener<ScrollNotification>(
+                        onNotification: _onStartScroll, // pull down on the list: search too
+                        // Wallpaper through tiles: the app list sits on black, like Start around the tiles.
+                        child: ColoredBox(
+                          color: prefs.fx('window') ? Colors.black : Colors.transparent,
+                          child: _AppListPage(
+                            onSearch: _openSearch,
+                            apps: _apps,
+                            prefs: prefs,
+                            isPinned: isPinned,
+                            onLaunch: _launch,
+                            onPin: _pin,
+                            onUnpin: (a) => _unpin('app:${a.package}'),
+                            onSettings: _settings,
+                            onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               _TileSearch(
@@ -1505,15 +1512,16 @@ class TileSurface extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: Glass.suspended,
       child: face,
-      builder: (context, off, face) => off
-          ? face!
-          : ClipRRect(
-              borderRadius: radius,
-              child: BackdropFilter.grouped(
-                filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-                child: face,
-              ),
-            ),
+      // Same widget tree either way (swapping it rebuilt every tile — the flicker); only the
+      // blur switches.
+      builder: (context, off, face) => ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter.grouped(
+          enabled: !off,
+          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: face,
+        ),
+      ),
     );
   }
 }
