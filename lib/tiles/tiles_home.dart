@@ -165,15 +165,20 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   final _searchText = TextEditingController();
 
   /// Search: 0 = closed … 1 = the bar is down from the top (results show once you type).
-  late final AnimationController _search = AnimationController(vsync: this, duration: const Duration(milliseconds: 520))
-    ..addListener(() {
-      final off = _search.value > .03;
-      if (_focusPending && _search.value >= .5 && _search.status == AnimationStatus.forward) {
-        _focusPending = false;
-        _searchFocus.requestFocus();
-      }
-      if (Glass.suspended.value != off) Glass.suspended.value = off;
-    });
+  late final AnimationController _search =
+      AnimationController(
+        vsync: this,
+        // Brisk in, quicker out (leaving search should feel instant).
+        duration: const Duration(milliseconds: 380),
+        reverseDuration: const Duration(milliseconds: 260),
+      )..addListener(() {
+        final off = _search.value > .03;
+        if (_focusPending && _search.value >= .5 && _search.status == AnimationStatus.forward) {
+          _focusPending = false;
+          _searchFocus.requestFocus();
+        }
+        if (Glass.suspended.value != off) Glass.suspended.value = off;
+      });
   bool get _searching => _search.status == AnimationStatus.forward || _search.status == AnimationStatus.completed;
   double _pull = 0; // pull-down on Start past the top, in px
   String? _selected; // the tile showing its edit controls
