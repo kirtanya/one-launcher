@@ -550,8 +550,9 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                   builder: (context, _) => ColoredBox(color: Colors.black.withValues(alpha: _search.value.clamp(0.0, 1.0))),
                 ),
               ),
-              // Search doesn't cover the page: the whole page (Start or all apps) slides down
-              // out of the way as one sheet as the search bar drops in from the top.
+              // Search doesn't cover the page: the whole page (Start or all apps) moves down a
+              // little as one sheet (a quarter of the screen at most), shrinks and fades away
+              // as the search bar drops in from the top.
               AnimatedBuilder(
                 animation: _search,
                 builder: (context, page) {
@@ -559,8 +560,14 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                   return IgnorePointer(
                     ignoring: t > 0,
                     child: Opacity(
-                      opacity: (1 - t * 1.2).clamp(0.0, 1.0),
-                      child: Transform.translate(offset: Offset(0, MediaQuery.sizeOf(context).height * .6 * t), child: page),
+                      // Gone by about two thirds of the way: it fades as it goes, never travels far.
+                      opacity: (1 - t * 1.5).clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        // At most a quarter of the screen down…
+                        offset: Offset(0, MediaQuery.sizeOf(context).height * .25 * t),
+                        // …and shrinking a little as it goes.
+                        child: Transform.scale(scale: 1 - .12 * t, alignment: Alignment.topCenter, child: page),
+                      ),
                     ),
                   );
                 },
