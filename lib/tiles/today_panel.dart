@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -796,6 +797,38 @@ class _TodayPanelState extends State<TodayPanel> {
     );
   }
 
+  /// Holding a widget picks it up: edit mode comes on (with every widget's ⋯ menu).
+  void _pickUp() {
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _editing = true;
+      _dragging = true;
+    });
+  }
+
+  /// While a widget is held, the edit toolbar waits: it would push everything down under the
+  /// finger. It appears once the widget is let go.
+  bool _dragging = false;
+  void _drop() {
+    if (_dragging && mounted) setState(() => _dragging = false);
+  }
+
+  DateTime _lastMove = DateTime(0);
+
+  /// Dragged over another widget: take its place (the rest make room), a beat apart so the
+  /// reflow settles under the finger.
+  Future<void> _moveTo(String dragged, String target) async {
+    final now = DateTime.now();
+    if (now.difference(_lastMove) < const Duration(milliseconds: 220)) return;
+    _lastMove = now;
+    final list = [..._tiles];
+    final from = list.indexWhere((t) => t.id == dragged), to = list.indexWhere((t) => t.id == target);
+    if (from < 0 || to < 0 || from == to) return;
+    list.insert(to, list.removeAt(from));
+    HapticFeedback.selectionClick();
+    await _save(list);
+  }
+
   Future<void> _move(String id, int by) async {
     final list = [..._tiles];
     final i = list.indexWhere((x) => x.id == id);
@@ -970,7 +1003,7 @@ class _TodayPanelState extends State<TodayPanel> {
           ),
           Wrap(children: [box('+ add widget', false, _add), box('reset', false, () => prefs.setTodayTiles(null))]),
           Text(
-            'tap a widget to resize, recolour, move or remove it',
+            'hold and drag to move · ⋯ for size, colour and more',
             style: _t(12, color: Colors.white54, weight: FontWeight.w400),
           ),
         ],
@@ -1004,13 +1037,21 @@ class _TodayPanelState extends State<TodayPanel> {
                   landing: todayLanding,
                   style: prefs.tileAnim,
                   delay: Duration(milliseconds: 40 * col + 22 * row),
-                  child: _TodayTile(
-                    tile: t,
-                    prefs: prefs,
+                  child: _Reorderable(
+                    id: t.id,
                     editing: _editing,
-                    onTap: _editing ? () => _options(t) : _action(t),
-                    onLongPress: () => _options(t),
-                    child: _face(t),
+                    onPickUp: _pickUp,
+                    onDrop: _drop,
+                    onMove: _moveTo,
+                    ghost: t.id.startsWith('aw:') ? null : _face(t),
+                    child: _TodayTile(
+                      tile: t,
+                      prefs: prefs,
+                      editing: _editing,
+                      onTap: _editing ? () => _options(t) : _action(t),
+                      onMenu: () => _options(t),
+                      child: _face(t),
+                    ),
                   ),
                 ),
               ),
@@ -1028,8 +1069,19 @@ class _TodayPanelState extends State<TodayPanel> {
           landing: todayLanding,
           style: prefs.tileAnim,
           delay: Duration(milliseconds: 50 * i),
-          child: GestureDetector(
-            onLongPress: () => _options(t),
+          child: _Reorderable(
+            id: t.id,
+            editing: _editing,
+            onPickUp: _pickUp,
+            onDrop: _drop,
+            onMove: _moveTo,
+            ghost: Container(
+              height: 56,
+              color: tileAccent().withValues(alpha: .85),
+              padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+              alignment: Alignment.centerLeft,
+              child: Text(_title(t).toLowerCase(), style: _t(20)),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1042,7 +1094,7 @@ class _TodayPanelState extends State<TodayPanel> {
                       ),
                       if (_editing)
                         IconButton(
-                          tooltip: 'Options',
+                          tooltip: 'Widget options',
                           onPressed: () => _options(t),
                           icon: const Icon(Icons.more_horiz_rounded, color: _white),
                         ),
@@ -1112,7 +1164,7 @@ class _TodayPanelState extends State<TodayPanel> {
                     ],
                   ),
                 ),
-                if (_editing) Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: _editBar()),
+                if (_editing && !_dragging) Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: _editBar()),
                 const SizedBox(height: DS.s20),
                 if (tiles.isEmpty)
                   Padding(
@@ -1135,11 +1187,11 @@ class _TodayPanelState extends State<TodayPanel> {
 /// A today widget as a live tile: the tile look (colour, glass, corners, tilt) from Start.
 /// In edit mode it sits back a little and shows ⋯; tap for its options.
 class _TodayTile extends StatelessWidget {
-  const _TodayTile({required this.tile, required this.prefs, required this.editing, required this.onTap, required this.onLongPress, required this.child});
+  const _TodayTile({required this.tile, required this.prefs, required this.editing, required this.onTap, required this.onMenu, required this.child});
   final TileSpec tile;
   final Prefs prefs;
   final bool editing;
-  final VoidCallback? onTap, onLongPress;
+  final VoidCallback? onTap, onMenu;
   final Widget child;
 
   @override
@@ -1153,33 +1205,85 @@ class _TodayTile extends StatelessWidget {
         child: child,
       ),
     );
-    return GestureDetector(
-      onLongPress: onLongPress,
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 200),
-        scale: editing ? .94 : 1,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            TilePress(prefs: prefs, child: face),
-            if (editing)
-              Positioned(
-                right: 6,
-                top: 6,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                    child: const Icon(Icons.more_horiz_rounded, size: 18, color: Colors.black),
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 200),
+      scale: editing ? .94 : 1,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          TilePress(prefs: prefs, child: face),
+          // Its menu (size, colour, remove…), like a tile's edit buttons on Start.
+          if (editing)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Tooltip(
+                message: 'Widget options',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onMenu,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: const Icon(Icons.more_horiz_rounded, size: 18, color: Colors.black),
+                    ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
+}
+
+/// Hold to pick a widget up (edit mode comes on), drag it over another to take its place.
+class _Reorderable extends StatelessWidget {
+  const _Reorderable({
+    required this.id,
+    required this.editing,
+    required this.onPickUp,
+    required this.onDrop,
+    required this.onMove,
+    required this.child,
+    this.ghost,
+  });
+  final VoidCallback onDrop;
+  final String id;
+  final bool editing;
+  final VoidCallback onPickUp;
+  final Future<void> Function(String dragged, String target) onMove;
+  final Widget child;
+  final Widget? ghost; // what follows the finger (app widgets: a plain box)
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => DragTarget<String>(
+      onWillAcceptWithDetails: (d) {
+        if (d.data != id) onMove(d.data, id);
+        return d.data != id;
+      },
+      builder: (context, hovering, _) => LongPressDraggable<String>(
+        data: id,
+        delay: editing ? const Duration(milliseconds: 150) : kLongPressTimeout,
+        onDragStarted: onPickUp,
+        onDragEnd: (_) => onDrop(),
+        feedback: Material(
+          type: MaterialType.transparency,
+          child: SizedBox(
+            width: box.maxWidth,
+            height: box.hasBoundedHeight ? box.maxHeight : null,
+            child: Opacity(opacity: .85, child: ghost ?? Container(color: tileAccent().withValues(alpha: .7))),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: .25, child: child),
+        child: child,
+      ),
+    ),
+  );
 }
 
 /// An app widget on the today page (a placeholder in previews and tests).

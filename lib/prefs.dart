@@ -627,10 +627,17 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The day line's slots: {n: name, s: start minute, e: end minute (may wrap past midnight), c: ARGB}.
-  static const defaultDaySlots = [
+  /// The day line's slots: {n: name, s: start minute, e: end minute (may wrap past midnight), c: ARGB,
+  /// d: weekdays it repeats on, 1 = Monday (missing = every day)}.
+  static const defaultDaySlots = <Map<String, Object>>[
     {'n': 'Sleep', 's': 23 * 60, 'e': 7 * 60, 'c': 0xFF4527A0},
-    {'n': 'Office', 's': 9 * 60 + 30, 'e': 18 * 60 + 30, 'c': 0xFF1565C0},
+    {
+      'n': 'Office',
+      's': 9 * 60 + 30,
+      'e': 18 * 60 + 30,
+      'c': 0xFF1565C0,
+      'd': [1, 2, 3, 4, 5],
+    },
   ];
   List<Map<String, Object>> get daySlots {
     final raw = _sp.getString('daySlots');

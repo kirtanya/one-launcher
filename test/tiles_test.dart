@@ -530,21 +530,49 @@ void main() {
     expect(title, findsOneWidget);
     expect(find.text('nothing playing'), findsOneWidget, reason: 'music tile');
     expect(find.text('all caught up'), findsOneWidget, reason: 'notifications tile');
-    // Your day: the 24-hour line; tap → its slots; add one.
+    // Your day: the 24-hour line; tap → your week; Monday has the office, add a weekend slot.
     expect(find.byType(DayLine), findsOneWidget);
     await tester.tap(find.byType(DayLine));
     await tester.pumpAndSettle();
-    expect(ci('Office'), findsWidgets, reason: 'default slots listed');
+    expect(ci('Your week'), findsOneWidget);
+    await tester.tap(find.text('M').first); // Monday
+    await tester.pumpAndSettle();
+    expect(ci('Office'), findsWidgets, reason: 'office on weekdays');
+    expect(ci('Weekdays'), findsOneWidget);
+    await tester.tap(find.text('S').last); // Sunday: no office
+    await tester.pumpAndSettle();
+    expect(find.text('Office'), findsNothing);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/44_your_week.png'));
     await tester.tap(ci('Add a slot'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, 'Gym');
+    await tester.enterText(find.byType(TextField).last, 'Brunch');
+    await tester.tap(ci('Weekends'));
+    await tester.pumpAndSettle();
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/45_slot_editor.png'));
     await tester.tap(ci('Save'));
     await tester.pumpAndSettle();
-    expect(prefs.daySlots.last['n'], 'Gym');
+    expect(prefs.daySlots.last['n'], 'Brunch');
+    expect(prefs.daySlots.last['d'], [6, 7]);
+    expect(find.text('Brunch'), findsOneWidget, reason: 'listed on Sunday');
     Navigator.of(tester.element(find.byType(BottomSheet)), rootNavigator: true).pop();
     await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/42_tiles_today.png'));
 
+    // Hold and drag a widget onto another: it takes that place; edit mode comes on.
+    final first = todayTiles(prefs).first.id, second = todayTiles(prefs)[1].id;
+    final g = await tester.startGesture(tester.getCenter(find.byType(DayLine)));
+    await tester.pump(const Duration(milliseconds: 700));
+    for (var i = 0; i < 10; i++) {
+      await g.moveBy(const Offset(0, 22));
+      await tester.pump(const Duration(milliseconds: 60));
+    }
+    await tester.pump(const Duration(milliseconds: 300));
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs).take(2).map((t) => t.id), [second, first], reason: 'swapped by dragging');
+    expect(find.byTooltip('Widget options'), findsWidgets, reason: 'edit mode with ⋯ menus');
+    await tester.tap(find.text('done'));
+    await tester.pumpAndSettle();
     // Edit: add the clock widget, make it wide, then list layout.
     await tester.tap(find.byTooltip('Edit today'));
     await tester.pumpAndSettle();
@@ -581,6 +609,7 @@ void main() {
 
     // Notes: a sheet — add, tick, delete.
     await tester.ensureVisible(find.text('add a note'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('add a note'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'buy milk');
