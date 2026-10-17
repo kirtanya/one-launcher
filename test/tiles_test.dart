@@ -8,6 +8,7 @@ import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/quick_chips.dart';
 import 'package:one_launcher/tiles/tiles_home.dart';
 import 'package:one_launcher/tiles/today_panel.dart';
+import 'package:one_launcher/tiles/day_line.dart';
 import 'package:one_launcher/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -529,6 +530,19 @@ void main() {
     expect(title, findsOneWidget);
     expect(find.text('nothing playing'), findsOneWidget, reason: 'music tile');
     expect(find.text('all caught up'), findsOneWidget, reason: 'notifications tile');
+    // Your day: the 24-hour line; tap → its slots; add one.
+    expect(find.byType(DayLine), findsOneWidget);
+    await tester.tap(find.byType(DayLine));
+    await tester.pumpAndSettle();
+    expect(ci('Office'), findsWidgets, reason: 'default slots listed');
+    await tester.tap(ci('Add a slot'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Gym');
+    await tester.tap(ci('Save'));
+    await tester.pumpAndSettle();
+    expect(prefs.daySlots.last['n'], 'Gym');
+    Navigator.of(tester.element(find.byType(BottomSheet)), rootNavigator: true).pop();
+    await tester.pumpAndSettle();
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/42_tiles_today.png'));
 
     // Edit: add the clock widget, make it wide, then list layout.

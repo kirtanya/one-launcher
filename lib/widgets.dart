@@ -528,3 +528,27 @@ class _SheetGlass extends StatelessWidget {
     );
   }
 }
+
+/// Owns a [TextEditingController] for exactly as long as its widget lives — for text fields in
+/// sheets, which keep building while they animate closed (disposing on close crashes them).
+class WithTextController extends StatefulWidget {
+  const WithTextController({super.key, this.text = '', required this.builder});
+  final String text;
+  final Widget Function(BuildContext context, TextEditingController controller) builder;
+
+  @override
+  State<WithTextController> createState() => _WithTextControllerState();
+}
+
+class _WithTextControllerState extends State<WithTextController> {
+  late final _c = TextEditingController(text: widget.text);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _c);
+}

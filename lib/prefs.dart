@@ -627,6 +627,22 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The day line's slots: {n: name, s: start minute, e: end minute (may wrap past midnight), c: ARGB}.
+  static const defaultDaySlots = [
+    {'n': 'Sleep', 's': 23 * 60, 'e': 7 * 60, 'c': 0xFF4527A0},
+    {'n': 'Office', 's': 9 * 60 + 30, 'e': 18 * 60 + 30, 'c': 0xFF1565C0},
+  ];
+  List<Map<String, Object>> get daySlots {
+    final raw = _sp.getString('daySlots');
+    if (raw == null) return [for (final m in defaultDaySlots) Map<String, Object>.from(m)];
+    return [for (final m in jsonDecode(raw) as List) Map<String, Object>.from(m as Map)];
+  }
+
+  Future<void> setDaySlots(List<Map<String, Object>> slots) async {
+    await _sp.setString('daySlots', jsonEncode(slots));
+    notifyListeners();
+  }
+
   /// The today page's layout ('tiles' | 'list') and background ('wallpaper' | 'black').
   String get todayLayout => _sp.getString('todayLayout') ?? 'tiles';
   String get todayBg => _sp.getString('todayBg') ?? 'wallpaper';

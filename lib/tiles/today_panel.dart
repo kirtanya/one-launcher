@@ -13,6 +13,7 @@ import '../sheets.dart' show showWidgetPicker;
 import '../top/header_fonts.dart';
 import '../ui/ds.dart';
 import '../widgets.dart';
+import 'day_line.dart';
 import 'landing.dart';
 import 'tiles_home.dart';
 
@@ -35,6 +36,7 @@ class TodayPanel extends StatefulWidget {
 
 /// One Launcher's own today widgets: kind → (name, icon, sizes it can take, default size).
 const todayKinds = <String, (String, IconData, List<String>, String)>{
+  'day': ('Your day', Icons.linear_scale_rounded, ['w', 'l'], 'w'),
   'glance': ('Glance', Icons.today_rounded, ['m', 'w'], 'w'),
   'clock': ('Clock', Icons.schedule_rounded, ['s', 'm', 'w'], 'm'),
   'calendar': ('Calendar', Icons.event_rounded, ['m', 'w', 'l'], 'w'),
@@ -55,6 +57,7 @@ String todayKind(TileSpec t) => t.id.startsWith('aw:') ? 'aw' : t.id.substring(6
 
 /// The starting set (with any app widgets already placed on the page).
 List<TileSpec> todayDefaults(Prefs prefs) => [
+  const TileSpec('today:day', 'w'),
   const TileSpec('today:glance', 'w'),
   const TileSpec('today:music', 'w'),
   const TileSpec('today:calendar', 'm'),
@@ -153,6 +156,7 @@ class _TodayPanelState extends State<TodayPanel> {
     'screentime' => _usage['granted'] == false ? Apps.instance.openUsageAccess : Apps.instance.openScreenTime,
     'notes' => () => _showNotes(context),
     'remote' => () => showTvRemote(context, prefs: prefs),
+    'day' => () => showDaySlots(context, prefs: prefs),
     _ => null,
   };
 
@@ -482,6 +486,15 @@ class _TodayPanelState extends State<TodayPanel> {
         );
       case 'remote':
         return iconTile(Icons.settings_remote_rounded, small ? 'tv' : (prefs.tvHost == null ? 'tv remote' : prefs.tvName.toLowerCase()), 'remote');
+      case 'day':
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          child: big
+              ? DayLine(prefs: prefs, legend: true, radius: prefs.tileRadius)
+              : Center(
+                  child: DayLine(prefs: prefs, radius: prefs.tileRadius),
+                ),
+        );
       case 'actions':
         final labels = prefs.quickLabels;
         final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).take(big ? 8 : 4).toList();
@@ -676,6 +689,16 @@ class _TodayPanelState extends State<TodayPanel> {
             onTap: () => showTvRemote(context, prefs: prefs),
           ),
         ];
+      case 'day':
+        return [
+          GestureDetector(
+            onTap: _editing ? null : () => showDaySlots(context, prefs: prefs),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: DayLine(prefs: prefs, legend: t.size == 'l', radius: prefs.tileRadius),
+            ),
+          ),
+        ];
       case 'actions':
         return [SizedBox(height: t.size == 'l' ? 180 : 96, child: _face(t))];
       case 'aw':
@@ -815,100 +838,100 @@ class _TodayPanelState extends State<TodayPanel> {
 
   /// Notes: add, tick off, delete — a sheet over the page.
   Future<void> _showNotes(BuildContext context) async {
-    final text = TextEditingController();
     await showOneSheetWith(
       context,
       keyboard: true,
-      builder: (ctx) => ListenableBuilder(
-        listenable: prefs,
-        builder: (ctx, _) {
-          final notes = prefs.todayNotes;
-          List<Map<String, Object>> plain() => [
-            for (final n in notes) {'t': n['t'] as String, 'done': n['done'] == true},
-          ];
-          void add() {
-            final v = text.text.trim();
-            if (v.isEmpty) return;
-            HapticFeedback.selectionClick();
-            prefs.setTodayNotes([
-              ...plain(),
-              {'t': v, 'done': false},
-            ]);
-            text.clear();
-          }
+      builder: (ctx) => WithTextController(
+        builder: (ctx, text) => ListenableBuilder(
+          listenable: prefs,
+          builder: (ctx, _) {
+            final notes = prefs.todayNotes;
+            List<Map<String, Object>> plain() => [
+              for (final n in notes) {'t': n['t'] as String, 'done': n['done'] == true},
+            ];
+            void add() {
+              final v = text.text.trim();
+              if (v.isEmpty) return;
+              HapticFeedback.selectionClick();
+              prefs.setTodayNotes([
+                ...plain(),
+                {'t': v, 'done': false},
+              ]);
+              text.clear();
+            }
 
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-                child: SheetHeader(title: 'Notes', subtitle: 'Tap to tick off · long-press to delete'),
-              ),
-              for (final (i, n) in notes.indexed)
-                InkWell(
-                  onTap: () {
-                    final list = plain();
-                    list[i] = {'t': list[i]['t']!, 'done': list[i]['done'] != true};
-                    prefs.setTodayNotes(list);
-                  },
-                  onLongPress: () {
-                    HapticFeedback.mediumImpact();
-                    prefs.setTodayNotes(plain()..removeAt(i));
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: 12),
-                    child: Row(
-                      children: [
-                        Icon(
-                          n['done'] == true ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                          color: n['done'] == true ? DS.inkFaint : DS.ink,
-                        ),
-                        const SizedBox(width: DS.s16),
-                        Expanded(
-                          child: Text(
-                            n['t'] as String,
-                            style: DS.rowTitle.copyWith(
-                              fontWeight: FontWeight.w400,
-                              color: n['done'] == true ? DS.inkFaint : DS.ink,
-                              decoration: n['done'] == true ? TextDecoration.lineThrough : null,
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+                  child: SheetHeader(title: 'Notes', subtitle: 'Tap to tick off · long-press to delete'),
+                ),
+                for (final (i, n) in notes.indexed)
+                  InkWell(
+                    onTap: () {
+                      final list = plain();
+                      list[i] = {'t': list[i]['t']!, 'done': list[i]['done'] != true};
+                      prefs.setTodayNotes(list);
+                    },
+                    onLongPress: () {
+                      HapticFeedback.mediumImpact();
+                      prefs.setTodayNotes(plain()..removeAt(i));
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(
+                            n['done'] == true ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                            color: n['done'] == true ? DS.inkFaint : DS.ink,
+                          ),
+                          const SizedBox(width: DS.s16),
+                          Expanded(
+                            child: Text(
+                              n['t'] as String,
+                              style: DS.rowTitle.copyWith(
+                                fontWeight: FontWeight.w400,
+                                color: n['done'] == true ? DS.inkFaint : DS.ink,
+                                decoration: n['done'] == true ? TextDecoration.lineThrough : null,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s12, DS.s8),
-                child: Row(
-                  children: [
-                    Icon(Icons.add_rounded, color: DS.ink),
-                    const SizedBox(width: DS.s16),
-                    Expanded(
-                      child: TextField(
-                        controller: text,
-                        autofocus: notes.isEmpty,
-                        onSubmitted: (_) => add(),
-                        textInputAction: TextInputAction.done,
-                        style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400),
-                        decoration: InputDecoration(hintText: DS.cased('Add a note'), border: InputBorder.none, hintStyle: DS.rowSub),
+                        ],
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Add',
-                      onPressed: add,
-                      icon: Icon(Icons.arrow_upward_rounded, color: DS.ink),
-                    ),
-                  ],
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s12, DS.s8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_rounded, color: DS.ink),
+                      const SizedBox(width: DS.s16),
+                      Expanded(
+                        child: TextField(
+                          controller: text,
+                          autofocus: notes.isEmpty,
+                          onSubmitted: (_) => add(),
+                          textInputAction: TextInputAction.done,
+                          style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400),
+                          decoration: InputDecoration(hintText: DS.cased('Add a note'), border: InputBorder.none, hintStyle: DS.rowSub),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Add',
+                        onPressed: add,
+                        icon: Icon(Icons.arrow_upward_rounded, color: DS.ink),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
-    text.dispose();
   }
 
   // ---- layouts ----
