@@ -659,6 +659,13 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Classic home: the today panel left of home (swipe right). Tiles always has its today page.
+  bool get classicToday => _sp.getBool('classicToday') ?? true;
+  Future<void> setClassicToday(bool v) async {
+    await _sp.setBool('classicToday', v);
+    notifyListeners();
+  }
+
   List<Map<String, Object?>> get panelWidgets => [
     for (final m in jsonDecode(_sp.getString('panelWidgets') ?? '[]') as List) Map<String, Object?>.from(m as Map),
   ];

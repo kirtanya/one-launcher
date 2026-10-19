@@ -13,6 +13,8 @@ import 'tv_remote.dart';
 import 'tiles/landing.dart';
 import 'home.dart' show HomeScreen;
 import 'tiles/tiles_home.dart' show TilesHome, addActionTile;
+import 'tiles/day_line.dart' show showDaySlots;
+import 'tiles/today_panel.dart' show openToday;
 import 'remote_sheet.dart';
 import 'top/header_fonts.dart';
 import 'ui/palette.dart';
@@ -1554,6 +1556,16 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _Setting(
               'Home screen',
+              Icons.view_sidebar_outlined,
+              'Today panel',
+              prefs.homeView == 'tiles'
+                  ? '${prefs.todayLayout == 'list' ? 'List' : 'Tiles'} · swipe right from Start'
+                  : (prefs.classicToday ? '${prefs.todayLayout == 'list' ? 'List' : 'Cards'} · swipe right on home' : 'Off'),
+              keywords: 'today side panel left swipe widgets your day week notes calendar music',
+              open: (c) => _showTodaySettings(c, prefs: prefs),
+            ),
+            _Setting(
+              'Home screen',
               Icons.bolt_rounded,
               'Quick chips',
               chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
@@ -1866,6 +1878,8 @@ class _HomeEditorState extends State<_HomeEditor> {
           prefs.themedIcons,
           prefs.setThemedIcons,
         ),
+        // Classic: the today panel left of home (Tiles always has its today page).
+        if (!_tiles) _SwitchRow(Icons.view_sidebar_outlined, 'Today panel', 'Your widgets · swipe right on home', prefs.classicToday, prefs.setClassicToday),
       ]),
     ],
     'layout' => [
@@ -2237,6 +2251,79 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
         ),
       ],
     ),
+  ),
+);
+
+/// Settings → Today panel: the widgets page left of home — on or off (Classic), cards/tiles or a
+/// list, the background, your week, reset; "Open the panel" goes there to add and move widgets.
+/// One set of widgets for both views (see docs/DESIGN_LANGUAGES.md).
+Future<Object?> _showTodaySettings(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final classic = prefs.homeView != 'tiles';
+      final on = !classic || prefs.classicToday;
+      Widget label(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+        child: Text(DS.cased(t), style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+      );
+      Widget chips(List<(String, String)> options, String current, ValueChanged<String> pick) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+        child: Wrap(
+          spacing: DS.s8,
+          runSpacing: DS.s8,
+          children: [
+            for (final (id, name) in options)
+              _Chip(
+                label: DS.cased(name),
+                selected: current == id,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  pick(id);
+                },
+              ),
+          ],
+        ),
+      );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
+            child: SheetHeader(title: 'Today panel', subtitle: classic ? 'Your widgets, a swipe right from home' : 'Your widgets, a swipe right from Start'),
+          ),
+          if (classic)
+            _Group(null, [
+              _SwitchRow(Icons.view_sidebar_outlined, 'Side panel', 'Left of home · swipe right to open', prefs.classicToday, prefs.setClassicToday),
+            ]),
+          if (on) ...[
+            label('Layout'),
+            chips([('tiles', classic ? 'Cards' : 'Tiles'), ('list', 'List')], prefs.todayLayout, (v) => prefs.setTodayLook(layout: v)),
+            label('Background'),
+            chips([('wallpaper', 'Wallpaper'), ('black', classic ? 'Plain' : 'Black')], prefs.todayBg, (v) => prefs.setTodayLook(bg: v)),
+            _Group(null, [
+              if (classic)
+                _NavRow(Icons.arrow_forward_rounded, 'Open the panel', 'Tap ✎ there to add, resize and move widgets', () {
+                  SheetHost.close(ctx);
+                  openToday.ping();
+                }),
+              _NavRow(Icons.linear_scale_rounded, 'Your week', 'The slots on the Your day line', () => showDaySlots(ctx, prefs: prefs)),
+              _NavRow(Icons.restart_alt_rounded, 'Reset widgets', 'Back to the starting set', () {
+                HapticFeedback.mediumImpact();
+                prefs.setTodayTiles(null);
+              }),
+            ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, 0),
+              child: Text(DS.cased('One set of widgets for both home views — each shows them in its own look.'), style: DS.rowSub.copyWith(fontSize: 13)),
+            ),
+          ],
+          const SizedBox(height: DS.s16),
+        ],
+      );
+    },
   ),
 );
 

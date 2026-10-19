@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:one_launcher/top/top_carousel.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,7 +36,7 @@ void main() {
 
     // Top carousel: Clock → Screen time → Just wallpaper (on by default).
     expect(prefs.topPages, ['clock', 'screen_time', 'now_playing', 'blank']);
-    final carousel = find.byType(PageView).first;
+    final carousel = find.descendant(of: find.byType(TopCarousel), matching: find.byType(PageView)); // (home itself is a pager too: today panel ← home)
     for (var i = 0; i < 3; i++) {
       await tester.fling(carousel, const Offset(-250, 0), 1200);
       await tester.pumpAndSettle();

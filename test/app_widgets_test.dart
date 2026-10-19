@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:one_launcher/top/top_carousel.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,8 +85,9 @@ void main() {
     // Close the sheet and swipe to the widget page (placeholder off-device).
     Navigator.of(tester.element(find.text('Top of home')), rootNavigator: true).pop();
     await tester.pumpAndSettle();
-    for (var i = 0; i < 3; i++) { // clock → screen time → now playing → widget
-      await tester.fling(find.byType(PageView), const Offset(-250, 0), 1200);
+    for (var i = 0; i < 3; i++) {
+      // clock → screen time → now playing → widget
+      await tester.fling(find.descendant(of: find.byType(TopCarousel), matching: find.byType(PageView)), const Offset(-250, 0), 1200);
       await tester.pumpAndSettle();
     }
     // Tests run as "Android", so the real widget view is used (it draws nothing off-device).

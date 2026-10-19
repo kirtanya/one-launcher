@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/apps.dart';
+import 'package:one_launcher/top/top_carousel.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,7 +46,7 @@ void main() {
       await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
       await tester.pumpAndSettle();
       for (var i = 0; i < 4; i++) {
-        await tester.fling(find.byType(PageView).first, const Offset(-300, 0), 1500);
+        await tester.fling(find.descendant(of: find.byType(TopCarousel), matching: find.byType(PageView)), const Offset(-300, 0), 1500);
         await tester.pumpAndSettle();
       }
       expect(tester.takeException(), isNull);

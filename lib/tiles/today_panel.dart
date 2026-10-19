@@ -12,13 +12,17 @@ import '../quick_chips.dart' show ShortcutIcon;
 import '../remote_sheet.dart' show showTvRemote;
 import '../sheets.dart' show showWidgetPicker;
 import '../top/header_fonts.dart';
+import '../ui/components.dart';
 import '../ui/ds.dart';
+import '../ui/glass.dart';
+import '../ui/motion.dart';
 import '../widgets.dart';
 import 'day_line.dart';
 import 'landing.dart';
 import 'tiles_home.dart';
 
-/// The Tiles view's "today" page, left of Start (swipe right): One Launcher's own widgets —
+/// The "today" page, left of home (swipe right) — Tiles: left of Start; Classic: the side panel
+/// left of the clock and drawer, in Classic's own look. One Launcher's own widgets —
 /// glance, clock, calendar, music, notifications, battery, alarm, screen time, notes, TV remote,
 /// quick actions — plus any app widget. In Metro, two layouts:
 ///  · tiles: live tiles on a 4-column grid, like Start (sizes, colours, glass from the tiles);
@@ -55,6 +59,16 @@ const _sizeNames = {'s': 'Small', 'm': 'Medium', 'w': 'Wide', 'l': 'Large'};
 
 /// The kind of a today tile ('calendar'…, or 'aw' for an app widget).
 String todayKind(TileSpec t) => t.id.startsWith('aw:') ? 'aw' : t.id.substring(6);
+
+/// The today page is in edit mode (Back ends editing first, before it leaves the page).
+final todayEditing = ValueNotifier<bool>(false);
+
+/// Ping to bring the Classic home's today panel into view (Settings → Today panel → Open it).
+final openToday = TodaySignal();
+
+class TodaySignal extends ChangeNotifier {
+  void ping() => notifyListeners();
+}
 
 /// The starting set (with any app widgets already placed on the page).
 List<TileSpec> todayDefaults(Prefs prefs) => [
@@ -116,9 +130,39 @@ class _TodayPanelState extends State<TodayPanel> {
 
   // ---- shared bits ----
 
-  static const _white = Colors.white;
-  static TextStyle _t(double size, {FontWeight weight = FontWeight.w300, Color color = _white}) =>
-      TextStyle(fontFamily: DS.font, color: color, fontSize: size, fontWeight: weight, height: 1.15);
+  /// The Classic home's side panel speaks Classic (docs/DESIGN_LANGUAGES.md): rounded cards in
+  /// the theme's palette (glass when the Classic home is glass), Sentence case, medium weights.
+  /// Metro (the Tiles view): live tiles, lowercase, light type.
+  bool get _classic => !DS.metro;
+
+  /// The ink of what's being built: white on tiles (Metro), over album art and on the wallpaper;
+  /// on a Classic card, the card's ink (the hero card: the hero's ink). Set as each widget is built.
+  Color _white = Colors.white;
+  Color get _soft => _white.withValues(alpha: .7);
+  Color get _faint => _white.withValues(alpha: .54);
+
+  TextStyle _t(double size, {FontWeight weight = FontWeight.w300, Color? color}) => TextStyle(
+    fontFamily: DS.font,
+    color: color ?? _white,
+    fontSize: size,
+    // Classic: big figures medium, the rest regular (or heavier where asked).
+    fontWeight: _classic ? (size >= 20 ? FontWeight.w500 : (weight.value < 400 ? FontWeight.w400 : weight)) : weight,
+    letterSpacing: _classic && size >= 26 ? -.5 : null,
+    height: 1.15,
+  );
+
+  /// Words in the language's case: Metro as written (lowercase); Classic Sentence case.
+  String _c(String s) => _classic && s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : s;
+  String _day(int weekday) => _c(_days[weekday - 1]);
+  String _month(int m) => _c(_months[m - 1]);
+
+  /// The card a Classic widget sits on: the first one is the hero (like the pinned card on
+  /// home), the rest the theme's cards.
+  Color _cardColour(bool hero) => hero ? DS.hero : DS.card;
+  Color _cardInk(bool hero) => hero ? DS.heroInk : DS.ink;
+
+  /// An app's mark: Metro's white glyph on a tile; Classic: the app's own icon.
+  Widget _glyph(AppEntry app, double size) => _classic ? AppIcon(app, size: size) : TileGlyph(app: app, size: size);
 
   static String _hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   static String _dur(int ms) {
@@ -132,11 +176,11 @@ class _TodayPanelState extends State<TodayPanel> {
   String _when(Map e) {
     final b = DateTime.fromMillisecondsSinceEpoch((e['begin'] as num).toInt());
     final now = DateTime.now();
-    if (e['allDay'] == true) return b.day == now.day ? 'all day' : '${_days[b.weekday - 1]} · all day';
+    if (e['allDay'] == true) return b.day == now.day ? 'all day' : '${_day(b.weekday)} · all day';
     final mins = b.difference(now).inMinutes;
     if (mins <= 0) return 'now';
     if (mins < 60) return 'in $mins min';
-    return b.day == now.day ? _hm(b) : '${_days[b.weekday - 1].substring(0, 3)} ${_hm(b)}';
+    return b.day == now.day ? _hm(b) : '${_day(b.weekday).substring(0, 3)} ${_hm(b)}';
   }
 
   void _openClock() {
@@ -163,10 +207,15 @@ class _TodayPanelState extends State<TodayPanel> {
 
   // ---- tile faces (tiles layout) ----
 
-  Widget _face(TileSpec t) {
+  Widget _face(TileSpec t, {bool hero = false}) {
     final big = t.size == 'l', wide = t.size == 'w' || big, small = t.size == 's';
     final now = DateTime.now();
-    Widget pad(Widget child) => Padding(padding: const EdgeInsets.fromLTRB(12, 10, 12, 10), child: child);
+    _white = _classic ? _cardInk(hero) : Colors.white;
+    // Classic cards breathe more (and keep words clear of their round corners).
+    final inset = _classic
+        ? (small ? const EdgeInsets.fromLTRB(14, 12, 12, 12) : const EdgeInsets.fromLTRB(18, 16, 18, 14))
+        : const EdgeInsets.fromLTRB(12, 10, 12, 10);
+    Widget pad(Widget child) => Padding(padding: inset, child: child);
     Widget label(String text) => Text(
       text,
       maxLines: 1,
@@ -182,14 +231,14 @@ class _TodayPanelState extends State<TodayPanel> {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(big, style: _t(small ? 26 : 34)),
+            child: Text(_c(big), style: _t(small ? 26 : 34)),
           ),
           if (caption != null && !small)
             Text(
-              caption,
+              _c(caption),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: _t(12, color: Colors.white70, weight: FontWeight.w400),
+              style: _t(12, color: _soft, weight: FontWeight.w400),
             ),
         ],
       ),
@@ -202,10 +251,10 @@ class _TodayPanelState extends State<TodayPanel> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_days[now.weekday - 1], style: _t(wide ? 26 : 20)),
+              Text(_day(now.weekday), style: _t(wide ? 26 : 20)),
               Text(
-                '${now.day} ${_months[now.month - 1]}',
-                style: _t(14, color: Colors.white70, weight: FontWeight.w400),
+                '${now.day} ${_month(now.month)}',
+                style: _t(14, color: _soft, weight: FontWeight.w400),
               ),
               const Spacer(),
               if (e != null)
@@ -217,8 +266,8 @@ class _TodayPanelState extends State<TodayPanel> {
                 ),
               if (_alarm != null && wide)
                 Text(
-                  'alarm ${_hm(_alarm!.$1)}',
-                  style: _t(12, color: Colors.white70, weight: FontWeight.w400),
+                  _c('alarm ${_hm(_alarm!.$1)}'),
+                  style: _t(12, color: _soft, weight: FontWeight.w400),
                 ),
             ],
           ),
@@ -239,7 +288,7 @@ class _TodayPanelState extends State<TodayPanel> {
                   ),
                 ),
               ),
-              if (!small) Text('${_days[now.weekday - 1]} ${now.day}', style: _t(13, weight: FontWeight.w500)),
+              if (!small) Text('${_day(now.weekday)} ${now.day}', style: _t(13, weight: FontWeight.w500)),
             ],
           ),
         );
@@ -251,7 +300,7 @@ class _TodayPanelState extends State<TodayPanel> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('${now.day}', style: _t(wide ? 44 : 40, weight: FontWeight.w200)),
-            Text(_days[now.weekday - 1], style: _t(13, weight: FontWeight.w500)),
+            Text(_day(now.weekday), style: _t(13, weight: FontWeight.w500)),
           ],
         );
         Widget event(Map e) => Padding(
@@ -266,15 +315,15 @@ class _TodayPanelState extends State<TodayPanel> {
                 style: _t(15, weight: FontWeight.w400),
               ),
               Text(
-                _when(e),
-                style: _t(12, color: Colors.white70, weight: FontWeight.w400),
+                _c(_when(e)),
+                style: _t(12, color: _soft, weight: FontWeight.w400),
               ),
             ],
           ),
         );
         final none = Text(
-          'no events',
-          style: _t(14, color: Colors.white70, weight: FontWeight.w400),
+          _c('no events'),
+          style: _t(14, color: _soft, weight: FontWeight.w400),
         );
         if (!wide) {
           return pad(
@@ -307,6 +356,8 @@ class _TodayPanelState extends State<TodayPanel> {
         if (m == null || title.isEmpty) return iconTile(Icons.music_note_rounded, 'nothing playing', null);
         final art = m['art'] as Uint8List?;
         final playing = m['playing'] == true;
+        // Over album art the words are white (on its dark fade) in either language.
+        if (art != null || !_classic) _white = Colors.white;
         final controls = Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -314,7 +365,7 @@ class _TodayPanelState extends State<TodayPanel> {
               IconButton(
                 tooltip: 'Previous',
                 onPressed: Apps.instance.mediaPrev,
-                icon: const Icon(Icons.skip_previous_rounded, color: _white),
+                icon: Icon(Icons.skip_previous_rounded, color: _white),
               ),
             IconButton(
               tooltip: playing ? 'Pause' : 'Play',
@@ -325,7 +376,7 @@ class _TodayPanelState extends State<TodayPanel> {
               IconButton(
                 tooltip: 'Next',
                 onPressed: Apps.instance.mediaNext,
-                icon: const Icon(Icons.skip_next_rounded, color: _white),
+                icon: Icon(Icons.skip_next_rounded, color: _white),
               ),
           ],
         );
@@ -333,16 +384,19 @@ class _TodayPanelState extends State<TodayPanel> {
           fit: StackFit.expand,
           children: [
             if (art != null) Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x26000000), Color(0xCC000000)]),
+            if (art != null || !_classic)
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x26000000), Color(0xCC000000)]),
+                ),
               ),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
+              padding: _classic ? const EdgeInsets.fromLTRB(18, 14, 8, 8) : const EdgeInsets.fromLTRB(12, 10, 4, 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Classic, no album art: the card says what it is, like the other widgets.
+                  if (art == null && _classic) Icon(Icons.music_note_rounded, color: _white, size: 24),
                   const Spacer(),
                   Text(
                     title,
@@ -355,7 +409,7 @@ class _TodayPanelState extends State<TodayPanel> {
                       m['artist'] as String,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _t(12, color: Colors.white70, weight: FontWeight.w400),
+                      style: _t(12, color: _soft, weight: FontWeight.w400),
                     ),
                   Align(alignment: Alignment.centerRight, child: controls),
                 ],
@@ -380,14 +434,14 @@ class _TodayPanelState extends State<TodayPanel> {
                   Text('$total', style: _t(34)),
                   const SizedBox(width: 8),
                   Text(
-                    total == 1 ? 'new' : 'new',
-                    style: _t(13, color: Colors.white70, weight: FontWeight.w400),
+                    'new',
+                    style: _t(13, color: _soft, weight: FontWeight.w400),
                   ),
                 ],
               ),
               const Spacer(),
               if (apps.isEmpty)
-                Text('all caught up', style: _t(13, weight: FontWeight.w500))
+                Text(_c('all caught up'), style: _t(13, weight: FontWeight.w500))
               else
                 Wrap(
                   spacing: 6,
@@ -397,7 +451,7 @@ class _TodayPanelState extends State<TodayPanel> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          TileGlyph(app: app, size: 22),
+                          _glyph(app, 22),
                           if (wide) Text(' $n', style: _t(13, weight: FontWeight.w500)),
                         ],
                       ),
@@ -417,7 +471,7 @@ class _TodayPanelState extends State<TodayPanel> {
         );
       case 'alarm':
         final a = _alarm;
-        return iconTile(Icons.alarm_rounded, a == null ? 'off' : _hm(a.$1), a == null ? 'no alarm' : (a.$1.day == now.day ? 'today' : _days[a.$1.weekday - 1]));
+        return iconTile(Icons.alarm_rounded, a == null ? 'off' : _hm(a.$1), a == null ? 'no alarm' : (a.$1.day == now.day ? 'today' : _day(a.$1.weekday)));
       case 'screentime':
         if (_usage['granted'] == false) return iconTile(Icons.lock_open_rounded, 'screen time', 'tap to allow');
         final total = (_usage['total'] as num?)?.toInt() ?? 0;
@@ -426,12 +480,12 @@ class _TodayPanelState extends State<TodayPanel> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.hourglass_bottom_rounded, color: _white, size: 22),
+              Icon(Icons.hourglass_bottom_rounded, color: _white, size: 22),
               const Spacer(),
               Text(_dur(total), style: _t(wide ? 30 : 24)),
               Text(
-                'today',
-                style: _t(12, color: Colors.white70, weight: FontWeight.w400),
+                _c('today'),
+                style: _t(12, color: _soft, weight: FontWeight.w400),
               ),
               if (wide)
                 Padding(
@@ -444,7 +498,7 @@ class _TodayPanelState extends State<TodayPanel> {
                             padding: const EdgeInsets.only(right: 12),
                             child: Row(
                               children: [
-                                TileGlyph(app: app, size: 20),
+                                _glyph(app, 20),
                                 Text(' ${_dur((m['ms'] as num).toInt())}', style: _t(12, weight: FontWeight.w500)),
                               ],
                             ),
@@ -464,7 +518,7 @@ class _TodayPanelState extends State<TodayPanel> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.sticky_note_2_outlined, color: _white, size: 22),
+                  Icon(Icons.sticky_note_2_outlined, color: _white, size: 22),
                   const Spacer(),
                   Text(open.isEmpty ? '' : '${open.length}', style: _t(20)),
                 ],
@@ -472,35 +526,42 @@ class _TodayPanelState extends State<TodayPanel> {
               const Spacer(),
               if (notes.isEmpty)
                 Text(
-                  'tap to add a note',
-                  style: _t(14, color: Colors.white70, weight: FontWeight.w400),
+                  _c('tap to add a note'),
+                  style: _t(14, color: _soft, weight: FontWeight.w400),
                 ),
               for (final n in notes.take(big ? 7 : (wide ? 2 : 1)))
                 Text(
                   '${n['done'] == true ? '✓ ' : '· '}${n['t']}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: _t(14, weight: FontWeight.w400, color: n['done'] == true ? Colors.white54 : _white),
+                  style: _t(14, weight: FontWeight.w400, color: n['done'] == true ? _faint : _white),
                 ),
             ],
           ),
         );
       case 'remote':
-        return iconTile(Icons.settings_remote_rounded, small ? 'tv' : (prefs.tvHost == null ? 'tv remote' : prefs.tvName.toLowerCase()), 'remote');
+        return iconTile(
+          Icons.settings_remote_rounded,
+          small
+              ? (_classic ? 'TV' : 'tv')
+              : (prefs.tvHost == null ? (_classic ? 'TV remote' : 'tv remote') : (_classic ? prefs.tvName : prefs.tvName.toLowerCase())),
+          'remote',
+        );
       case 'day':
+        final radius = _classic ? DS.rMedia : prefs.tileRadius;
         return Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          padding: _classic ? const EdgeInsets.fromLTRB(20, 16, 20, 12) : const EdgeInsets.fromLTRB(14, 12, 14, 8),
           child: big
-              ? DayLine(prefs: prefs, legend: true, radius: prefs.tileRadius)
+              ? DayLine(prefs: prefs, legend: true, radius: radius, ink: _white)
               : Center(
-                  child: DayLine(prefs: prefs, radius: prefs.tileRadius),
+                  child: DayLine(prefs: prefs, radius: radius, ink: _white),
                 ),
         );
       case 'actions':
         final labels = prefs.quickLabels;
         final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).take(big ? 8 : 4).toList();
         return Padding(
-          padding: const EdgeInsets.all(8),
+          padding: EdgeInsets.all(_classic ? 12 : 8),
           child: GridView.count(
             crossAxisCount: 4,
             physics: const NeverScrollableScrollPhysics(),
@@ -516,7 +577,7 @@ class _TodayPanelState extends State<TodayPanel> {
                       builtInActions[id] != null ? Icon(builtInActions[id]!.$2, color: _white) : ShortcutIcon(id: id, size: 24, color: _white),
                       const SizedBox(height: 4),
                       Text(
-                        (builtInActions[id]?.$1 ?? labels[id]!.split('|').first).toLowerCase(),
+                        DS.cased(builtInActions[id]?.$1 ?? labels[id]!.split('|').first),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: _t(11, weight: FontWeight.w500),
@@ -535,8 +596,19 @@ class _TodayPanelState extends State<TodayPanel> {
 
   // ---- list rows (list layout) ----
 
-  Widget _square(Widget child, {double size = 44}) =>
-      Container(width: size, height: size, decoration: listSquare(prefs, tileAccent(), prefs.tileRadius * .5), alignment: Alignment.center, child: child);
+  Widget _square(Widget child, {double size = 44}) => _classic
+      // Classic: the accent disc of Settings rows.
+      ? Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(12)),
+          alignment: Alignment.center,
+          child: child,
+        )
+      : Container(width: size, height: size, decoration: listSquare(prefs, tileAccent(), prefs.tileRadius * .5), alignment: Alignment.center, child: child);
+
+  /// An app at the start of a row: Metro, its glyph on an accent square; Classic, its icon.
+  Widget _appLead(AppEntry app) => _classic ? AppIcon(app, size: 40) : _square(TileGlyph(app: app, size: 28));
 
   Widget _row({required Widget lead, required String title, String? sub, VoidCallback? onTap, Widget? trailing}) => InkWell(
     onTap: _editing ? null : onTap,
@@ -550,13 +622,18 @@ class _TodayPanelState extends State<TodayPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: _t(18)),
-                if (sub != null)
+                Text(
+                  _c(title),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _classic ? DS.rowTitle.copyWith(fontWeight: FontWeight.w500) : _t(18),
+                ),
+                if (sub != null && sub.isNotEmpty)
                   Text(
-                    sub,
+                    _c(sub),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: _t(13, color: Colors.white60, weight: FontWeight.w400),
+                    style: _classic ? DS.rowSub.copyWith(fontSize: 13) : _t(13, color: _white.withValues(alpha: .6), weight: FontWeight.w400),
                   ),
               ],
             ),
@@ -567,22 +644,26 @@ class _TodayPanelState extends State<TodayPanel> {
     ),
   );
 
-  Widget _icon(IconData i) => _square(Icon(i, color: _white, size: 22));
+  Widget _icon(IconData i) => _square(Icon(i, color: _classic ? DS.heroInk : _white, size: _classic ? 21 : 22));
 
   List<Widget> _rows(TileSpec t) {
     final now = DateTime.now();
+    _white = _classic ? DS.ink : Colors.white; // Classic list: rows on the theme's cards
     switch (todayKind(t)) {
       case 'glance':
         return [
           _row(
             lead: _icon(Icons.today_rounded),
-            title: '${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}',
-            sub: [if (_eventList.firstOrNull case final e?) '${e['title']} · ${_when(e)}', if (_alarm != null) 'alarm ${_hm(_alarm!.$1)}'].join('  ·  '),
+            title: '${_day(now.weekday)}, ${now.day} ${_month(now.month)}',
+            sub: [
+              if (_eventList.firstOrNull case final e?) '${e['title']} · ${_when(e)}',
+              if (_alarm != null) '${_classic ? 'Alarm' : 'alarm'} ${_hm(_alarm!.$1)}',
+            ].join('  ·  '),
             onTap: _action(t),
           ),
         ];
       case 'clock':
-        return [_row(lead: _icon(Icons.schedule_rounded), title: _hm(now), sub: _days[now.weekday - 1], onTap: _openClock)];
+        return [_row(lead: _icon(Icons.schedule_rounded), title: _hm(now), sub: _day(now.weekday), onTap: _openClock)];
       case 'calendar':
         if (_events['granted'] == false) return [_row(lead: _icon(Icons.lock_open_rounded), title: 'allow calendar', onTap: Apps.instance.requestCalendar)];
         final events = _eventList.take(t.size == 'l' ? 6 : 3).toList();
@@ -603,7 +684,7 @@ class _TodayPanelState extends State<TodayPanel> {
         return [
           _row(
             lead: ClipRRect(
-              borderRadius: BorderRadius.circular(prefs.tileRadius * .5),
+              borderRadius: BorderRadius.circular(_classic ? 12 : prefs.tileRadius * .5),
               child: art != null ? Image.memory(art, width: 56, height: 56, fit: BoxFit.cover, gaplessPlayback: true) : _icon(Icons.music_note_rounded),
             ),
             title: title,
@@ -615,7 +696,7 @@ class _TodayPanelState extends State<TodayPanel> {
                 IconButton(
                   tooltip: 'Previous',
                   onPressed: Apps.instance.mediaPrev,
-                  icon: const Icon(Icons.skip_previous_rounded, color: _white),
+                  icon: Icon(Icons.skip_previous_rounded, color: _white),
                 ),
                 IconButton(
                   tooltip: playing ? 'Pause' : 'Play',
@@ -625,7 +706,7 @@ class _TodayPanelState extends State<TodayPanel> {
                 IconButton(
                   tooltip: 'Next',
                   onPressed: Apps.instance.mediaNext,
-                  icon: const Icon(Icons.skip_next_rounded, color: _white),
+                  icon: Icon(Icons.skip_next_rounded, color: _white),
                 ),
               ],
             ),
@@ -634,13 +715,7 @@ class _TodayPanelState extends State<TodayPanel> {
       case 'notifications':
         final rows = [
           for (final e in Apps.instance.notifCounts.value.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
-            if (_app(e.key) case final app?)
-              _row(
-                lead: _square(TileGlyph(app: app, size: 28)),
-                title: app.label,
-                sub: '${e.value} new',
-                onTap: () => widget.onLaunch(app),
-              ),
+            if (_app(e.key) case final app?) _row(lead: _appLead(app), title: app.label, sub: '${e.value} new', onTap: () => widget.onLaunch(app)),
         ];
         return rows.isEmpty ? [_row(lead: _icon(Icons.done_all_rounded), title: 'all caught up')] : rows.take(6).toList();
       case 'battery':
@@ -667,12 +742,7 @@ class _TodayPanelState extends State<TodayPanel> {
           ),
           for (final m in top.take(3))
             if (_app(m['package'] as String) case final app?)
-              _row(
-                lead: _square(TileGlyph(app: app, size: 28)),
-                title: app.label,
-                sub: _dur((m['ms'] as num).toInt()),
-                onTap: () => widget.onLaunch(app),
-              ),
+              _row(lead: _appLead(app), title: app.label, sub: _dur((m['ms'] as num).toInt()), onTap: () => widget.onLaunch(app)),
         ];
       case 'notes':
         final notes = prefs.todayNotes;
@@ -685,8 +755,8 @@ class _TodayPanelState extends State<TodayPanel> {
         return [
           _row(
             lead: _icon(Icons.settings_remote_rounded),
-            title: prefs.tvHost == null ? 'set up a tv' : prefs.tvName,
-            sub: 'tv remote',
+            title: prefs.tvHost == null ? (_classic ? 'Set up a TV' : 'set up a tv') : prefs.tvName,
+            sub: _classic ? 'TV remote' : 'tv remote',
             onTap: () => showTvRemote(context, prefs: prefs),
           ),
         ];
@@ -696,7 +766,7 @@ class _TodayPanelState extends State<TodayPanel> {
             onTap: _editing ? null : () => showDaySlots(context, prefs: prefs),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: DayLine(prefs: prefs, legend: t.size == 'l', radius: prefs.tileRadius),
+              child: DayLine(prefs: prefs, legend: t.size == 'l', radius: _classic ? DS.rMedia : prefs.tileRadius, ink: _white),
             ),
           ),
         ];
@@ -725,17 +795,28 @@ class _TodayPanelState extends State<TodayPanel> {
           final i = _tiles.indexWhere((x) => x.id == t.id);
           Widget box(String text, bool on, VoidCallback tap) => Padding(
             padding: const EdgeInsets.only(right: DS.s8, bottom: DS.s8),
+            // Metro: outlined boxes, the accent when chosen. Classic: ink pills.
             child: Material(
-              color: on ? DS.hero : Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(DS.rMedia),
-                side: BorderSide(color: on ? DS.hero : DS.inkFaint, width: 1.5),
-              ),
+              color: on ? (_classic ? DS.ink : DS.hero) : Colors.transparent,
+              shape: _classic
+                  ? StadiumBorder(side: BorderSide(color: on ? DS.ink : DS.hairline))
+                  : RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(DS.rMedia),
+                      side: BorderSide(color: on ? DS.hero : DS.inkFaint, width: 1.5),
+                    ),
+              clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: tap,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: 10),
-                  child: Text(DS.cased(text), style: DS.rowTitle.copyWith(fontSize: 14, color: on ? _white : DS.ink)),
+                  child: Text(
+                    DS.cased(text),
+                    style: DS.rowTitle.copyWith(
+                      fontSize: 14,
+                      fontWeight: _classic ? FontWeight.w500 : null,
+                      color: on ? (_classic ? DS.card : Colors.white) : DS.ink,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -750,7 +831,11 @@ class _TodayPanelState extends State<TodayPanel> {
                   const SizedBox(width: DS.s16),
                   Text(
                     DS.cased(text),
-                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w400, fontSize: 18, color: tap == null ? DS.inkFaint : (danger ? DS.alert : DS.ink)),
+                    style: DS.rowTitle.copyWith(
+                      fontWeight: _classic ? FontWeight.w500 : FontWeight.w400,
+                      fontSize: _classic ? 16 : 18,
+                      color: tap == null ? DS.inkFaint : (danger ? DS.alert : DS.ink),
+                    ),
                   ),
                 ],
               ),
@@ -778,10 +863,12 @@ class _TodayPanelState extends State<TodayPanel> {
                   padding: const EdgeInsets.symmetric(horizontal: DS.s24),
                   child: Wrap(children: [for (final sz in sizes) box(_sizeNames[sz]!, now.size == sz, () => update(now.resized(sz)))]),
                 ),
-                act(Icons.palette_outlined, 'Colour', () async {
-                  final c = await pickTileColour(ctx, current: now.colour);
-                  if (c != null) await update(now.recoloured(c == 'default' ? null : c));
-                }),
+                // Colour is a tile thing: Classic cards follow the theme (the first one is the hero).
+                if (!_classic)
+                  act(Icons.palette_outlined, 'Colour', () async {
+                    final c = await pickTileColour(ctx, current: now.colour);
+                    if (c != null) await update(now.recoloured(c == 'default' ? null : c));
+                  }),
               ],
               act(Icons.arrow_upward_rounded, 'Move earlier', i <= 0 ? null : () => _move(t.id, -1).then((_) => refresh(() {}))),
               act(Icons.arrow_downward_rounded, 'Move later', i < 0 || i >= _tiles.length - 1 ? null : () => _move(t.id, 1).then((_) => refresh(() {}))),
@@ -970,19 +1057,29 @@ class _TodayPanelState extends State<TodayPanel> {
   // ---- layouts ----
 
   Widget _editBar() {
+    // Over the wallpaper. Metro: flat boxes, the accent when chosen. Classic: frosted pills
+    // like the quick chips, a card-coloured pill when chosen.
     Widget box(String text, bool on, VoidCallback tap) => Padding(
       padding: const EdgeInsets.only(right: DS.s8, bottom: DS.s8),
       child: Material(
-        color: on ? tileAccent() : Colors.white.withValues(alpha: .1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(prefs.tileRadius * .5)),
+        color: _classic ? (on ? DS.card : DS.chipOnWallpaper) : (on ? tileAccent() : Colors.white.withValues(alpha: .1)),
+        shape: _classic
+            ? StadiumBorder(side: BorderSide(color: on ? Colors.transparent : DS.glassLine))
+            : RoundedRectangleBorder(borderRadius: BorderRadius.circular(prefs.tileRadius * .5)),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
             HapticFeedback.selectionClick();
             tap();
           },
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            child: Text(text, style: _t(15, weight: FontWeight.w400)),
+            padding: EdgeInsets.symmetric(horizontal: _classic ? 16 : 14, vertical: 10),
+            child: Text(
+              _c(text),
+              style: _classic
+                  ? DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: on ? DS.ink : DS.onWallpaper)
+                  : _t(15, weight: FontWeight.w400),
+            ),
           ),
         ),
       ),
@@ -998,13 +1095,14 @@ class _TodayPanelState extends State<TodayPanel> {
               box('list', prefs.todayLayout == 'list', () => prefs.setTodayLook(layout: 'list')),
               const SizedBox(width: DS.s12),
               box('wallpaper', prefs.todayBg == 'wallpaper', () => prefs.setTodayLook(bg: 'wallpaper')),
-              box('black', prefs.todayBg == 'black', () => prefs.setTodayLook(bg: 'black')),
+              // Classic: the theme's plain canvas rather than black.
+              box(_classic ? 'plain' : 'black', prefs.todayBg == 'black', () => prefs.setTodayLook(bg: 'black')),
             ],
           ),
-          Wrap(children: [box('+ add widget', false, _add), box('reset', false, () => prefs.setTodayTiles(null))]),
+          Wrap(children: [box(_classic ? 'add widget' : '+ add widget', false, _add), box('reset', false, () => prefs.setTodayTiles(null))]),
           Text(
-            'hold and drag to move · ⋯ for size, colour and more',
-            style: _t(12, color: Colors.white54, weight: FontWeight.w400),
+            _classic ? 'Hold and drag to move · ⋯ for size and more' : 'hold and drag to move · ⋯ for size, colour and more',
+            style: _t(12, color: _classic ? DS.onCanvasMuted : Colors.white54, weight: FontWeight.w400),
           ),
         ],
       ),
@@ -1013,7 +1111,8 @@ class _TodayPanelState extends State<TodayPanel> {
 
   Widget _tilesGrid(List<TileSpec> tiles) => LayoutBuilder(
     builder: (context, c) {
-      const gap = 6.0, cols = 4;
+      final gap = _classic ? 8.0 : 6.0;
+      const cols = 4;
       final unit = (c.maxWidth - (cols - 1) * gap) / cols;
       final placed = packTiles(tiles, cols: cols);
       var rows = 0;
@@ -1024,7 +1123,7 @@ class _TodayPanelState extends State<TodayPanel> {
         height: rows == 0 ? 0 : rows * unit + (rows - 1) * gap,
         child: Stack(
           children: [
-            for (final (t, col, row) in placed)
+            for (final (i, (t, col, row)) in placed.indexed)
               AnimatedPositioned(
                 key: ValueKey(t.id),
                 duration: const Duration(milliseconds: 260),
@@ -1035,7 +1134,7 @@ class _TodayPanelState extends State<TodayPanel> {
                 height: t.span.$2 * unit + (t.span.$2 - 1) * gap,
                 child: Landed(
                   landing: todayLanding,
-                  style: prefs.tileAnim,
+                  style: _anim,
                   delay: Duration(milliseconds: 40 * col + 22 * row),
                   child: _Reorderable(
                     id: t.id,
@@ -1043,14 +1142,22 @@ class _TodayPanelState extends State<TodayPanel> {
                     onPickUp: _pickUp,
                     onDrop: _drop,
                     onMove: _moveTo,
-                    ghost: t.id.startsWith('aw:') ? null : _face(t),
+                    ghost: _classic
+                        ? _ClassicCard(
+                            colour: _cardColour(i == 0),
+                            radius: _radius(t),
+                            child: t.id.startsWith('aw:') ? const SizedBox.expand() : _face(t, hero: i == 0),
+                          )
+                        : (t.id.startsWith('aw:') ? null : _face(t)),
                     child: _TodayTile(
                       tile: t,
                       prefs: prefs,
                       editing: _editing,
+                      hero: i == 0,
+                      radius: _radius(t),
                       onTap: _editing ? () => _options(t) : _action(t),
                       onMenu: () => _options(t),
-                      child: _face(t),
+                      child: _face(t, hero: i == 0),
                     ),
                   ),
                 ),
@@ -1060,6 +1167,77 @@ class _TodayPanelState extends State<TodayPanel> {
       );
     },
   );
+
+  /// Classic list: each widget on its own card — a small-caps header, then its rows.
+  Widget _classicList(List<TileSpec> tiles) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final (i, t) in tiles.indexed)
+        Padding(
+          padding: const EdgeInsets.only(bottom: DS.s8),
+          child: Landed(
+            landing: todayLanding,
+            style: _anim,
+            delay: Duration(milliseconds: 50 * i),
+            child: _Reorderable(
+              id: t.id,
+              editing: _editing,
+              onPickUp: _pickUp,
+              onDrop: _drop,
+              onMove: _moveTo,
+              ghost: _ClassicCard(
+                colour: DS.card,
+                radius: DS.rCard,
+                child: Container(
+                  height: 64,
+                  padding: const EdgeInsets.symmetric(horizontal: DS.pad),
+                  alignment: Alignment.centerLeft,
+                  child: Text(_title(t), style: DS.rowTitle),
+                ),
+              ),
+              child: _ClassicCard(
+                colour: DS.card,
+                radius: DS.rCard,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(DS.pad, DS.s12, DS.s12, DS.s12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: 36,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _title(t).toUpperCase(),
+                                style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (_editing)
+                              IconButton(
+                                tooltip: 'Widget options',
+                                onPressed: () => _options(t),
+                                icon: Icon(Icons.more_horiz_rounded, color: DS.ink),
+                              ),
+                          ],
+                        ),
+                      ),
+                      ..._rows(t),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
+
+  /// Entrances: Metro uses the Start animation; Classic a gentle cascade.
+  String get _anim => _classic ? 'cascade' : prefs.tileAnim;
+
+  /// A Classic card's corners: the card radius; small ones a little less, so they stay square-ish.
+  double _radius(TileSpec t) => _classic ? (t.size == 's' ? DS.rMedia : DS.rCard) : prefs.tileRadius;
 
   Widget _list(List<TileSpec> tiles) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1096,7 +1274,7 @@ class _TodayPanelState extends State<TodayPanel> {
                         IconButton(
                           tooltip: 'Widget options',
                           onPressed: () => _options(t),
-                          icon: const Icon(Icons.more_horiz_rounded, color: _white),
+                          icon: const Icon(Icons.more_horiz_rounded, color: Colors.white),
                         ),
                     ],
                   ),
@@ -1109,6 +1287,47 @@ class _TodayPanelState extends State<TodayPanel> {
     ],
   );
 
+  /// Classic header: "Today" and the date over the wallpaper, with the edit button.
+  Widget _classicHeader(DateTime now) => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s16, 0, 0, 0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${_day(now.weekday)}, ${now.day} ${_month(now.month)}', style: DS.wallpaperDate),
+              const SizedBox(height: 2),
+              const Text(
+                'Today',
+                style: TextStyle(fontFamily: DS.font, fontSize: 40, fontWeight: FontWeight.w500, height: 1.1, letterSpacing: -1, color: DS.onWallpaper),
+              ),
+            ],
+          ),
+        ),
+        _editing
+            ? FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: DS.card, foregroundColor: DS.ink, shape: const StadiumBorder()),
+                onPressed: () => setState(() => _editing = false),
+                child: const Text(
+                  'Done',
+                  style: TextStyle(fontFamily: DS.font, fontWeight: FontWeight.w600),
+                ),
+              )
+            : CircleButton(
+                icon: Icons.edit_outlined,
+                tone: CircleTone.glass,
+                tooltip: 'Edit today',
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _editing = true);
+                },
+              ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
@@ -1117,62 +1336,76 @@ class _TodayPanelState extends State<TodayPanel> {
       listenable: Listenable.merge([prefs, Apps.instance.media, Apps.instance.notifCounts]),
       builder: (context, _) {
         final tiles = _tiles;
+        _white = Colors.white; // the header and edit bar sit on the wallpaper
+        todayEditing.value = _editing;
         return PopScope(
           canPop: !_editing,
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop && _editing) setState(() => _editing = false);
           },
           child: ColoredBox(
-            color: prefs.todayBg == 'black' ? Colors.black : Colors.transparent,
+            color: prefs.todayBg == 'black' ? (_classic ? DS.canvas : Colors.black) : Colors.transparent,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(), // pull down to search even when it fits
-              padding: EdgeInsets.fromLTRB(12, pad.top + DS.s24, 12, pad.bottom + DS.s32),
+              padding: _classic
+                  ? EdgeInsets.fromLTRB(DS.gutter, pad.top + DS.s16, DS.gutter, pad.bottom + DS.s32)
+                  : EdgeInsets.fromLTRB(12, pad.top + DS.s24, 12, pad.bottom + DS.s32),
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('today', style: _t(52, weight: FontWeight.w300).copyWith(letterSpacing: -1.5, height: 1)),
-                            const SizedBox(height: 4),
-                            Text('${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}', style: _t(17, color: Colors.white70)),
-                          ],
+                if (_classic)
+                  _classicHeader(now)
+                else
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('today', style: _t(52, weight: FontWeight.w300).copyWith(letterSpacing: -1.5, height: 1)),
+                              const SizedBox(height: 4),
+                              Text('${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}', style: _t(17, color: Colors.white70)),
+                            ],
+                          ),
                         ),
-                      ),
-                      _editing
-                          ? FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: tileAccent(),
-                                foregroundColor: _white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(prefs.tileRadius * .5)),
+                        _editing
+                            ? FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: tileAccent(),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(prefs.tileRadius * .5)),
+                                ),
+                                onPressed: () => setState(() => _editing = false),
+                                child: const Text('done'),
+                              )
+                            : IconButton(
+                                tooltip: 'Edit today',
+                                onPressed: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _editing = true);
+                                },
+                                icon: const Icon(Icons.edit_outlined, color: Colors.white),
                               ),
-                              onPressed: () => setState(() => _editing = false),
-                              child: const Text('done'),
-                            )
-                          : IconButton(
-                              tooltip: 'Edit today',
-                              onPressed: () {
-                                HapticFeedback.selectionClick();
-                                setState(() => _editing = true);
-                              },
-                              icon: const Icon(Icons.edit_outlined, color: _white),
-                            ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (_editing && !_dragging) Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: _editBar()),
-                const SizedBox(height: DS.s20),
+                if (_editing && !_dragging)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: _classic ? DS.s16 : 4),
+                    child: _editBar(),
+                  ),
+                SizedBox(height: _classic ? DS.s16 : DS.s20),
                 if (tiles.isEmpty)
                   Padding(
                     padding: const EdgeInsets.all(DS.s16),
-                    child: Text('nothing here — tap ✎, then + add widget', style: _t(16, color: Colors.white70)),
+                    child: Text(
+                      _classic ? 'Nothing here — tap ✎, then Add widget' : 'nothing here — tap ✎, then + add widget',
+                      style: _t(16, color: Colors.white70),
+                    ),
                   )
                 else if (prefs.todayLayout == 'list')
-                  Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: _list(tiles))
+                  _classic ? _classicList(tiles) : Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: _list(tiles))
                 else
                   _tilesGrid(tiles),
               ],
@@ -1186,16 +1419,68 @@ class _TodayPanelState extends State<TodayPanel> {
 
 /// A today widget as a live tile: the tile look (colour, glass, corners, tilt) from Start.
 /// In edit mode it sits back a little and shows ⋯; tap for its options.
+/// Classic: a rounded card in the theme's colours (the hero card first), glass when the Classic
+/// home is glass, the usual gentle press.
 class _TodayTile extends StatelessWidget {
-  const _TodayTile({required this.tile, required this.prefs, required this.editing, required this.onTap, required this.onMenu, required this.child});
+  const _TodayTile({
+    required this.tile,
+    required this.prefs,
+    required this.editing,
+    required this.onTap,
+    required this.onMenu,
+    required this.child,
+    this.hero = false,
+    this.radius = 0,
+  });
   final TileSpec tile;
   final Prefs prefs;
-  final bool editing;
+  final bool editing, hero;
+  final double radius;
   final VoidCallback? onTap, onMenu;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
+    if (!DS.metro) {
+      return AnimatedScale(
+        duration: const Duration(milliseconds: 200),
+        scale: editing ? .95 : 1,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Pressable(
+              scale: .97,
+              child: _ClassicCard(
+                colour: hero ? DS.hero : DS.card,
+                radius: radius,
+                child: InkWell(onTap: onTap ?? () {}, child: child),
+              ),
+            ),
+            if (editing)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Tooltip(
+                  message: 'Widget options',
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onMenu,
+                    child: Padding(
+                      padding: const EdgeInsets.all(DS.s8),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(color: DS.ink, shape: BoxShape.circle),
+                        child: Icon(Icons.more_horiz_rounded, size: 18, color: DS.card),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     final face = FutureBuilder<Color>(
       future: tileColour(tile, prefs),
       builder: (context, snap) => TileSurface(
@@ -1238,6 +1523,22 @@ class _TodayTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A Classic card: the theme's [colour] with [radius] corners — a frosted pane when the Classic
+/// home is glass (Home view → Look → Glass).
+class _ClassicCard extends StatelessWidget {
+  const _ClassicCard({required this.colour, required this.radius, required this.child});
+  final Color colour;
+  final double radius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => glassOr(
+    colour: colour,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+    child: child,
+  );
 }
 
 /// Hold to pick a widget up (edit mode comes on), drag it over another to take its place.

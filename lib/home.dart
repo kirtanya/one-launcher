@@ -18,6 +18,8 @@ import 'top/top_carousel.dart';
 import 'ui/theme.dart';
 import 'photo_wallpaper.dart';
 import 'sheets.dart';
+import 'tiles/landing.dart' show todayLanding;
+import 'tiles/today_panel.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'ui/perf.dart';
@@ -26,6 +28,8 @@ import 'ui/perf.dart';
 /// top half = big clock over the wallpaper + launcher options,
 /// bottom half = the app view as a sheet. Swipe the sheet up and the clock
 /// scales down and fades away; swipe down to bring it back.
+/// Swipe right (or past the first top page) for the today panel on its left — the same widgets
+/// as the Tiles today page, in Classic's look (Settings → Home screen → Today panel).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.prefs, required this.theme, this.preview = false});
   final Prefs prefs;
@@ -89,6 +93,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   /// The "Just wallpaper" top page is showing: hide the top tint too.
   final _topBlank = ValueNotifier<bool>(false);
+
+  /// Today panel (0) ← home (1). One horizontal pager: it takes horizontal swipes anywhere the
+  /// things inside don't (the top carousel and chip rows keep theirs).
+  final _panel = PageController(initialPage: 1);
+  bool get _sidePanel => prefs.classicToday && !widget.preview;
+  bool get _onPanel => _panel.hasClients && (_panel.page ?? 1) < .5;
+
+  /// The top carousel pulled past its first page: the panel follows the finger from there.
+  bool _handing = false;
+
+  void _toPanel(int page) {
+    if (_panel.hasClients) _panel.animateToPage(page, duration: Motion.snapDuration, curve: Motion.settle);
+  }
+
+  void _openToday() {
+    if (!_sidePanel) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    _toPanel(0);
+  }
+
+  /// Hands a swipe right on the top carousel's first page over to the panel (the carousel
+  /// can't go further): the panel slides in under the finger and settles open or back.
+  bool _onCarouselScroll(ScrollNotification n) {
+    if (!_sidePanel || n.metrics.axis != Axis.horizontal || !_panel.hasClients) return false;
+    final p = _panel.position;
+    if (n is OverscrollNotification && n.dragDetails != null && (n.overscroll < 0 || _handing)) {
+      _handing = true;
+      p.jumpTo((p.pixels + n.overscroll).clamp(p.minScrollExtent, p.maxScrollExtent));
+    } else if (n is ScrollEndNotification && _handing) {
+      _handing = false;
+      final v = n.dragDetails?.primaryVelocity ?? 0;
+      _toPanel((_panel.page ?? 1) < .88 || v > 300 ? 0 : 1);
+    }
+    return false;
+  }
 
   @override
   void setState(VoidCallback fn) {
@@ -174,6 +213,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     super.initState();
     prefs.addListener(_rebuild);
     if (!widget.preview) {
+      openToday.addListener(_openToday);
       WidgetsBinding.instance.addObserver(this);
       Apps.instance.onAppsChanged = _loadApps;
       Apps.instance.onHomePressed = _goHome;
@@ -226,6 +266,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_rebuild);
+    openToday.removeListener(_openToday);
+    _panel.dispose();
     _sheet.dispose();
     _land.dispose();
     _pullBack.dispose();
@@ -247,6 +289,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     if (state == AppLifecycleState.resumed && _wasHidden) {
       _wasHidden = false;
       _land.forward(from: 0);
+      if (_onPanel) todayLanding.play(); // back on the panel: its widgets come in again
     }
     if (state == AppLifecycleState.resumed) {
       _loadApps();
@@ -256,7 +299,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     }
   }
 
-  void _rebuild() => setState(() {});
+  void _rebuild() {
+    // Panel switched off while it shows: back home.
+    if (!_sidePanel && _panel.hasClients && (_panel.page ?? 1) != 1) _panel.jumpToPage(1);
+    setState(() {});
+  }
 
   Future<void> _loadApps() async {
     final apps = await Apps.instance.list();
@@ -380,6 +427,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _stopSearch();
     _drawerKey.currentState?.reset();
     _collapse();
+    _toPanel(1); // from the today panel too
   }
 
   Future<void> _launch(AppEntry app) async {
@@ -419,6 +467,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       canPop: widget.preview,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+        // On the today panel: Back ends its editing first (the panel does that), then home.
+        if (_onPanel) {
+          if (!todayEditing.value) _toPanel(1);
+          return;
+        }
         if (_searching) return _stopSearch();
         if (_expanded.value > 0) _collapse();
       },
@@ -465,121 +518,155 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     ),
                   ),
 
-                  // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: topHeight,
-                    child: ValueListenableBuilder<double>(
-                      valueListenable: _expanded,
-                      builder: (context, e, child) => IgnorePointer(
-                        ignoring: e > 0.3,
-                        child: Opacity(
-                          // Lighter effects: no fade (an offscreen layer every frame) — the sheet covers it.
-                          opacity: Perf.lite.value ? (e > .95 ? 0 : 1) : (1 - e * 1.6).clamp(0.0, 1.0),
-                          child: Transform.translate(
-                            offset: Offset(0, -topHeight * 0.18 * e),
-                            child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
-                          ),
-                        ),
-                      ),
-                      child: RepaintBoundary(
-                        // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
-                        child: _TopArea(
-                          carousel: TopCarousel(
-                            prefs: prefs,
-                            refresh: _refresh,
-                            onTapClock: () => _openNamed(['clock']),
-                            onTapDate: () => _openNamed(['calendar', 'google calendar']),
-                            onBlank: (b) => _topBlank.value = b,
-                          ),
-                          blank: _topBlank,
-                          onCustomise: () {
-                            HapticFeedback.mediumImpact();
-                            showCustomiseTop(context, prefs: prefs);
-                          },
-                          padding: prefs.topPadding,
-                          onSwipeUp: _expand,
-                          onSwipeDown: Apps.instance.openNotifications,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // ---- Bottom half: the app view sheet. ----
-                  NotificationListener<ScrollEndNotification>(
-                    onNotification: (_) {
-                      if (_collapseOnRelease) {
-                        _collapseOnRelease = false;
-                        _collapse();
-                      }
-                      return false;
-                    },
-                    child: NotificationListener<DraggableScrollableNotification>(
-                      // Dragging the whole sheet down while searching also ends the search.
-                      onNotification: (n) {
-                        if (_showResults && n.extent < 0.97) _dismissSearch();
-                        return false;
+                  // ---- Today panel ← home: one pager over the wallpaper (it stays put). No
+                  // stretch on the pager itself; the pages keep their own. ----
+                  ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+                    child: PageView(
+                      controller: _panel,
+                      physics: _sidePanel ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(),
+                      onPageChanged: (i) {
+                        if (i == 0) {
+                          HapticFeedback.selectionClick();
+                          todayLanding.play();
+                        }
                       },
-                      child: _sheetWidget,
-                    ),
-                  ),
-
-                  // ---- Quick action chips: on the wallpaper, just above the sheet's top edge. ----
-                  // They ride along with the sheet and fade out as it expands.
-                  ValueListenableBuilder<double>(
-                    valueListenable: _expanded,
-                    builder: (context, e, child) {
-                      final sheetTop = c.maxHeight * (1 - (_rest + e * (1 - _rest)));
-                      return Positioned(
-                        left: 0,
-                        right: 0,
-                        top: sheetTop - QuickChipsRow.height - QuickChipsRow.gap,
-                        height: QuickChipsRow.height,
-                        child: IgnorePointer(
-                          ignoring: e > .2,
-                          child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
+                      children: [
+                        ScrollConfiguration(
+                          behavior: ScrollConfiguration.of(context),
+                          child: _sidePanel ? TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch) : const SizedBox.shrink(),
                         ),
-                      );
-                    },
-                    child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
-                  ),
+                        _KeepAlive(
+                          child: ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(context),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
+                                Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  height: topHeight,
+                                  child: ValueListenableBuilder<double>(
+                                    valueListenable: _expanded,
+                                    builder: (context, e, child) => IgnorePointer(
+                                      ignoring: e > 0.3,
+                                      child: Opacity(
+                                        // Lighter effects: no fade (an offscreen layer every frame) — the sheet covers it.
+                                        opacity: Perf.lite.value ? (e > .95 ? 0 : 1) : (1 - e * 1.6).clamp(0.0, 1.0),
+                                        child: Transform.translate(
+                                          offset: Offset(0, -topHeight * 0.18 * e),
+                                          child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
+                                        ),
+                                      ),
+                                    ),
+                                    child: RepaintBoundary(
+                                      // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
+                                      child: _TopArea(
+                                        carousel: NotificationListener<ScrollNotification>(
+                                          onNotification: _onCarouselScroll, // past its first page → the today panel
+                                          child: TopCarousel(
+                                            prefs: prefs,
+                                            refresh: _refresh,
+                                            onTapClock: () => _openNamed(['clock']),
+                                            onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                                            onBlank: (b) => _topBlank.value = b,
+                                          ),
+                                        ),
+                                        blank: _topBlank,
+                                        onCustomise: () {
+                                          HapticFeedback.mediumImpact();
+                                          showCustomiseTop(context, prefs: prefs);
+                                        },
+                                        padding: prefs.topPadding,
+                                        onSwipeUp: _expand,
+                                        onSwipeDown: Apps.instance.openNotifications,
+                                      ),
+                                    ),
+                                  ),
+                                ),
 
-                  // ---- Fade under the dock, so it reads as floating above the cards. ----
-                  if (prefs.searchPosition != 'top')
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            // Sheet colour (follows the theme), fading in under the dock.
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                                // ---- Bottom half: the app view sheet. ----
+                                NotificationListener<ScrollEndNotification>(
+                                  onNotification: (_) {
+                                    if (_collapseOnRelease) {
+                                      _collapseOnRelease = false;
+                                      _collapse();
+                                    }
+                                    return false;
+                                  },
+                                  child: NotificationListener<DraggableScrollableNotification>(
+                                    // Dragging the whole sheet down while searching also ends the search.
+                                    onNotification: (n) {
+                                      if (_showResults && n.extent < 0.97) _dismissSearch();
+                                      return false;
+                                    },
+                                    child: _sheetWidget,
+                                  ),
+                                ),
+
+                                // ---- Quick action chips: on the wallpaper, just above the sheet's top edge. ----
+                                // They ride along with the sheet and fade out as it expands.
+                                ValueListenableBuilder<double>(
+                                  valueListenable: _expanded,
+                                  builder: (context, e, child) {
+                                    final sheetTop = c.maxHeight * (1 - (_rest + e * (1 - _rest)));
+                                    return Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      top: sheetTop - QuickChipsRow.height - QuickChipsRow.gap,
+                                      height: QuickChipsRow.height,
+                                      child: IgnorePointer(
+                                        ignoring: e > .2,
+                                        child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
+                                      ),
+                                    );
+                                  },
+                                  child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                                ),
+
+                                // ---- Fade under the dock, so it reads as floating above the cards. ----
+                                if (prefs.searchPosition != 'top')
+                                  Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
+                                    child: IgnorePointer(
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          // Sheet colour (follows the theme), fading in under the dock.
+                                          gradient: LinearGradient(
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                            colors: [DS.canvas.withValues(alpha: 0), DS.canvas.withValues(alpha: .9)],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                // ---- Search dock (iOS style), floating at the bottom (unless it's in the drawer). ----
+                                if (prefs.searchPosition != 'top')
+                                  Positioned(
+                                    left: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child: RepaintBoundary(
+                                      child: ValueListenableBuilder<bool>(
+                                        valueListenable: _compact,
+                                        builder: (context, compact, _) => _searchBar(inline: false, compact: compact),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-
-                  // ---- Search dock (iOS style), floating at the bottom (unless it's in the drawer). ----
-                  if (prefs.searchPosition != 'top')
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: RepaintBoundary(
-                        child: ValueListenableBuilder<bool>(
-                          valueListenable: _compact,
-                          builder: (context, compact, _) => _searchBar(inline: false, compact: compact),
-                        ),
-                      ),
-                    ),
+                  ),
                 ],
               );
             },
@@ -637,5 +724,25 @@ class _TopArea extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Keeps the home page (its sheet, scroll positions, search) alive while the today panel shows.
+class _KeepAlive extends StatefulWidget {
+  const _KeepAlive({required this.child});
+  final Widget child;
+
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }

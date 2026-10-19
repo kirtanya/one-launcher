@@ -101,11 +101,15 @@ String daysLabel(Set<int> days) {
 /// marker with the time at now), the hours under it. [legend]: also the day's slots and what's
 /// left of the day. [weekday]: draw that day without a now (the week editor's preview).
 class DayLine extends StatelessWidget {
-  const DayLine({super.key, required this.prefs, this.legend = false, this.radius = 0, this.weekday});
+  const DayLine({super.key, required this.prefs, this.legend = false, this.radius = 0, this.weekday, this.ink = Colors.white});
   final Prefs prefs;
   final bool legend;
   final double radius;
   final int? weekday;
+
+  /// The words' and marker's colour: white on a tile (Metro) or a dark strip; the card's ink
+  /// on a Classic card.
+  final Color ink;
 
   @override
   Widget build(BuildContext context) {
@@ -117,9 +121,12 @@ class DayLine extends StatelessWidget {
     final segs = plan.segments(day);
     final current = live ? plan.current(now) : null;
     final next = live && current == null ? plan.next(now) : null;
-    const white = Colors.white;
-    TextStyle t(double size, {FontWeight w = FontWeight.w300, Color c = white}) =>
-        TextStyle(fontFamily: DS.font, color: c, fontSize: size, fontWeight: w, height: 1.1);
+    final white = ink, soft = ink.withValues(alpha: .7), faint = ink.withValues(alpha: .6);
+    // Metro: lowercase, light. Classic: names as typed, Sentence case, a touch heavier.
+    final metro = DS.metro;
+    String cs(String s) => metro ? s.toLowerCase() : (s.isEmpty ? s : s[0].toUpperCase() + s.substring(1));
+    TextStyle t(double size, {FontWeight w = FontWeight.w300, Color? c}) =>
+        TextStyle(fontFamily: DS.font, color: c ?? white, fontSize: size, fontWeight: metro || w.value >= 500 ? w : FontWeight.w400, height: 1.1);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -138,13 +145,13 @@ class DayLine extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(current != null ? current.$1.name.toLowerCase() : 'free time', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(24)),
+                    Text(current != null ? cs(current.$1.name) : cs('free time'), maxLines: 1, overflow: TextOverflow.ellipsis, style: t(24)),
                     if (next != null)
                       Text(
-                        '${next.$1.name.toLowerCase()} at ${hm(next.$1.start)}',
+                        '${cs(next.$1.name)} at ${hm(next.$1.start)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: t(13, c: Colors.white70, w: FontWeight.w400),
+                        style: t(13, c: soft, w: FontWeight.w400),
                       ),
                   ],
                 ),
@@ -154,8 +161,8 @@ class DayLine extends StatelessWidget {
                 children: [
                   Text(current != null ? _dur(current.$2) : (next != null ? _dur(next.$2) : ''), style: t(24)),
                   Text(
-                    current != null ? 'left' : (next != null ? 'until ${next.$1.name.toLowerCase()}' : ''),
-                    style: t(12, c: Colors.white70, w: FontWeight.w400),
+                    current != null ? 'left' : (next != null ? 'until ${metro ? next.$1.name.toLowerCase() : next.$1.name}' : ''),
+                    style: t(12, c: soft, w: FontWeight.w400),
                   ),
                 ],
               ),
@@ -178,7 +185,7 @@ class DayLine extends StatelessWidget {
                     top: live ? 16 : 0,
                     height: 22,
                     child: CustomPaint(
-                      painter: _LinePainter(segs: segs, minute: live ? minute : null, radius: radius),
+                      painter: _LinePainter(segs: segs, minute: live ? minute : null, radius: radius, ink: ink),
                     ),
                   ),
                   for (final (s, from, to) in segs)
@@ -188,13 +195,13 @@ class DayLine extends StatelessWidget {
                         width: x(to) - x(from) - 8,
                         top: (live ? 16 : 0) + 4,
                         child: Text(
-                          s.name.toLowerCase(),
+                          metro ? s.name.toLowerCase() : s.name,
                           maxLines: 1,
                           overflow: TextOverflow.clip,
                           style: t(
                             11,
                             w: FontWeight.w600,
-                            c: Colors.white.withValues(alpha: live && to <= minute ? .55 : .95),
+                            c: Colors.white.withValues(alpha: live && to <= minute ? .55 : .95), // on the slot's colour
                           ),
                         ),
                       ),
@@ -227,7 +234,7 @@ class DayLine extends StatelessWidget {
                     left: (box.maxWidth * h / 24 - (h == 0 ? 0 : (h == 24 ? 16 : 8))).clamp(0, box.maxWidth),
                     child: Text(
                       h.toString().padLeft(2, '0'),
-                      style: t(11, c: Colors.white60, w: FontWeight.w400),
+                      style: t(11, c: faint, w: FontWeight.w400),
                     ),
                   ),
               ],
@@ -244,11 +251,11 @@ class DayLine extends StatelessWidget {
                   Container(width: 10, height: 10, color: s.colour),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(s.name.toLowerCase(), style: t(15, w: FontWeight.w400)),
+                    child: Text(metro ? s.name.toLowerCase() : s.name, style: t(15, w: FontWeight.w400)),
                   ),
                   Text(
                     '${hm(s.start)} – ${hm(s.end)}',
-                    style: t(13, c: Colors.white70, w: FontWeight.w400),
+                    style: t(13, c: soft, w: FontWeight.w400),
                   ),
                 ],
               ),
@@ -256,7 +263,7 @@ class DayLine extends StatelessWidget {
           if (live)
             Text(
               '${_dur(1440 - minute)} left today',
-              style: t(13, c: Colors.white60, w: FontWeight.w400),
+              style: t(13, c: faint, w: FontWeight.w400),
             ),
         ],
       ],
@@ -265,7 +272,8 @@ class DayLine extends StatelessWidget {
 }
 
 class _LinePainter extends CustomPainter {
-  _LinePainter({required this.segs, required this.minute, required this.radius});
+  _LinePainter({required this.segs, required this.minute, required this.radius, this.ink = Colors.white});
+  final Color ink;
   final List<(DaySlot, int, int)> segs;
   final int? minute; // null: a day other than today (no now)
   final double radius;
@@ -276,11 +284,11 @@ class _LinePainter extends CustomPainter {
     double x(int m) => bar.width * m / 1440;
     canvas.save();
     canvas.clipRRect(RRect.fromRectAndRadius(bar, Radius.circular(math.min(radius * .3, bar.height / 2))));
-    canvas.drawRect(bar, Paint()..color = Colors.white.withValues(alpha: .14));
+    canvas.drawRect(bar, Paint()..color = ink.withValues(alpha: .14));
     for (final (s, from, to) in segs) {
       canvas.drawRect(Rect.fromLTRB(x(from), bar.top, x(to), bar.bottom), Paint()..color = s.colour);
     }
-    final tick = Paint()..color = Colors.white.withValues(alpha: .3);
+    final tick = Paint()..color = ink.withValues(alpha: .3);
     for (final h in [6, 12, 18]) {
       canvas.drawRect(Rect.fromLTWH(x(h * 60) - .5, bar.top, 1, bar.height), tick);
     }
@@ -292,12 +300,12 @@ class _LinePainter extends CustomPainter {
     canvas.restore();
     if (m != null) {
       final nx = x(m);
-      canvas.drawRect(Rect.fromLTWH(nx - 1.5, -4, 3, size.height + 8), Paint()..color = Colors.white);
+      canvas.drawRect(Rect.fromLTWH(nx - 1.5, -4, 3, size.height + 8), Paint()..color = ink);
     }
   }
 
   @override
-  bool shouldRepaint(_LinePainter o) => o.minute != minute || o.radius != radius || o.segs.length != segs.length || !identical(o.segs, segs);
+  bool shouldRepaint(_LinePainter o) => o.minute != minute || o.radius != radius || o.ink != ink || o.segs.length != segs.length || !identical(o.segs, segs);
 }
 
 // ---- the week editor ----
@@ -347,22 +355,23 @@ Future<void> showDaySlots(BuildContext context, {required Prefs prefs}) {
                   ],
                 ),
               ),
-              // That day on the line (a dark strip so it reads like the widget).
+              // That day on the line (Metro: a dark strip so it reads like the tile; Classic: a
+              // muted card, like the widget's card).
               Container(
                 margin: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s16, DS.s8),
                 padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s12, DS.s8),
-                decoration: BoxDecoration(color: const Color(0xFF1B1B1B), borderRadius: BorderRadius.circular(DS.rMedia)),
+                decoration: BoxDecoration(color: DS.metro ? const Color(0xFF1B1B1B) : DS.cardMuted, borderRadius: BorderRadius.circular(DS.rMedia)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      day == today
-                          ? 'today · ${_short[day - 1].toLowerCase()}'
-                          : ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][day - 1],
-                      style: const TextStyle(fontFamily: DS.font, color: Colors.white70, fontSize: 13),
+                      DS.cased(
+                        day == today ? 'Today · ${_short[day - 1]}' : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][day - 1],
+                      ),
+                      style: TextStyle(fontFamily: DS.font, color: DS.metro ? const Color(0xB3FFFFFF) : DS.inkMuted, fontSize: 13),
                     ),
                     const SizedBox(height: 8),
-                    DayLine(prefs: prefs, weekday: day, radius: DS.rMedia),
+                    DayLine(prefs: prefs, weekday: day, radius: DS.rMedia, ink: DS.metro ? Colors.white : DS.ink),
                   ],
                 ),
               ),
