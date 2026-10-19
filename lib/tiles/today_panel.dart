@@ -137,8 +137,12 @@ class _TodayPanelState extends State<TodayPanel> {
   /// Metro (the Tiles view): live tiles, lowercase, light type.
   bool get _classic => !DS.metro;
 
-  /// Cards hug their content (Settings → Today panel → Card height): no fixed grid rows.
-  bool get _hug => prefs.todayHug && prefs.todayLayout != 'list';
+  /// Whether a widget hugs its content: its own Height, else the panel's Card height setting
+  /// (Settings → Today panel). App widgets can't be measured: always the grid's height.
+  bool _hugs(TileSpec t) => prefs.todayLayout != 'list' && !t.id.startsWith('aw:') && (t.height ?? (prefs.todayHug ? 'hug' : 'fixed')) == 'hug';
+
+  /// The face being built hugs (set by [_face]).
+  bool _hug = false;
 
   /// The space that pushes a face's words to its bottom — just a small gap when hugging.
   Widget _grow() => _hug ? const SizedBox(height: DS.s12) : const Spacer();
@@ -217,6 +221,7 @@ class _TodayPanelState extends State<TodayPanel> {
   // ---- tile faces (tiles layout) ----
 
   Widget _face(TileSpec t, {bool hero = false}) {
+    _hug = _hugs(t);
     final big = t.size == 'l', wide = t.size == 'w' || big, small = t.size == 's';
     final now = DateTime.now();
     _white = _classic ? _cardInk(hero) : Colors.white;
@@ -876,6 +881,23 @@ class _TodayPanelState extends State<TodayPanel> {
                   padding: const EdgeInsets.symmetric(horizontal: DS.s24),
                   child: Wrap(children: [for (final sz in sizes) box(_sizeNames[sz]!, now.size == sz, () => update(now.resized(sz)))]),
                 ),
+                // Height: this widget's own, or the panel's Card height setting.
+                if (kind != 'aw') ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, DS.s8),
+                    child: Text(DS.cased('Height'), style: DS.eyebrow),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+                    child: Wrap(
+                      children: [
+                        box('Like the rest (${prefs.todayHug ? 'hug' : 'fixed'})', now.height == null, () => update(now.withHeight(null))),
+                        box('Fixed', now.height == 'fixed', () => update(now.withHeight('fixed'))),
+                        box('Hug content', now.height == 'hug', () => update(now.withHeight('hug'))),
+                      ],
+                    ),
+                  ),
+                ],
                 // Colour is a tile thing: Classic cards follow the theme (the first one is the hero).
                 if (!_classic)
                   act(Icons.palette_outlined, 'Colour', () async {
@@ -1112,7 +1134,11 @@ class _TodayPanelState extends State<TodayPanel> {
               box(_classic ? 'plain' : 'black', prefs.todayBg == 'black', () => prefs.setTodayLook(bg: 'black')),
             ],
           ),
-          Wrap(children: [box(_classic ? 'add widget' : '+ add widget', false, _add), box('reset', false, () => prefs.setTodayTiles(null))]),
+          Wrap(children: [box(_classic ? 'add widget' : '+ add widget', false, _add), box('reset', false, () async {
+                if (await confirmReset(context, title: 'Reset widgets?', body: 'Back to the starting widgets. Ones you added, sizes and order are lost.')) {
+                  await prefs.setTodayTiles(null);
+                }
+              })]),
           Text(
             _classic ? 'Hold and drag to move · ⋯ for size and more' : 'hold and drag to move · ⋯ for size, colour and more',
             style: _t(12, color: _classic ? DS.onCanvasMuted : Colors.white54, weight: FontWeight.w400),
@@ -1128,7 +1154,7 @@ class _TodayPanelState extends State<TodayPanel> {
       const cols = 4;
       final unit = (c.maxWidth - (cols - 1) * gap) / cols;
       final placed = packTiles(tiles, cols: cols);
-      if (_hug) return _hugGrid(placed, unit, gap);
+      if (tiles.any(_hugs)) return _hugGrid(placed, unit, gap);
       var rows = 0;
       for (final (t, _, r) in placed) {
         rows = rows < r + t.span.$2 ? r + t.span.$2 : rows;
@@ -1194,7 +1220,7 @@ class _TodayPanelState extends State<TodayPanel> {
           col: col,
           row: row,
           span: t.span,
-          fixed: t.id.startsWith('aw:'),
+          fixed: !_hugs(t),
           child: Landed(
             landing: todayLanding,
             style: _anim,

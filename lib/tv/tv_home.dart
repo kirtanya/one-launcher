@@ -821,7 +821,17 @@ class _TvHomeState extends State<TvHome> {
           for (final id in on.where((x) => x.startsWith('a:')))
             if (_apps.where((a) => a.package == id.substring(2)).firstOrNull case final app?)
               TvAction(Icons.check_circle_rounded, app.label, () => toggle(id), keepOpen: true),
-          TvAction(Icons.restart_alt_rounded, 'Reset to default', () => prefs.setTvQuickActions(Prefs.tvQuickDefault), keepOpen: true),
+          TvAction(
+            Icons.restart_alt_rounded,
+            'Reset to default',
+            () => tvConfirm(
+              context,
+              title: 'Reset quick actions?',
+              action: 'Reset to the default set',
+              onConfirm: () => prefs.setTvQuickActions(Prefs.tvQuickDefault),
+              back: _editQuick,
+            ),
+          ),
         ];
       },
     );
@@ -889,7 +899,12 @@ class _TvHomeState extends State<TvHome> {
   void _customise() {
     tilesExtras = [
       TvAction(Icons.add_box_outlined, 'Add a tile', _addTile),
-      TvAction(Icons.restart_alt_rounded, 'Reset Start', () => prefs.resetTiles(), danger: true),
+      TvAction(
+        Icons.restart_alt_rounded,
+        'Reset Start',
+        () => tvConfirm(context, title: 'Reset Start?', action: 'Reset (tiles, sizes and colours back to the start)', onConfirm: prefs.resetTiles),
+        danger: true,
+      ),
     ];
     final hidden = [
       for (final a in _apps)

@@ -448,3 +448,19 @@ class _MetroRow extends StatelessWidget {
     );
   }
 }
+
+/// Ask before a reset or clear: Cancel / [action]. Either way [back] (if given) reopens the
+/// panel it came from.
+void tvConfirm(BuildContext context, {required String title, required String action, required Future<void> Function() onConfirm, VoidCallback? back}) {
+  showTvPanel(
+    context,
+    title: title,
+    actions: [
+      TvAction(Icons.arrow_back_rounded, 'Cancel', back ?? () {}),
+      TvAction(Icons.restart_alt_rounded, action, () async {
+        await onConfirm();
+        back?.call();
+      }, danger: true),
+    ],
+  );
+}

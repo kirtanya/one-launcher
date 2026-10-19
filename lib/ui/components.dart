@@ -177,3 +177,27 @@ class CardDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(height: 1, color: color ?? DS.hairline);
 }
+
+/// Ask before a reset, clear or forget: a small dialog with Cancel and [action] (in red).
+/// True only when confirmed.
+Future<bool> confirmReset(BuildContext context, {required String title, required String body, String action = 'Reset'}) async =>
+    await showDialog<bool>(
+      context: context,
+      useRootNavigator: true,
+      builder: (d) => AlertDialog(
+        backgroundColor: DS.card,
+        title: Text(title, style: DS.title.copyWith(fontSize: 20)),
+        content: Text(body, style: DS.rowSub),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(d, false),
+            child: Text('Cancel', style: DS.rowTitle.copyWith(color: DS.inkMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(d, true),
+            child: Text(action, style: DS.rowTitle.copyWith(color: const Color(0xFFE5534B))),
+          ),
+        ],
+      ),
+    ) ==
+    true;

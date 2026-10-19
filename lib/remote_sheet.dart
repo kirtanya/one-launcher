@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'prefs.dart';
 import 'tv_remote.dart';
+import 'ui/components.dart' show confirmReset;
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
@@ -132,6 +133,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
   }
 
   Future<void> _forget() async {
+    if (!await confirmReset(context, title: 'Forget ${prefs.tvName}?', body: 'The remote stops working until you pair again with a code on the TV.', action: 'Forget')) return;
     final host = prefs.tvHost;
     if (host != null) await tv.forget(host);
     await prefs.setTv(null);

@@ -45,8 +45,12 @@ class TilesHome extends StatefulWidget {
 
 /// One tile on Start: an app or a live tile ('clock'), small 1×1 / medium 2×2 / wide 4×2.
 class TileSpec {
-  const TileSpec(this.id, this.size, [this.colour, this.name, this.items = const []]);
+  const TileSpec(this.id, this.size, [this.colour, this.name, this.items = const [], this.height]);
   final String id, size;
+
+  /// Today widgets: 'fixed' (the grid's height) or 'hug' (its content's); null = the panel's
+  /// Card height setting.
+  final String? height;
 
   /// Folders: their name and apps (packages); the open folder's panel carries the same apps.
   final String? name;
@@ -82,14 +86,20 @@ class TileSpec {
   /// Its cells on a [cols]-column grid (the chips row is always full width, one row high).
   (int, int) spanIn(int cols) => isChips ? (cols, 1) : (isPanel ? (cols, math.max(1, (items.length / cols).ceil())) : span);
 
-  Map<String, dynamic> toJson() => {'id': id, 'size': size, 'colour': ?colour, 'name': ?name, if (items.isNotEmpty) 'items': items};
-  static TileSpec fromJson(Map<String, dynamic> m) => TileSpec(m['id'] as String, m['size'] as String? ?? 'm', m['colour'] as String?, m['name'] as String?, [
-    for (final x in m['items'] as List? ?? const []) x as String,
-  ]);
-  TileSpec resized(String s) => TileSpec(id, s, colour, name, items);
-  TileSpec recoloured(String? c) => TileSpec(id, size, c, name, items);
-  TileSpec withItems(List<String> list) => TileSpec(id, size, colour, name, list);
-  TileSpec renamed(String n) => TileSpec(id, size, colour, n, items);
+  Map<String, dynamic> toJson() => {'id': id, 'size': size, 'colour': ?colour, 'name': ?name, if (items.isNotEmpty) 'items': items, 'height': ?height};
+  static TileSpec fromJson(Map<String, dynamic> m) => TileSpec(
+    m['id'] as String,
+    m['size'] as String? ?? 'm',
+    m['colour'] as String?,
+    m['name'] as String?,
+    [for (final x in m['items'] as List? ?? const []) x as String],
+    m['height'] as String?,
+  );
+  TileSpec resized(String s) => TileSpec(id, s, colour, name, items, height);
+  TileSpec recoloured(String? c) => TileSpec(id, size, c, name, items, height);
+  TileSpec withItems(List<String> list) => TileSpec(id, size, colour, name, list, height);
+  TileSpec renamed(String n) => TileSpec(id, size, colour, n, items, height);
+  TileSpec withHeight(String? h) => TileSpec(id, size, colour, name, items, h);
 }
 
 /// Colours a tile can take (edit mode → palette), besides the accent and the app's own.

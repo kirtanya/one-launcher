@@ -82,6 +82,9 @@ void main() {
     await tester.ensureVisible(find.text('Reset look'));
     await tester.tap(find.text('Reset look'));
     await tester.pumpAndSettle();
+    expect(find.text('Reset the chips’ look?'), findsOneWidget, reason: 'asks first');
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Reset')));
+    await tester.pumpAndSettle();
     expect(chipMaterial().color, const Color(0xFF141414).withValues(alpha: .4));
   });
 }

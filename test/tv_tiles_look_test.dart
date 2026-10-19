@@ -339,6 +339,8 @@ void main() {
     await _openCustomise(tester);
     await _tapText(tester, 'tiles');
     await _tapText(tester, 'reset start');
+    expect(prefs.tiles, isNotNull, reason: 'asks first');
+    await _tapText(tester, 'reset (tiles, sizes and colours back to the start)');
     expect(prefs.tiles, isNull);
 
     // New tiles: All apps → Hold OK → Pin to Start, at the chosen size.

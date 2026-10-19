@@ -178,6 +178,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(ci('Reset Start'));
     await tester.pumpAndSettle();
+    expect(find.text('Reset Start?'), findsOneWidget, reason: 'asks first');
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Reset')));
+    await tester.pumpAndSettle();
     expect(_tiles(prefs)[2].id, 'app:com.amazon', reason: 'starting tiles again (Amazon back after the clock + chips, not last)');
     // View → Classic: the preview switches, and so does home.
     await tab('View');

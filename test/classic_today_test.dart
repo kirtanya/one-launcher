@@ -230,6 +230,40 @@ void main() {
     await prefs.setTodayLook(hug: false);
     await tester.pumpAndSettle();
     expect(bottom(), closeTo(grid, 1), reason: 'Fixed grid again');
+
+    // Per widget: the panel stays Fixed, one widget hugs on its own (its ⋯ → Height).
+    final tiles = todayTiles(prefs);
+    final music = tiles.indexWhere((t) => t.id == 'today:music');
+    await tester.tap(find.byTooltip('Edit today'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Widget options').at(music));
+    await tester.pumpAndSettle();
+    expect(find.text('Like the rest (fixed)'), findsOneWidget, reason: 'follows the panel by default');
+    await tester.tap(find.text('Hug content'));
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs)[music].height, 'hug');
+    await tester.binding.handlePopRoute(); // close the sheet
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(bottom(), lessThan(grid), reason: 'one widget hugging shortens its row');
+    expect(prefs.todayHug, isFalse, reason: 'the panel setting is untouched');
+
+    // Reset asks first: Cancel keeps everything, Reset goes back to the starting set.
+    await tester.tap(find.byTooltip('Edit today'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reset widgets?'), findsOneWidget, reason: 'a confirmation');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(todayTiles(prefs)[music].height, 'hug', reason: 'cancelled: nothing reset');
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Reset')));
+    await tester.pumpAndSettle();
+    expect(prefs.todayTiles, isNull, reason: 'confirmed: back to the starting set');
   });
 
   testWidgets('Classic: Settings → Today panel — off stops the swipe, on again, open from Settings', (tester) async {

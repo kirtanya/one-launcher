@@ -312,10 +312,21 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
       TvAction(Icons.grid_view_rounded, 'Tiles', () => _tilesSection(context, prefs, extras)),
       TvAction(Icons.search_rounded, 'Search', () => _section(context, prefs, 'Search', tvSearchOptions, extras)),
       ...extras,
-      TvAction(Icons.restart_alt_rounded, 'Reset everything', () async {
-        await prefs.resetTvSettings();
-        await TvApps.instance.setHistoryEnabled(true);
-      }, danger: true),
+      TvAction(
+        Icons.restart_alt_rounded,
+        'Reset everything',
+        () => tvConfirm(
+          context,
+          title: 'Reset every setting?',
+          action: 'Reset everything (look, rows, quick actions, colours)',
+          onConfirm: () async {
+            await prefs.resetTvSettings();
+            await TvApps.instance.setHistoryEnabled(true);
+          },
+          back: () => showTvCustomise(context, prefs: prefs, extras: extras),
+        ),
+        danger: true,
+      ),
     ],
   );
 }
@@ -350,7 +361,18 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
         TvAction(Icons.arrow_back_rounded, 'Back', back ?? () => showTvCustomise(context, prefs: prefs, extras: extras)),
         if (name == 'Search') ...catalogRows(context, prefs, reopen: () => _section(context, prefs, name, opts, extras)),
         for (final o in opts) _optionRow(prefs, o),
-        if (name == 'Remote & behaviour') TvAction(Icons.delete_sweep_outlined, 'Clear watch history', TvApps.instance.clearHistory, keepOpen: true),
+        if (name == 'Remote & behaviour')
+          TvAction(
+            Icons.delete_sweep_outlined,
+            'Clear watch history',
+            () => tvConfirm(
+              context,
+              title: 'Clear watch history?',
+              action: 'Clear (Resume forgets what you watched)',
+              onConfirm: TvApps.instance.clearHistory,
+              back: () => _section(context, prefs, name, opts, extras, back: back),
+            ),
+          ),
       ];
     },
   );

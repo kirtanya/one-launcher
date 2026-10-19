@@ -282,10 +282,28 @@ Future<void> showCustomiseFolder(
         SheetAction(Icons.checklist_rounded, 'Choose apps', () => then(() => showChooseApps(context, prefs: prefs, folder: folder, allApps: allApps))),
         SheetAction(Icons.arrow_upward_rounded, 'Move up', () => then(() => move(-1)), enabled: i > 0),
         SheetAction(Icons.arrow_downward_rounded, 'Move down', () => then(() => move(1)), enabled: i >= 0 && i < visibleOrder.length - 1),
-        SheetAction(Icons.restart_alt_rounded, 'Reset folder', () => then(() => prefs.resetFolder(folder.id)), danger: true),
+        SheetAction(
+          Icons.restart_alt_rounded,
+          'Reset folder',
+          () => then(() async {
+            if (await confirmReset(context, title: 'Reset ${folder.name}?', body: 'Its name goes back to the automatic one, and apps you moved in go back to their own folders.')) {
+              await prefs.resetFolder(folder.id);
+            }
+          }),
+          danger: true,
+        ),
       ] else ...[
         if (prefs.favourites.isNotEmpty) SheetAction(Icons.push_pin_outlined, 'Unpin all', () => then(prefs.unpinAll)),
-        SheetAction(Icons.history_rounded, 'Clear most-used history', () => then(prefs.clearLaunches), danger: true),
+        SheetAction(
+          Icons.history_rounded,
+          'Clear most-used history',
+          () => then(() async {
+            if (await confirmReset(context, title: 'Clear most-used history?', body: 'Most used starts learning again from scratch.', action: 'Clear')) {
+              await prefs.clearLaunches();
+            }
+          }),
+          danger: true,
+        ),
       ],
     ],
   );
@@ -877,7 +895,8 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
             choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
             _Group(null, [
               _SwitchRow(Icons.crop_square_rounded, 'Outline', 'Thin edge around each chip', look.outline, (v) => set((l) => l.copyWith(outline: v))),
-              _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () {
+              _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () async {
+                if (!await confirmReset(ctx, title: 'Reset the chips’ look?', body: 'Back to dark see-through pills. Your chips stay.')) return;
                 HapticFeedback.lightImpact();
                 set((_) => const ChipLook());
               }),
@@ -1892,9 +1911,10 @@ class _HomeEditorState extends State<_HomeEditor> {
       _Group(null, [
         _SwitchRow(Icons.label_outline_rounded, 'Names on tiles', 'On medium and bigger tiles', prefs.tileLabels, (v) => prefs.setTileLook(labels: v)),
         _NavRow(Icons.add_box_outlined, 'Add a quick action tile', 'Quick actions row, flashlight, timer, app shortcuts…', () => addActionTile(context, prefs)),
-        _NavRow(Icons.restart_alt_rounded, 'Reset Start', 'Back to the starting tiles', () {
+        _NavRow(Icons.restart_alt_rounded, 'Reset Start', 'Back to the starting tiles', () async {
+          if (!await confirmReset(context, title: 'Reset Start?', body: 'Your tiles, their sizes and colours go back to the starting set.')) return;
           HapticFeedback.mediumImpact();
-          prefs.resetTiles();
+          await prefs.resetTiles();
         }),
       ]),
       _hint('On Start, long-press a tile to resize, recolour, unpin or drag it. In all apps, long-press an app to pin it.'),
@@ -2236,6 +2256,7 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
               showTvRemote(home, prefs: prefs);
             }),
             _NavRow(Icons.link_off_rounded, 'Forget this TV', 'You’ll pair again next time', () async {
+              if (!await confirmReset(ctx, title: 'Forget ${prefs.tvName}?', body: 'The remote stops working until you pair again with a code on the TV.', action: 'Forget')) return;
               HapticFeedback.mediumImpact();
               await TvRemote.instance.forget(prefs.tvHost!);
               await prefs.setTv(null);
@@ -2304,6 +2325,10 @@ Future<Object?> _showTodaySettings(BuildContext context, {required Prefs prefs})
             if (prefs.todayLayout != 'list') ...[
               label(classic ? 'Card height' : 'Tile height'),
               chips([('grid', 'Fixed grid'), ('hug', 'Hug content')], prefs.todayHug ? 'hug' : 'grid', (v) => prefs.setTodayLook(hug: v == 'hug')),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+                child: Text(DS.cased('For all widgets. Each one can have its own: ✎ on the panel → ⋯ → Height.'), style: DS.rowSub.copyWith(fontSize: 13)),
+              ),
             ],
             label('Background'),
             chips([('wallpaper', 'Wallpaper'), ('black', classic ? 'Plain' : 'Black')], prefs.todayBg, (v) => prefs.setTodayLook(bg: v)),
@@ -2314,9 +2339,10 @@ Future<Object?> _showTodaySettings(BuildContext context, {required Prefs prefs})
                   openToday.ping();
                 }),
               _NavRow(Icons.linear_scale_rounded, 'Your week', 'The slots on the Your day line', () => showDaySlots(ctx, prefs: prefs)),
-              _NavRow(Icons.restart_alt_rounded, 'Reset widgets', 'Back to the starting set', () {
+              _NavRow(Icons.restart_alt_rounded, 'Reset widgets', 'Back to the starting set', () async {
+                if (!await confirmReset(ctx, title: 'Reset widgets?', body: 'The Today panel goes back to its starting widgets. Ones you added, sizes and order are lost.')) return;
                 HapticFeedback.mediumImpact();
-                prefs.setTodayTiles(null);
+                await prefs.setTodayTiles(null);
               }),
             ]),
             Padding(
