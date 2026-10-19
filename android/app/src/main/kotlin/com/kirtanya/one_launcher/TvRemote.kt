@@ -362,8 +362,9 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         emit("ime", mapOf("text" to value, "label" to label))
     }
 
-    /** Replace the TV's focused text field with [value] (sent whole on each change). Returns
-     *  false — sending nothing — when the TV hasn't given us a field: Flutter types keys instead. */
+    /** Add [value] to the TV's focused text field at its cursor (the TV inserts what it's sent;
+     *  Flutter sends only the new letters, deletes as keys). Returns false — sending nothing —
+     *  when the TV hasn't given us a field: Flutter types keys instead. */
     private fun text(value: String): Boolean {
         if (!imeReady) {
             Log.i("TvRemote", "IME out skipped (no field from the TV): typing as keys")

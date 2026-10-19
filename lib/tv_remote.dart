@@ -113,23 +113,27 @@ class TvRemote {
   /// The typing panel opened on [start] (the TV field's current text).
   void startTyping(String start) => _typed = start;
 
-  /// Types on the TV: replaces its focused field with [text] through the TV's keyboard
-  /// protocol. If the TV didn't give us its field (some only name the app), types the change
-  /// as key presses instead — Delete for removed letters, a key per new character.
+  /// Types on the TV: sends only what changed since the last call. The TV adds whatever text it
+  /// is sent to its field (it doesn't replace the field), so removed letters go as Delete key
+  /// presses and new letters as text through the TV's keyboard protocol — or as one key press
+  /// each when the TV didn't give us its field (some only name the app). Assumes the cursor is
+  /// at the end, as it is while typing on the phone.
   Future<void> text(String text) async {
     final before = _typed;
     _typed = text;
+    var same = 0;
+    while (same < before.length && same < text.length && before[same] == text[same]) {
+      same++;
+    }
+    final added = text.substring(same);
     try {
-      final viaIme = await _ch.invokeMethod<bool>('tvText', {'text': text}) ?? false;
-      if (viaIme) return;
-      var same = 0;
-      while (same < before.length && same < text.length && before[same] == text[same]) {
-        same++;
-      }
       for (var i = same; i < before.length; i++) {
         await key(TvKey.delete);
       }
-      for (final ch in text.substring(same).split('')) {
+      if (added.isEmpty) return;
+      final viaIme = await _ch.invokeMethod<bool>('tvText', {'text': added}) ?? false;
+      if (viaIme) return;
+      for (final ch in added.split('')) {
         final code = keyFor(ch);
         if (code != null) await key(code);
       }

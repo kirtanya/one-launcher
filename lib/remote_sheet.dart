@@ -794,6 +794,9 @@ class _TypingPanelState extends State<_TypingPanel> {
                   autofocus: true,
                   cursorColor: DS.heroInk,
                   textInputAction: TextInputAction.go,
+                  // No autocorrect: a word swapped after the fact means deleting and retyping on
+                  // the TV — fine, but surprising mid-search.
+                  autocorrect: false,
                   style: DS.rowTitle.copyWith(color: DS.heroInk, fontSize: 18),
                   onChanged: TvRemote.instance.text,
                   onSubmitted: (_) {

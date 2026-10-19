@@ -73,11 +73,24 @@ void main() {
     expect(find.byTooltip('Done typing'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'stranger things');
     await tester.pump();
+    // Only the new letters go (the TV adds what it's sent to its field, it doesn't replace it).
     final sent = calls.lastWhere((c) => c.method == 'tvText');
-    expect((sent.arguments as Map)['text'], 'stranger things');
+    expect((sent.arguments as Map)['text'], 'nger things');
     // This TV gave no text field (tvText → not sent): the letters went as key presses instead.
     final keys = [for (final c in calls.where((c) => c.method == 'tvKey')) (c.arguments as Map)['code']];
     expect(keys, containsAllInOrder([TvRemote.keyFor('n'), TvRemote.keyFor('g'), TvRemote.keyFor(' '), TvRemote.keyFor('t')]), reason: 'typed as keys');
+    // Deleting goes as Delete presses — one per removed letter, nothing re-sent.
+    calls.clear();
+    await tester.enterText(find.byType(TextField), 'stranger thi');
+    await tester.pump();
+    expect([for (final c in calls.where((c) => c.method == 'tvKey')) (c.arguments as Map)['code']], [TvKey.delete, TvKey.delete, TvKey.delete]);
+    expect(calls.where((c) => c.method == 'tvText'), isEmpty, reason: 'nothing to add');
+    // A changed letter mid-word: delete back to it, then add the rest.
+    calls.clear();
+    await tester.enterText(find.byType(TextField), 'stranger tha');
+    await tester.pump();
+    expect([for (final c in calls.where((c) => c.method == 'tvKey')) (c.arguments as Map)['code']].first, TvKey.delete);
+    expect((calls.firstWhere((c) => c.method == 'tvText').arguments as Map)['text'], 'a');
     await tester.testTextInput.receiveAction(TextInputAction.go);
     await tester.pumpAndSettle();
     expect(calls.where((c) => c.method == 'tvKey' && (c.arguments as Map)['code'] == 66), isNotEmpty, reason: 'Enter submits on the TV');
