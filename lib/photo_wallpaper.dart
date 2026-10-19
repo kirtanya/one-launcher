@@ -175,8 +175,27 @@ class _PhotoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF000000)); // under a short photo
+    final src = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+    final paint = Paint()..filterQuality = FilterQuality.medium;
     final dst = photoRect(full, size, size.height * share, zoom, x, y);
-    canvas.drawImageRect(img, Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()), dst, Paint()..filterQuality = FilterQuality.medium);
+    if (dst.bottom >= size.height - .5) {
+      canvas.drawImageRect(img, src, dst, paint);
+      return;
+    }
+    // Classic frames the photo for the top window only; the app sheet hides the rest, but the
+    // Today panel shows the whole screen. Below the framed photo: the same photo covering the
+    // whole screen, with the framed one fading into it (the top stays exactly as framed).
+    canvas.drawImageRect(img, src, photoRect(full, size, size.height, 1, 0, 0), paint);
+    final fade = math.min(dst.height * .25, 160.0);
+    canvas.saveLayer(dst, Paint());
+    canvas.drawImageRect(img, src, dst, paint);
+    canvas.drawRect(
+      Rect.fromLTRB(dst.left, dst.bottom - fade, dst.right, dst.bottom),
+      Paint()
+        ..blendMode = BlendMode.dstIn
+        ..shader = ui.Gradient.linear(Offset(0, dst.bottom - fade), Offset(0, dst.bottom), const [Color(0xFF000000), Color(0x00000000)]),
+    );
+    canvas.restore();
   }
 
   @override
