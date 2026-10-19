@@ -653,9 +653,12 @@ class Prefs extends ChangeNotifier {
   /// The today page's layout ('tiles' | 'list') and background ('wallpaper' | 'black').
   String get todayLayout => _sp.getString('todayLayout') ?? 'tiles';
   String get todayBg => _sp.getString('todayBg') ?? 'wallpaper';
-  Future<void> setTodayLook({String? layout, String? bg}) async {
+  /// Cards/tiles layout: each row only as tall as its tallest widget, instead of the square grid.
+  bool get todayHug => _sp.getBool('todayHug') ?? false;
+  Future<void> setTodayLook({String? layout, String? bg, bool? hug}) async {
     if (layout != null) await _sp.setString('todayLayout', layout);
     if (bg != null) await _sp.setString('todayBg', bg);
+    if (hug != null) await _sp.setBool('todayHug', hug);
     notifyListeners();
   }
 

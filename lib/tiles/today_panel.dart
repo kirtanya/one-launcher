@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
@@ -135,6 +137,13 @@ class _TodayPanelState extends State<TodayPanel> {
   /// Metro (the Tiles view): live tiles, lowercase, light type.
   bool get _classic => !DS.metro;
 
+  /// Cards hug their content (Settings → Today panel → Card height): no fixed grid rows.
+  bool get _hug => prefs.todayHug && prefs.todayLayout != 'list';
+
+  /// The space that pushes a face's words to its bottom — just a small gap when hugging.
+  Widget _grow() => _hug ? const SizedBox(height: DS.s12) : const Spacer();
+  Widget _flex(Widget child) => _hug ? child : Expanded(child: child);
+
   /// The ink of what's being built: white on tiles (Metro), over album art and on the wallpaper;
   /// on a Classic card, the card's ink (the hero card: the hero's ink). Set as each widget is built.
   Color _white = Colors.white;
@@ -227,7 +236,7 @@ class _TodayPanelState extends State<TodayPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: _white, size: small ? 20 : 24),
-          const Spacer(),
+          _grow(),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -256,7 +265,7 @@ class _TodayPanelState extends State<TodayPanel> {
                 '${now.day} ${_month(now.month)}',
                 style: _t(14, color: _soft, weight: FontWeight.w400),
               ),
-              const Spacer(),
+              _grow(),
               if (e != null)
                 Text(
                   '${e['title']} · ${_when(e)}',
@@ -278,8 +287,8 @@ class _TodayPanelState extends State<TodayPanel> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: FittedBox(
+              _flex(
+                FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.bottomLeft,
                   child: Text(
@@ -329,7 +338,7 @@ class _TodayPanelState extends State<TodayPanel> {
           return pad(
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [date, const Spacer(), if (events.isEmpty) none else label(events.first['title'] as String)],
+              children: [date, _grow(), if (events.isEmpty) none else label(events.first['title'] as String)],
             ),
           );
         }
@@ -380,14 +389,17 @@ class _TodayPanelState extends State<TodayPanel> {
               ),
           ],
         );
+        // Passthrough: fills its tile, or (hugging) takes the words' height.
         return Stack(
-          fit: StackFit.expand,
+          fit: StackFit.passthrough,
           children: [
-            if (art != null) Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
+            if (art != null) Positioned.fill(child: Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true)),
             if (art != null || !_classic)
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x26000000), Color(0xCC000000)]),
+              const Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x26000000), Color(0xCC000000)]),
+                  ),
                 ),
               ),
             Padding(
@@ -397,7 +409,7 @@ class _TodayPanelState extends State<TodayPanel> {
                 children: [
                   // Classic, no album art: the card says what it is, like the other widgets.
                   if (art == null && _classic) Icon(Icons.music_note_rounded, color: _white, size: 24),
-                  const Spacer(),
+                  _grow(),
                   Text(
                     title,
                     maxLines: 1,
@@ -439,7 +451,7 @@ class _TodayPanelState extends State<TodayPanel> {
                   ),
                 ],
               ),
-              const Spacer(),
+              _grow(),
               if (apps.isEmpty)
                 Text(_c('all caught up'), style: _t(13, weight: FontWeight.w500))
               else
@@ -481,7 +493,7 @@ class _TodayPanelState extends State<TodayPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.hourglass_bottom_rounded, color: _white, size: 22),
-              const Spacer(),
+              _grow(),
               Text(_dur(total), style: _t(wide ? 30 : 24)),
               Text(
                 _c('today'),
@@ -523,7 +535,7 @@ class _TodayPanelState extends State<TodayPanel> {
                   Text(open.isEmpty ? '' : '${open.length}', style: _t(20)),
                 ],
               ),
-              const Spacer(),
+              _grow(),
               if (notes.isEmpty)
                 Text(
                   _c('tap to add a note'),
@@ -563,6 +575,7 @@ class _TodayPanelState extends State<TodayPanel> {
         return Padding(
           padding: EdgeInsets.all(_classic ? 12 : 8),
           child: GridView.count(
+            shrinkWrap: _hug,
             crossAxisCount: 4,
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 4,
@@ -1115,6 +1128,7 @@ class _TodayPanelState extends State<TodayPanel> {
       const cols = 4;
       final unit = (c.maxWidth - (cols - 1) * gap) / cols;
       final placed = packTiles(tiles, cols: cols);
+      if (_hug) return _hugGrid(placed, unit, gap);
       var rows = 0;
       for (final (t, _, r) in placed) {
         rows = rows < r + t.span.$2 ? r + t.span.$2 : rows;
@@ -1166,6 +1180,52 @@ class _TodayPanelState extends State<TodayPanel> {
         ),
       );
     },
+  );
+
+  /// The grid, hugging: same places as the square grid, but each row only as tall as the
+  /// tallest widget in it (app widgets keep their grid height).
+  Widget _hugGrid(List<(TileSpec, int, int)> placed, double unit, double gap) => _HugGrid(
+    unit: unit,
+    gap: gap,
+    children: [
+      for (final (i, (t, col, row)) in placed.indexed)
+        _HugCell(
+          key: ValueKey(t.id),
+          col: col,
+          row: row,
+          span: t.span,
+          fixed: t.id.startsWith('aw:'),
+          child: Landed(
+            landing: todayLanding,
+            style: _anim,
+            delay: Duration(milliseconds: 40 * col + 22 * row),
+            child: _Reorderable(
+              id: t.id,
+              editing: _editing,
+              onPickUp: _pickUp,
+              onDrop: _drop,
+              onMove: _moveTo,
+              ghost: _classic
+                  ? _ClassicCard(
+                      colour: _cardColour(i == 0),
+                      radius: _radius(t),
+                      child: t.id.startsWith('aw:') ? const SizedBox.expand() : _face(t, hero: i == 0),
+                    )
+                  : (t.id.startsWith('aw:') ? null : _face(t)),
+              child: _TodayTile(
+                tile: t,
+                prefs: prefs,
+                editing: _editing,
+                hero: i == 0,
+                radius: _radius(t),
+                onTap: _editing ? () => _options(t) : _action(t),
+                onMenu: () => _options(t),
+                child: _face(t, hero: i == 0),
+              ),
+            ),
+          ),
+        ),
+    ],
   );
 
   /// Classic list: each widget on its own card — a small-caps header, then its rows.
@@ -1446,7 +1506,7 @@ class _TodayTile extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         scale: editing ? .95 : 1,
         child: Stack(
-          fit: StackFit.expand,
+          fit: StackFit.passthrough, // fills its cell; hugging, takes the face's height
           children: [
             Pressable(
               scale: .97,
@@ -1494,7 +1554,7 @@ class _TodayTile extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       scale: editing ? .94 : 1,
       child: Stack(
-        fit: StackFit.expand,
+        fit: StackFit.passthrough,
         children: [
           TilePress(prefs: prefs, child: face),
           // Its menu (size, colour, remove…), like a tile's edit buttons on Start.
@@ -1609,4 +1669,119 @@ class _AppWidgetView extends StatelessWidget {
       creationParamsCodec: const StandardMessageCodec(),
     );
   }
+}
+
+/// One widget's place in [_HugGrid]: its column / row and span from the packed grid.
+class _HugCell extends ParentDataWidget<_HugData> {
+  const _HugCell({super.key, required this.col, required this.row, required this.span, required this.fixed, required super.child});
+  final int col, row;
+  final (int, int) span;
+  final bool fixed; // keeps its grid height (app widgets can't be measured)
+
+  @override
+  void applyParentData(RenderObject o) {
+    final d = o.parentData! as _HugData;
+    if (d.col == col && d.row == row && d.span == span && d.fixed == fixed) return;
+    d
+      ..col = col
+      ..row = row
+      ..span = span
+      ..fixed = fixed;
+    o.parent?.markNeedsLayout();
+  }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => _HugGrid;
+}
+
+class _HugData extends ContainerBoxParentData<RenderBox> {
+  int col = 0, row = 0;
+  (int, int) span = (1, 1);
+  bool fixed = false;
+}
+
+/// The today grid with rows that hug: each widget is measured at its width, every row takes
+/// the height of the tallest one-row widget in it, and taller widgets stretch the last of
+/// their rows when they need more. Then every widget fills its rows, so edges still line up.
+class _HugGrid extends MultiChildRenderObjectWidget {
+  const _HugGrid({required this.unit, required this.gap, required super.children});
+  final double unit, gap;
+
+  @override
+  _RenderHugGrid createRenderObject(BuildContext context) => _RenderHugGrid(unit, gap);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderHugGrid o) => o
+    ..unit = unit
+    ..gap = gap;
+}
+
+class _RenderHugGrid extends RenderBox with ContainerRenderObjectMixin<RenderBox, _HugData>, RenderBoxContainerDefaultsMixin<RenderBox, _HugData> {
+  _RenderHugGrid(this._unit, this._gap);
+  double _unit, _gap;
+  set unit(double v) {
+    if (v == _unit) return;
+    _unit = v;
+    markNeedsLayout();
+  }
+
+  set gap(double v) {
+    if (v == _gap) return;
+    _gap = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _HugData) child.parentData = _HugData();
+  }
+
+  double _span(int n) => n * _unit + (n - 1) * _gap;
+
+  @override
+  void performLayout() {
+    final kids = <(RenderBox, _HugData, double)>[];
+    var rows = 0;
+    for (var c = firstChild; c != null; c = childAfter(c)) {
+      final d = c.parentData! as _HugData;
+      final w = _span(d.span.$1);
+      double h;
+      if (d.fixed) {
+        h = _span(d.span.$2);
+      } else {
+        c.layout(BoxConstraints(minWidth: w, maxWidth: w), parentUsesSize: true);
+        h = c.size.height;
+      }
+      kids.add((c, d, h));
+      rows = math.max(rows, d.row + d.span.$2);
+    }
+    final rh = List<double>.filled(rows, 0);
+    for (final (_, d, h) in kids) {
+      if (d.span.$2 == 1) rh[d.row] = math.max(rh[d.row], h);
+    }
+    for (final (_, d, h) in kids.where((k) => k.$2.span.$2 > 1)) {
+      final need = h - (d.span.$2 - 1) * _gap;
+      var have = 0.0;
+      for (var r = d.row; r < d.row + d.span.$2; r++) {
+        have += rh[r];
+      }
+      if (have < need) rh[d.row + d.span.$2 - 1] += need - have;
+    }
+    final top = List<double>.filled(rows + 1, 0);
+    for (var r = 0; r < rows; r++) {
+      top[r + 1] = top[r] + rh[r] + _gap;
+    }
+    for (final (c, d, _) in kids) {
+      final h = top[d.row + d.span.$2] - top[d.row] - _gap;
+      c.layout(BoxConstraints.tight(Size(_span(d.span.$1), h)));
+      d.offset = Offset(d.col * (_unit + _gap), top[d.row]);
+    }
+    size = constraints.constrain(Size(constraints.maxWidth, rows == 0 ? 0 : top[rows] - _gap));
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) => defaultHitTestChildren(result, position: position);
 }

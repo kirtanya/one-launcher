@@ -2301,6 +2301,10 @@ Future<Object?> _showTodaySettings(BuildContext context, {required Prefs prefs})
           if (on) ...[
             label('Layout'),
             chips([('tiles', classic ? 'Cards' : 'Tiles'), ('list', 'List')], prefs.todayLayout, (v) => prefs.setTodayLook(layout: v)),
+            if (prefs.todayLayout != 'list') ...[
+              label(classic ? 'Card height' : 'Tile height'),
+              chips([('grid', 'Fixed grid'), ('hug', 'Hug content')], prefs.todayHug ? 'hug' : 'grid', (v) => prefs.setTodayLook(hug: v == 'hug')),
+            ],
             label('Background'),
             chips([('wallpaper', 'Wallpaper'), ('black', classic ? 'Plain' : 'Black')], prefs.todayBg, (v) => prefs.setTodayLook(bg: v)),
             _Group(null, [

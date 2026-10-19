@@ -197,6 +197,41 @@ void main() {
     expect(_clock, findsOneWidget);
   });
 
+  testWidgets('Today panel: Card height → Hug content — rows only as tall as their widgets, edges still line up', (tester) async {
+    double bottom() {
+      final cards = find.descendant(of: find.byType(TodayPanel), matching: find.byWidgetPredicate((w) => w is Material && w.shape is RoundedRectangleBorder));
+      return [for (final e in cards.evaluate()) tester.getRect(find.byWidget(e.widget)).bottom].reduce((a, b) => a > b ? a : b);
+    }
+
+    final prefs = await _setUp(tester, {
+      'favourites': ['com.whatsapp', 'com.Slack'],
+    });
+    await tester.fling(find.text('Slack').first, const Offset(300, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(_panel, findsOneWidget);
+    final grid = bottom();
+
+    await prefs.setTodayLook(hug: true);
+    Apps.instance.media.value = {'granted': true, 'active': true, 'app': 'Spotify', 'title': 'Midnight City', 'artist': 'M83', 'playing': true};
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull, reason: 'every widget lays out at its content height');
+    expect(find.byType(DayLine), findsOneWidget);
+    expect(find.text('Midnight City'), findsOneWidget);
+    expect(bottom(), lessThan(grid), reason: 'hugging takes less room than the square grid');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/48_classic_today_hug.png'));
+
+    // Edit mode (⋯ menus, the smaller scale) still lays out while hugging.
+    await tester.tap(find.byTooltip('Edit today'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Widget options'), findsWidgets);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    await prefs.setTodayLook(hug: false);
+    await tester.pumpAndSettle();
+    expect(bottom(), closeTo(grid, 1), reason: 'Fixed grid again');
+  });
+
   testWidgets('Classic: Settings → Today panel — off stops the swipe, on again, open from Settings', (tester) async {
     final prefs = await _setUp(tester, {});
     await tester.tap(find.byTooltip('Launcher settings'));
