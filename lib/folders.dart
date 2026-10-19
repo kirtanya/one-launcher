@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'apps.dart';
+import 'prefs.dart';
 
 /// A group of similar apps shown as one card in the app view.
 class Folder {
@@ -68,6 +69,26 @@ const other = Folder('other', 'Everything else', Icons.apps_rounded, []);
 
 /// Virtual folder of the apps opened most from One Launcher. Always first, open by default.
 const mostUsed = Folder('recent', 'Most used', Icons.bolt_rounded, []);
+
+/// Virtual folder of the apps installed in the last [Prefs.recentDays] days, newest first.
+/// Shown above the other folders (Settings → Recently installed turns it off).
+const recentlyInstalled = Folder('new', 'Recently installed', Icons.new_releases_outlined, []);
+
+/// Apps installed within the chosen period, newest first.
+List<AppEntry> recentInstalls(List<AppEntry> apps, Prefs prefs, {DateTime? now}) {
+  final cutoff = (now ?? DateTime.now()).subtract(Duration(days: prefs.recentDays)).millisecondsSinceEpoch;
+  return apps.where((a) => a.installed > cutoff).toList()..sort((a, b) => b.installed.compareTo(a.installed));
+}
+
+/// A new app: installed within the period and not opened from the launcher since. One-time —
+/// opening it once clears its dot (it stays in Recently installed for the whole period).
+bool isNewApp(AppEntry a, Prefs prefs, {DateTime? now}) {
+  final cutoff = (now ?? DateTime.now()).subtract(Duration(days: prefs.recentDays)).millisecondsSinceEpoch;
+  return a.installed > cutoff && (prefs.lastLaunch[a.package] ?? 0) < a.installed;
+}
+
+/// Packages that show the new dot on their icon (kept current by the app list).
+final newApps = ValueNotifier<Set<String>>(const {});
 
 Folder folderById(String id) => folders.where((f) => f.id == id).firstOrNull ?? other;
 

@@ -391,7 +391,14 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     final padding = MediaQuery.paddingOf(context);
     final statusBar = padding.top;
     final prefs = widget.prefs;
-    final (apps, groups, top) = _derived();
+    final (apps, folderGroups, top) = _derived();
+    // Recently installed sits above the other folders (Settings → Recently installed); it
+    // changes with the clock, so it isn't cached with the folders.
+    final recent = prefs.recentInstalls ? recentInstalls(apps, prefs) : const <AppEntry>[];
+    final groups = [if (recent.isNotEmpty) (recentlyInstalled, recent), ...folderGroups];
+    final fresh = {for (final a in apps) if (isNewApp(a, prefs)) a.package};
+    // The dots on their icons: set after this frame (other screens listen too).
+    if (!setEquals(fresh, newApps.value)) WidgetsBinding.instance.addPostFrameCallback((_) => newApps.value = fresh);
     _folderIds = [for (final (f, _) in groups) f.id];
     final pinned = prefs.favourites.toSet();
 
@@ -430,7 +437,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
             tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
             onToggle: () => _toggle(folder.id),
             onCustomise: () =>
-                showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in groups) f.id]),
+                showCustomiseFolder(context, prefs: prefs, folder: folder, allApps: widget.apps, visibleOrder: [for (final (f, _) in folderGroups) f.id]),
           ),
         ),
       ),
@@ -1121,7 +1128,21 @@ class _GridApp extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: DS.s8, horizontal: DS.s4),
           child: Column(
             children: [
-              AppIcon(app, size: DS.appIcon), // no pin badge: pinning stays in the long-press menu
+              // No pin badge (pinning stays in the long-press menu); a dot on apps not opened
+              // since they were installed.
+              ValueListenableBuilder<Set<String>>(
+                valueListenable: newApps,
+                builder: (context, fresh, icon) => fresh.contains(app.package)
+                    ? Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          icon!,
+                          Positioned(top: -3, right: -3, child: NewDot(semantics: '${app.label}, new')),
+                        ],
+                      )
+                    : icon!,
+                child: AppIcon(app, size: DS.appIcon),
+              ),
               const SizedBox(height: 6),
               Text(
                 app.label,
@@ -1409,4 +1430,24 @@ class _WebRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The small dot on a newly installed app's icon, until it's opened once.
+class NewDot extends StatelessWidget {
+  const NewDot({super.key, this.semantics});
+  final String? semantics;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: semantics ?? 'New',
+    child: Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: DS.ink,
+        shape: BoxShape.circle,
+        border: Border.all(color: DS.card, width: 2),
+      ),
+    ),
+  );
 }

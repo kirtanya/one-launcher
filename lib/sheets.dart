@@ -249,6 +249,7 @@ Future<void> showCustomiseFolder(
   List<String> visibleOrder = const [],
 }) {
   final isMostUsed = folder.id == mostUsed.id;
+  if (folder.id == recentlyInstalled.id) return _customiseRecent(context, prefs: prefs);
   final i = visibleOrder.indexOf(folder.id);
   void then(VoidCallback f) {
     Navigator.pop(context);
@@ -1602,6 +1603,14 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _Setting(
               'Apps & search',
+              Icons.new_releases_outlined,
+              'Recently installed',
+              prefs.recentInstalls ? 'Folder on · last ${recentPeriodName(prefs.recentDays)}' : 'Folder hidden',
+              keywords: 'new apps installed folder dot week',
+              open: (c) => _showRecentSettings(c, prefs: prefs),
+            ),
+            _Setting(
+              'Apps & search',
               Icons.unfold_more_rounded,
               'Open folders as you scroll',
               'The folder that stops in the middle opens',
@@ -2267,6 +2276,87 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
           padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s16),
           child: Text(
             'Works with Google TV and Android TV on the same Wi-Fi. Only your phone and TV talk to each other.',
+            style: DS.rowSub.copyWith(fontSize: 13),
+          ),
+        ),
+      ],
+    ),
+  ),
+);
+
+/// How far back an install counts as recent (days → name).
+const recentPeriods = [(3, '3 days'), (7, '1 week'), (14, '2 weeks'), (30, '1 month')];
+String recentPeriodName(int days) => recentPeriods.where((p) => p.$1 == days).firstOrNull?.$2 ?? '$days days';
+
+/// The Recently installed folder's ⋯: rename, its time period, hide it.
+Future<void> _customiseRecent(BuildContext context, {required Prefs prefs}) {
+  void then(VoidCallback f) {
+    Navigator.pop(context);
+    f();
+  }
+
+  return showOneSheet(
+    context,
+    header: SheetHeader(
+      title: 'Customise',
+      subtitle: '${prefs.folderName(recentlyInstalled)} · last ${recentPeriodName(prefs.recentDays)}',
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(color: DS.ink, shape: BoxShape.circle),
+        child: Icon(recentlyInstalled.icon, color: DS.card),
+      ),
+    ),
+    actions: [
+      SheetAction(Icons.edit_outlined, 'Rename', () => then(() => showRenameFolder(context, prefs: prefs, folder: recentlyInstalled))),
+      SheetAction(Icons.date_range_rounded, 'Time period', () => then(() => _showRecentSettings(context, prefs: prefs))),
+      SheetAction(Icons.visibility_off_outlined, 'Hide this folder', () => then(() => prefs.setRecentInstalls(on: false))),
+    ],
+  );
+}
+
+/// Settings → Recently installed: show the folder or not, and how far back it looks.
+Future<Object?> _showRecentSettings(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
+          child: SheetHeader(title: 'Recently installed', subtitle: 'A folder at the top of your apps'),
+        ),
+        _Group(null, [
+          _SwitchRow(Icons.new_releases_outlined, 'Show the folder', 'Above your other folders', prefs.recentInstalls, (v) => prefs.setRecentInstalls(on: v)),
+        ]),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+          child: Text(DS.cased('Apps installed in the last'), style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+          child: Wrap(
+            spacing: DS.s8,
+            runSpacing: DS.s8,
+            children: [
+              for (final (days, name) in recentPeriods)
+                _Chip(
+                  label: DS.cased(name),
+                  selected: prefs.recentDays == days,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    prefs.setRecentInstalls(days: days);
+                  },
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s16),
+          child: Text(
+            DS.cased('New apps get a dot on their icon until you open them once. They stay in the folder for the whole period.'),
             style: DS.rowSub.copyWith(fontSize: 13),
           ),
         ),

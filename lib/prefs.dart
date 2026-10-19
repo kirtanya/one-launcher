@@ -411,6 +411,22 @@ class Prefs extends ChangeNotifier {
     final m = launchCounts;
     m[pkg] = (m[pkg] ?? 0) + 1;
     await _sp.setString('launchCounts', jsonEncode(m));
+    final last = lastLaunch..[pkg] = DateTime.now().millisecondsSinceEpoch;
+    await _sp.setString('lastLaunch', jsonEncode(last));
+    notifyListeners();
+  }
+
+  /// When each app was last opened from the launcher (ms since epoch). A new app's dot shows
+  /// until it's opened once after being installed.
+  Map<String, int> get lastLaunch => Map<String, int>.from(_json('lastLaunch'));
+
+  /// The "Recently installed" folder at the top of the app list: shown or not, and how far back
+  /// (days) an install counts as recent.
+  bool get recentInstalls => _sp.getBool('recentInstalls') ?? true;
+  int get recentDays => _sp.getInt('recentDays') ?? 7;
+  Future<void> setRecentInstalls({bool? on, int? days}) async {
+    if (on != null) await _sp.setBool('recentInstalls', on);
+    if (days != null) await _sp.setInt('recentDays', days);
     notifyListeners();
   }
 
