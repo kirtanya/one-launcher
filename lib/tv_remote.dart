@@ -202,3 +202,43 @@ class TvRemote {
     volume.value = null;
   }
 }
+
+/// A quick app on the phone remote: its name, its Android TV package and (when it has one) a web
+/// link the app opens on the TV — which works without One Launcher TV on the TV.
+typedef RemoteApp = ({String id, String name, String package, String? web});
+
+/// Common TV apps for the remote's quick row (Edit → Add).
+const remoteAppCatalog = <RemoteApp>[
+  (id: 'youtube', name: 'YouTube', package: 'com.google.android.youtube.tv', web: 'https://www.youtube.com'),
+  (id: 'netflix', name: 'Netflix', package: 'com.netflix.ninja', web: 'https://www.netflix.com/title'),
+  (id: 'prime', name: 'Prime Video', package: 'com.amazon.amazonvideo.livingroom', web: 'https://app.primevideo.com'),
+  (id: 'hotstar', name: 'JioHotstar', package: 'in.startv.hotstar', web: 'https://www.hotstar.com'),
+  (id: 'disney', name: 'Disney+', package: 'com.disney.disneyplus', web: 'https://www.disneyplus.com'),
+  (id: 'ytmusic', name: 'YouTube Music', package: 'com.google.android.youtube.tvmusic', web: null),
+  (id: 'spotify', name: 'Spotify', package: 'com.spotify.tv.android', web: 'https://open.spotify.com'),
+  (id: 'sonyliv', name: 'SonyLIV', package: 'com.sonyliv', web: null),
+  (id: 'zee5', name: 'ZEE5', package: 'com.graymatrix.did', web: null),
+  (id: 'appletv', name: 'Apple TV', package: 'com.apple.atve.androidtv.appletv', web: null),
+  (id: 'plex', name: 'Plex', package: 'com.plexapp.android', web: null),
+  (id: 'nuvio', name: 'Nuvio', package: 'com.nuvio.app', web: null),
+  (id: 'stremio', name: 'Stremio', package: 'com.stremio.one', web: null),
+  (id: 'vlc', name: 'VLC', package: 'org.videolan.vlc', web: null),
+  (id: 'kodi', name: 'Kodi', package: 'org.xbmc.kodi', web: null),
+  (id: 'twitch', name: 'Twitch', package: 'tv.twitch.android.viewer', web: null),
+  (id: 'playstore', name: 'Play Store', package: 'com.android.vending', web: null),
+];
+
+/// A quick-app id → the app ("c:Name|package" is one the user typed in), or null if unknown.
+RemoteApp? remoteAppFor(String id) {
+  if (id.startsWith('c:')) {
+    final parts = id.substring(2).split('|');
+    if (parts.length < 2 || parts[1].isEmpty) return null;
+    return (id: id, name: parts[0].isEmpty ? parts[1] : parts[0], package: parts[1], web: null);
+  }
+  return remoteAppCatalog.where((a) => a.id == id).firstOrNull;
+}
+
+/// Opens [app] on the TV: its web link when it has one (the app takes it), else through One
+/// Launcher TV (onelauncher://launch — needs it installed on the TV).
+Future<void> openRemoteApp(RemoteApp app) =>
+    TvRemote.instance.appLink(app.web ?? 'onelauncher://launch?package=${Uri.encodeQueryComponent(app.package)}');

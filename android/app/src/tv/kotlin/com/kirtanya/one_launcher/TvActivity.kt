@@ -127,7 +127,7 @@ class TvActivity : FlutterActivity() {
                 }
                 "searchIn" -> {
                     val q = call.argument<String>("query") ?: ""
-                    result.success(open(Intent(Intent.ACTION_SEARCH).setPackage(call.argument<String>("package")).putExtra(SearchManager.QUERY, q)))
+                    result.success(searchIn(call.argument<String>("package")!!, q))
                 }
                 // A link (e.g. a YouTube trailer); opened in that app if it's installed.
                 "openUri" -> {
@@ -401,6 +401,21 @@ class TvActivity : FlutterActivity() {
         if (open(Intent(i))) return true
         // Some TV apps take their links without the "browsable" mark; only try that inside a named app.
         return i.`package` != null && open(i.apply { removeCategory(Intent.CATEGORY_BROWSABLE) })
+    }
+
+    /** An app's own search for [q]. Some (JioHotstar) leave the DEFAULT category off their search
+     *  screen, so a plain request to the package matches nothing (-91): address that screen by
+     *  name then. Clear-top delivers it even when the app is already open on something else. */
+    private fun searchIn(pkg: String, q: String): Boolean {
+        val base = Intent(Intent.ACTION_SEARCH).setPackage(pkg).putExtra(SearchManager.QUERY, q)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        if (open(Intent(base))) return true
+        val target = try {
+            packageManager.queryIntentActivities(base, 0).firstOrNull()?.activityInfo
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        return open(Intent(base).setClassName(target.packageName, target.name))
     }
 
     /** Installed apps that open [uri] (e.g. stremio:///detail/… → Nuvio): package + name. */

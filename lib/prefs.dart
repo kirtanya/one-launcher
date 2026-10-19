@@ -463,6 +463,12 @@ class Prefs extends ChangeNotifier {
 
   /// TV: the quick action chips above the rows, in order ("t:…" built-in, `a:<package>` apps).
   static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings'];
+
+  /// The phone remote's quick apps (ids from remoteAppCatalog, or `c:name|package` for one
+  /// the user typed in), left to right.
+  static const remoteAppsDefault = ['youtube', 'netflix', 'prime', 'hotstar'];
+  List<String> get remoteApps => _sp.getStringList('remoteApps') ?? remoteAppsDefault;
+  Future<void> setRemoteApps(List<String> ids) => _setList('remoteApps', ids);
   List<String> get tvQuickActions => _sp.getStringList('tvQuickActions') ?? tvQuickDefault;
   Future<void> setTvQuickActions(List<String> ids) => _setList('tvQuickActions', ids);
 

@@ -330,30 +330,38 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                                   ),
                                   SizedBox(
                                     height: 40,
-                                    child: ListView(
+                                    // A handful of chips: built all at once (no lazy list).
+                                    child: SingleChildScrollView(
                                       scrollDirection: Axis.horizontal,
                                       padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                                      children: [
-                                        for (final (name, link) in const [
-                                          ('YouTube', 'https://www.youtube.com'),
-                                          ('Netflix', 'https://www.netflix.com/title'),
-                                          ('Prime Video', 'https://app.primevideo.com'),
-                                          ('Disney+', 'https://www.disneyplus.com'),
-                                        ])
-                                          Padding(
-                                            padding: const EdgeInsets.only(right: DS.s8),
-                                            child: ActionChip(
-                                              label: Text(name, style: DS.rowTitle.copyWith(fontSize: 14)),
-                                              backgroundColor: DS.cardMuted,
-                                              side: BorderSide.none,
-                                              shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
-                                              onPressed: () {
-                                                HapticFeedback.selectionClick();
-                                                tv.appLink(link);
-                                              },
+                                      child: Row(
+                                        children: [
+                                          // Quick apps: the user's own (Edit at the end).
+                                          for (final app in [for (final id in prefs.remoteApps) ?remoteAppFor(id)])
+                                            Padding(
+                                              padding: const EdgeInsets.only(right: DS.s8),
+                                              child: ActionChip(
+                                                label: Text(app.name, style: DS.rowTitle.copyWith(fontSize: 14)),
+                                                backgroundColor: DS.cardMuted,
+                                                side: BorderSide.none,
+                                                shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
+                                                onPressed: () {
+                                                  HapticFeedback.selectionClick();
+                                                  openRemoteApp(app);
+                                                },
+                                              ),
                                             ),
+                                          ActionChip(
+                                            avatar: Icon(Icons.edit_outlined, size: 18, color: DS.ink),
+                                            label: Text('Edit', style: DS.rowTitle.copyWith(fontSize: 14)),
+                                            tooltip: 'Edit quick apps',
+                                            backgroundColor: Colors.transparent,
+                                            side: BorderSide(color: DS.hairline),
+                                            shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
+                                            onPressed: () => showRemoteAppsEditor(context, prefs: prefs),
                                           ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -838,4 +846,183 @@ class _TypingPanelState extends State<_TypingPanel> {
       ],
     ),
   );
+}
+
+/// The remote's quick apps: remove the ones on the row, add common TV apps, or any app by its
+/// package name (for apps not listed). Changes show on the remote at once.
+Future<Object?> showRemoteAppsEditor(
+  BuildContext context, {
+  required Prefs prefs,
+}) => showOneSheetWith(
+  context,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final ids = prefs.remoteApps;
+      Widget row(String title, String sub, Widget trailing) => Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: DS.s24,
+          vertical: DS.s4,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: DS.rowTitle),
+                  Text(
+                    sub,
+                    style: DS.rowSub.copyWith(fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            trailing,
+          ],
+        ),
+      );
+      Widget eyebrow(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
+        child: Text(DS.cased(t), style: DS.eyebrow),
+      );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
+            child: SheetHeader(
+              title: 'Quick apps',
+              subtitle: 'The app buttons on your remote',
+            ),
+          ),
+          eyebrow('On the remote'),
+          if (ids.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+              child: Text('None — add some below', style: DS.rowSub),
+            ),
+          for (final (i, id) in ids.indexed)
+            if (remoteAppFor(id) case final app?)
+              row(
+                app.name,
+                app.package,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Move ${app.name} left',
+                      onPressed: i == 0
+                          ? null
+                          : () => prefs.setRemoteApps(
+                              [...ids]
+                                ..removeAt(i)
+                                ..insert(i - 1, id),
+                            ),
+                      icon: Icon(
+                        Icons.arrow_upward_rounded,
+                        color: i == 0 ? DS.inkFaint : DS.ink,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remove ${app.name}',
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        prefs.setRemoteApps([...ids]..removeAt(i));
+                      },
+                      icon: Icon(
+                        Icons.remove_circle_outline_rounded,
+                        color: DS.alert,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          eyebrow('Add'),
+          for (final app in remoteAppCatalog.where((a) => !ids.contains(a.id)))
+            row(
+              app.name,
+              app.package,
+              IconButton(
+                tooltip: 'Add ${app.name}',
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  prefs.setRemoteApps([...ids, app.id]);
+                },
+                icon: Icon(Icons.add_circle_outline_rounded, color: DS.ink),
+              ),
+            ),
+          row(
+            'Other app',
+            'Any app on your TV, by its package name',
+            IconButton(
+              tooltip: 'Add another app',
+              onPressed: () => _addOtherApp(ctx, prefs),
+              icon: Icon(Icons.add_circle_outline_rounded, color: DS.ink),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s24, DS.s12, DS.s24, DS.s16),
+            child: Text(
+              'Apps without a web link open through One Launcher TV, so it needs to be on the TV. An app the TV doesn’t have does nothing.',
+              style: DS.rowSub.copyWith(fontSize: 13),
+            ),
+          ),
+        ],
+      );
+    },
+  ),
+);
+
+/// "Other app": a name and the app's package (e.g. in.startv.hotstar) → "c:Name|package".
+Future<void> _addOtherApp(BuildContext context, Prefs prefs) async {
+  final name = TextEditingController(), pkg = TextEditingController();
+  final ok = await showDialog<bool>(
+    context: context,
+    useRootNavigator: true,
+    builder: (d) => AlertDialog(
+      backgroundColor: DS.card,
+      title: Text('Add an app', style: DS.title.copyWith(fontSize: 20)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: name,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              hintText: 'JioHotstar',
+            ),
+          ),
+          TextField(
+            controller: pkg,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Package name',
+              hintText: 'in.startv.hotstar',
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(d, false),
+          child: Text(
+            'Cancel',
+            style: DS.rowTitle.copyWith(color: DS.inkMuted),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(d, true),
+          child: Text('Add', style: DS.rowTitle),
+        ),
+      ],
+    ),
+  );
+  final p = pkg.text.trim(), n = name.text.trim().replaceAll('|', ' ');
+  if (ok == true && RegExp(r'^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$').hasMatch(p)) {
+    await prefs.setRemoteApps([...prefs.remoteApps, 'c:$n|$p']);
+  }
 }

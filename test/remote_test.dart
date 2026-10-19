@@ -51,6 +51,35 @@ void main() {
     expect(find.byType(Slider), findsNWidgets(2), reason: 'volume + brightness sliders');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/22_remote.png'));
 
+    // Quick apps: the user's own. Default YouTube, Netflix, Prime Video, JioHotstar; Edit → remove
+    // Netflix, add Nuvio (no web link: opens through One Launcher TV).
+    expect(prefs.remoteApps, ['youtube', 'netflix', 'prime', 'hotstar'], reason: 'JioHotstar, not Disney+, by default');
+    Future<void> chip(Finder f) async {
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+    }
+
+    await chip(find.byTooltip('Edit quick apps'));
+    await tester.tap(find.byTooltip('Edit quick apps'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove Netflix'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byTooltip('Add Nuvio'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.byTooltip('Add Nuvio'));
+    await tester.pumpAndSettle();
+    expect(prefs.remoteApps, ['youtube', 'prime', 'hotstar', 'nuvio']);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    calls.clear();
+    await chip(find.widgetWithText(ActionChip, 'Nuvio'));
+    await tester.tap(find.widgetWithText(ActionChip, 'Nuvio'));
+    await tester.pumpAndSettle();
+    expect((calls.lastWhere((c) => c.method == 'tvAppLink').arguments as Map)['link'], 'onelauncher://launch?package=com.nuvio.app');
+    await chip(find.widgetWithText(ActionChip, 'JioHotstar'));
+    await tester.tap(find.widgetWithText(ActionChip, 'JioHotstar'));
+    await tester.pumpAndSettle();
+    expect((calls.lastWhere((c) => c.method == 'tvAppLink').arguments as Map)['link'], 'https://www.hotstar.com');
+
     // Drag the slider up → several volume-up presses (no absolute volume in the protocol).
     calls.clear();
     await tester.drag(find.byType(Slider).first, const Offset(60, 0));

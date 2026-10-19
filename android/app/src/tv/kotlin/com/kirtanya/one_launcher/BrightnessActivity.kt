@@ -12,6 +12,7 @@ import android.provider.Settings
  *    TVs; the phone's D-pad then adjusts it)
  *  - `onelauncher://brightness?level=0…255` → Android's screen brightness (only TVs whose
  *    backlight follows it; needs "Modify system settings")
+ *  - `onelauncher://launch?package=P` → opens that app (the remote's quick apps)
  * Invisible: does its job and closes at once.
  */
 class BrightnessActivity : Activity() {
@@ -21,6 +22,10 @@ class BrightnessActivity : Activity() {
             val uri = intent?.data
             when (uri?.host) {
                 "picture" -> openPicture()
+                "launch" -> uri.getQueryParameter("package")?.let { pkg ->
+                    (packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg))
+                        ?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
                 "brightness" -> {
                     val level = uri.getQueryParameter("level")?.toIntOrNull()
                     if (level != null && Settings.System.canWrite(this)) {
