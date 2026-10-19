@@ -330,12 +330,10 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
                 emitIme(Pb.parse(field))
             }
         }
-        m[21]?.firstOrNull()?.let { raw ->
-            val e = Pb.parse(raw as ByteArray)
-            imeCounter = (e[1]?.firstOrNull() as? Long) ?: imeCounter
-            fieldCounter = (e[2]?.firstOrNull() as? Long) ?: fieldCounter
-            imeReady = true
-        }
+        // 21 from the TV is only its keyboard's on/off state ({1=1, 2=1} shown, {1=0} hidden) — not
+        // the counters: taking them made the TV drop every edit ("input field has changed from 1
+        // to 43"). The counters come from 20 (the app's counter) and 20/22 (the field's).
+        if (m.containsKey(21)) imeReady = imeReady || imeCounter != 0L
         m[22]?.firstOrNull()?.let { raw ->
             val req = Pb.parse(raw as ByteArray)
             (req[2]?.firstOrNull() as? ByteArray)?.let { field ->
