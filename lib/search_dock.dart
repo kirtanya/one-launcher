@@ -70,10 +70,13 @@ class SearchDock extends StatelessWidget {
     // Searching at the bottom: swipe down on the bar to close search (the results above
     // scroll on their own, so this is the one place that closes it).
     final swipeToClose = active && !inline;
+    // Floating at the bottom, the dock's whole strip keeps vertical drags for itself: it sits on
+    // the system's home-gesture edge, so a swipe up there must not scroll the app list behind it.
+    final claim = !inline;
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onVerticalDragUpdate: swipeToClose ? (d) => _swipe += d.delta.dy : null,
-      onVerticalDragStart: swipeToClose ? (_) => _swipe = 0 : null,
+      onVerticalDragUpdate: swipeToClose ? (d) => _swipe += d.delta.dy : (claim ? (_) {} : null),
+      onVerticalDragStart: swipeToClose ? (_) => _swipe = 0 : (claim ? (_) {} : null),
       onVerticalDragEnd: swipeToClose
           ? (d) {
               if (_swipe > 24 || (d.primaryVelocity ?? 0) > 300) {
@@ -81,7 +84,7 @@ class SearchDock extends StatelessWidget {
                 (onSwipeClose ?? onClose)();
               }
             }
-          : null,
+          : (claim ? (_) {} : null),
       child: Padding(
         padding: EdgeInsets.fromLTRB(inline ? DS.gutter : DS.s16, 0, inline ? DS.gutter : DS.s16, bottom),
         child: SizedBox(
