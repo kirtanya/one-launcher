@@ -108,8 +108,9 @@ class Apps {
         case 'homePressed':
           onHomePressed?.call();
         case 'appsChanged':
-          _icons.clear();
-          _ready.clear();
+          // Keep the icons on screen; the reload that follows refreshes only the ones that
+          // changed (wiping them all flashed every icon to a letter).
+          _icons.removeWhere((pkg, _) => !_ready.containsKey(pkg)); // retry ones that failed
           onAppsChanged?.call();
         case 'permissionsChanged':
           onPermissionsChanged?.call();
@@ -143,12 +144,38 @@ class Apps {
             )
             .toList()
           ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    // Every icon in one batch (from Android's disk cache when unchanged), given a moment to
+    // arrive so the list doesn't open on letter tiles; slower ones fill in as they come.
+    await _prefetch(apps).timeout(const Duration(milliseconds: 600), onTimeout: () {});
     return apps;
   }
+
+  Future<void>? _prefetching;
+
+  /// Loads all [apps]' icons at once and decodes them ahead of their first draw. Icons that
+  /// didn't change keep their image (no flicker); changed ones are swapped in.
+  Future<void> _prefetch(List<AppEntry> apps) => _prefetching = () async {
+    try {
+      final m = await _ch.invokeMapMethod<String, Uint8List>('getIcons', {'packages': [for (final a in apps) a.package]});
+      if (m == null) return;
+      for (final MapEntry(key: pkg, value: bytes) in m.entries) {
+        if (_ready[pkg] case final old? when listEquals(old.bytes, bytes)) continue;
+        final img = MemoryImage(bytes);
+        _ready[pkg] = img;
+        _icons[pkg] = Future.value(bytes);
+        img.resolve(ImageConfiguration.empty); // decode now, not on first draw
+      }
+    } catch (_) {
+      // Older Android side: icons load one by one as drawn.
+    }
+  }();
 
   Future<Uint8List?> icon(String package) {
     if (isDemo) return Future.value(null);
     return _icons.putIfAbsent(package, () async {
+      // A batch is on its way: wait for it rather than asking twice.
+      await _prefetching;
+      if (_ready[package] case final ready?) return ready.bytes;
       final bytes = await _ch.invokeMethod<Uint8List>('getIcon', {'package': package});
       if (bytes != null) _ready[package] = MemoryImage(bytes);
       return bytes;

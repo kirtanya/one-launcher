@@ -34,6 +34,7 @@ import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.concurrent.Executors
 
 /**
@@ -54,6 +55,8 @@ class MainActivity : FlutterActivity() {
     private val quick by lazy { QuickActions(this) { method, arg -> if (::channel.isInitialized) channel.invokeMethod(method, arg) } }
     private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
     private val worker = Executors.newSingleThreadExecutor()
+    // Icons are made on a few threads at once (drawing + PNG per app is the slow part).
+    private val iconPool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
 
     private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
@@ -126,9 +129,28 @@ class MainActivity : FlutterActivity() {
                 }
                 "getIcon" -> {
                     val pkg = call.argument<String>("package")!!
-                    worker.execute {
-                        val bytes = loadIcon(pkg)
+                    iconPool.execute {
+                        val bytes = cachedIcon(pkg)
                         main.post { result.success(bytes) }
+                    }
+                }
+                // Every app's icon in one go (from the disk cache when unchanged): package → PNG.
+                "getIcons" -> {
+                    val ids = call.argument<List<String>>("packages") ?: emptyList()
+                    worker.execute {
+                        val out = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+                        val done = java.util.concurrent.CountDownLatch(ids.size)
+                        for (id in ids) {
+                            iconPool.execute {
+                                try {
+                                    cachedIcon(id)?.let { out[id] = it }
+                                } finally {
+                                    done.countDown()
+                                }
+                            }
+                        }
+                        done.await()
+                        main.post { result.success(HashMap(out)) }
                     }
                 }
                 "launch" -> result.success(launch(call.argument<String>("package")!!, call.argument<List<Number>>("from")))
@@ -322,6 +344,36 @@ class MainActivity : FlutterActivity() {
             open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/search?q=" + android.net.Uri.encode(q))))
 
     // Badged = work apps get the briefcase, like the system launcher.
+    /** [loadIcon], kept on disk per app version: after the launcher restarts (Android closes it in
+     *  the background), icons come from files instead of being drawn again. An app update (its
+     *  APK changes) makes a new file; the old one is dropped. */
+    private fun cachedIcon(id: String): ByteArray? {
+        val name = "v1_" + id.replace(Regex("[^A-Za-z0-9._-]"), "_") + "_"
+        val dir = File(cacheDir, "icons")
+        val file = try {
+            val stamp = activityFor(id).first?.applicationInfo?.sourceDir?.let { File(it).lastModified() } ?: 0L
+            File(dir, "$name$stamp.png")
+        } catch (e: Exception) {
+            null
+        }
+        if (file != null && file.exists()) {
+            try {
+                return file.readBytes()
+            } catch (_: Exception) {
+            }
+        }
+        val bytes = loadIcon(id) ?: return null
+        if (file != null) {
+            try {
+                dir.mkdirs()
+                dir.listFiles { f -> f.name.startsWith(name) }?.forEach { it.delete() }
+                file.writeBytes(bytes)
+            } catch (_: Exception) {
+            }
+        }
+        return bytes
+    }
+
     private fun loadIcon(id: String): ByteArray? = try {
         val (info, _) = activityFor(id)
         val d = info?.getBadgedIcon(0) ?: packageManager.getApplicationIcon(resolve(id).first)
