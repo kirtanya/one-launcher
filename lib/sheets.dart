@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
+import 'one_stream.dart';
 import 'quick_chips.dart';
 import 'prefs.dart';
 import 'photo_wallpaper.dart';
@@ -2596,12 +2597,14 @@ Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}
           _SwitchRow(Icons.bolt_rounded, 'Open the only match', 'When search finds just one app', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
         ]),
         _Group('Search in', [
-          for (final (id, icon, title, sub) in const [
+          for (final (id, icon, title, sub) in [
             ('apps', Icons.apps_rounded, 'Apps', 'Everything installed, work apps too'),
             ('shortcuts', Icons.bolt_rounded, 'App shortcuts', 'Actions apps offer, like Scan QR or New message'),
             ('settings', Icons.settings_rounded, 'Phone settings', 'Wi-Fi, Bluetooth, Battery, Display…'),
             ('google', Icons.travel_explore_rounded, 'Google', 'Search the web for what you type'),
             ('play', Icons.shop_outlined, 'Play Store', 'Find new apps'),
+            // Only when One Stream is installed (and answers us).
+            if (OneStream.instance.available.value) ('onestream', Icons.movie_outlined, 'Movies & shows', 'From One Stream, as you type'),
           ])
             _SwitchRow(icon, title, sub, prefs.searchIn.contains(id), (v) => prefs.setSearchIn(id, v)),
         ]),

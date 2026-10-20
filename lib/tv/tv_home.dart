@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../folders.dart';
+import '../one_stream.dart';
 import '../prefs.dart';
 import '../ui/ds.dart';
 import '../ui/palette.dart';
@@ -93,6 +94,7 @@ class TvHome extends StatefulWidget {
 class _TvHomeState extends State<TvHome> {
   List<AppEntry> _apps = const [];
   List<Map> _watchNext = const [], _channels = const [], _history = const [];
+  List<OneStreamTitle> _stream = const []; // One Stream's Continue watching (when installed)
   List<TvRow> _rows = const [];
   bool _loaded = false;
 
@@ -124,6 +126,7 @@ class _TvHomeState extends State<TvHome> {
     };
     tv.media.addListener(_regroup);
     prefs.addListener(_regroup);
+    OneStream.instance.available.addListener(_loadContent); // installed / removed: its resume items
     _load();
     Catalog.instance.start(prefs); // search's catalog: load the saved one, update when due
   }
@@ -132,6 +135,7 @@ class _TvHomeState extends State<TvHome> {
   void dispose() {
     tv.media.removeListener(_regroup);
     prefs.removeListener(_regroup);
+    OneStream.instance.available.removeListener(_loadContent);
     _backdropTimer?.cancel();
     _v.dispose();
     for (final c in _h.values) {
@@ -157,11 +161,13 @@ class _TvHomeState extends State<TvHome> {
 
   Future<void> _loadContent() async {
     final results = await Future.wait([tv.watchNext(), tv.channels(), tv.history()]);
+    final stream = await OneStream.instance.continueWatching();
     await tv.refreshMedia();
     if (!mounted) return;
     _watchNext = results[0];
     _channels = results[1];
     _history = results[2];
+    _stream = stream;
     _regroup();
   }
 
@@ -200,11 +206,35 @@ class _TvHomeState extends State<TvHome> {
         ),
       );
     }
+    // One Stream's own Continue watching (real progress; opens right where you left off). It has
+    // no times, so each takes the place of its entry in the TV's history (recency); the rest
+    // follow the history.
+    final stream = [..._stream];
+    TvItem streamItem(OneStreamTitle s) => TvItem(
+      key: 'os:${s.key}',
+      kind: TvKind.resume,
+      title: s.title,
+      package: OneStream.package,
+      appName: byPkg[OneStream.package]?.label ?? 'One Stream',
+      meta: _joinMeta([s.subtitle, s.left]),
+      image: s.backdrop ?? s.poster,
+      progress: s.hasProgress ? s.progress.clamp(0, 1) : null,
+      intent: s.link,
+    );
+    OneStreamTitle? takeStream(String title) {
+      final i = stream.indexWhere((s) => s.title.toLowerCase() == title.toLowerCase());
+      return i < 0 ? null : stream.removeAt(i);
+    }
+
     // Then the watch history the TV kept (apps closed since): newest first.
     for (final h in _history) {
       final title = h['title'] as String?;
       final pkg = h['package'] as String? ?? '';
       if (title == null || cont.any((c) => c.title == title && c.package == pkg)) continue;
+      if (takeStream(title) case final s?) {
+        if (!cont.any((c) => c.title == s.title)) cont.add(streamItem(s));
+        continue;
+      }
       final dur = (h['duration'] as num?)?.toDouble() ?? 0;
       final pos = (h['position'] as num?)?.toDouble() ?? 0;
       final artPath = h['art'] as String?;
@@ -221,6 +251,9 @@ class _TvHomeState extends State<TvHome> {
           historyKey: h['key'] as String?,
         ),
       );
+    }
+    for (final s in stream) {
+      if (!cont.any((c) => c.title.toLowerCase() == s.title.toLowerCase())) cont.add(streamItem(s));
     }
     for (final p in _watchNext) {
       final item = _program(p, appName(p['package'] as String? ?? ''));
@@ -254,7 +287,7 @@ class _TvHomeState extends State<TvHome> {
           TvRow('resume', 'Resume', [
             now,
             // Live: control it right here (music keeps playing on the home screen).
-            if (now.historyKey == null && TvLook.on('controls')) ...[
+            if (now.historyKey == null && now.key.startsWith('now:') && TvLook.on('controls')) ...[
               if (m?['canPrev'] == true) const TvItem(key: 'm:prev', kind: TvKind.action, title: 'Previous', package: ''),
               TvItem(key: 'm:toggle', kind: TvKind.action, title: now.playing ? 'Pause' : 'Play', package: ''),
               if (m?['canNext'] == true) const TvItem(key: 'm:next', kind: TvKind.action, title: 'Next', package: ''),
@@ -650,6 +683,8 @@ class _TvHomeState extends State<TvHome> {
     switch (item.kind) {
       case TvKind.app:
         tv.launch(item.package);
+      case TvKind.resume when item.key.startsWith('os:'):
+        OneStream.instance.open(item.intent!); // One Stream picks up where it was
       case TvKind.resume:
         final live = tv.media.value;
         if (item.historyKey != null && !(live?['active'] == true && live?['package'] == item.package)) {

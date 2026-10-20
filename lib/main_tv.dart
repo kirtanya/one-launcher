@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'one_stream.dart';
 import 'prefs.dart';
 import 'tv/tv_apps.dart';
 import 'tv/tv_home.dart';
@@ -15,6 +16,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   TvApps.instance.init();
+  OneStream.channel = const MethodChannel('one_launcher/tv');
+  OneStream.instance.init(); // the user's streaming app, when installed
   final prefs = await Prefs.load();
   final theme = OneTheme(prefs); // same colour engine as the phone (Customise → Colours)
   await theme.refreshSystem();

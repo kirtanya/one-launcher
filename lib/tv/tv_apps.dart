@@ -3,6 +3,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../one_stream.dart';
 
 /// A TV app's artwork: its 16:9 banner when it has one, else its square icon.
 class TvArt {
@@ -58,6 +59,7 @@ class TvApps {
           _art.clear();
           _ready.clear();
           onAppsChanged?.call();
+          OneStream.instance.refresh(); // One Stream installed / removed
         case 'resumed':
           onResumed?.call();
         case 'mediaChanged':

@@ -90,5 +90,8 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- One Stream (the user's own streaming app): its provider (search, Continue watching, watchlist;
+             it checks our package + signature itself) and opening its links -->
+        <package android:name="com.kirtanya.reel"/>
     </queries>
 </manifest>

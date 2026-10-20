@@ -8,6 +8,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../one_stream.dart';
+import '../one_stream_widgets.dart';
 import '../prefs.dart';
 import '../quick_actions.dart';
 import '../quick_chips.dart' show ShortcutIcon;
@@ -55,6 +57,8 @@ const todayKinds = <String, (String, IconData, List<String>, String)>{
   'notes': ('Notes', Icons.sticky_note_2_outlined, ['m', 'w', 'l'], 'w'),
   'remote': ('TV remote', Icons.settings_remote_rounded, ['s', 'm'], 's'),
   'actions': ('Quick actions', Icons.bolt_rounded, ['w', 'l'], 'w'),
+  // One Stream's Continue watching (offered only while One Stream is installed; not a default).
+  'stream': ('Continue watching', Icons.movie_outlined, ['w', 'l'], 'w'),
 };
 
 const _sizeNames = {'s': 'Small', 'm': 'Medium', 'w': 'Wide', 'l': 'Large'};
@@ -91,6 +95,7 @@ List<TileSpec> todayTiles(Prefs prefs) => prefs.todayTiles == null ? todayDefaul
 class _TodayPanelState extends State<TodayPanel> {
   Map _events = const {}, _battery = const {}, _usage = const {};
   (DateTime, String?)? _alarm;
+  List<OneStreamTitle> _watching = const []; // One Stream's Continue watching
   bool _editing = false;
   Timer? _tick;
 
@@ -117,6 +122,11 @@ class _TodayPanelState extends State<TodayPanel> {
     final r = await Future.wait<Object?>([Apps.instance.events(), Apps.instance.battery(), Apps.instance.screenTime(), Apps.instance.nextAlarm()]);
     Apps.instance.refreshNotifCounts();
     Apps.instance.refreshMedia();
+    if (_tiles.any((t) => t.id == 'today:stream')) {
+      OneStream.instance.continueWatching().then((list) {
+        if (mounted) setState(() => _watching = list);
+      });
+    }
     if (!mounted) return;
     setState(() {
       _events = r[0] as Map;
@@ -215,6 +225,7 @@ class _TodayPanelState extends State<TodayPanel> {
     'notes' => () => _showNotes(context),
     'remote' => () => showTvRemote(context, prefs: prefs),
     'day' => () => showDaySlots(context, prefs: prefs),
+    'stream' => _watching.isEmpty ? null : () => OneStream.instance.open(_watching.first.link),
     _ => null,
   };
 
@@ -574,6 +585,66 @@ class _TodayPanelState extends State<TodayPanel> {
                   child: DayLine(prefs: prefs, radius: radius, ink: _white),
                 ),
         );
+      case 'stream':
+        final items = _watching;
+        if (items.isEmpty) return iconTile(Icons.movie_outlined, 'nothing to continue', null);
+        if (big) {
+          // Large: up to three, each a row (poster with its progress, title, what's left).
+          return pad(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                label(_c('continue watching')),
+                const SizedBox(height: DS.s8),
+                for (final t in items.take(3))
+                  _flex(
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _editing ? null : () => OneStream.instance.open(t.link),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            _streamThumb(t, 44, 64),
+                            const SizedBox(width: DS.s12),
+                            Expanded(child: _streamWords(t, 15)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }
+        // Wide: the latest one over its backdrop, words on a dark fade, its progress along the bottom.
+        final t = items.first;
+        _white = Colors.white;
+        return Stack(
+          fit: StackFit.passthrough,
+          children: [
+            Positioned.fill(child: OneStreamArt(title: t, backdrop: true, radius: 0)),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x26000000), Color(0xCC000000)]),
+                ),
+              ),
+            ),
+            Padding(
+              padding: inset,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.play_circle_outline_rounded, color: _white, size: 24),
+                  _grow(),
+                  _streamWords(t, 18),
+                  if (t.hasProgress) ...[const SizedBox(height: 6), _streamBar(t.progress)],
+                ],
+              ),
+            ),
+          ],
+        );
       case 'actions':
         final labels = prefs.quickLabels;
         final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).take(big ? 8 : 4).toList();
@@ -611,6 +682,62 @@ class _TodayPanelState extends State<TodayPanel> {
     }
     return const SizedBox.shrink();
   }
+
+  // ---- One Stream (Continue watching) ----
+
+  /// How far in: a thin bar, the language's accent on a faint track.
+  Widget _streamBar(double p, {Color? ink}) => ClipRRect(
+    borderRadius: BorderRadius.circular(_classic ? 2 : 0),
+    child: SizedBox(
+      height: 3,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(color: (ink ?? _white).withValues(alpha: .25)),
+          FractionallySizedBox(alignment: Alignment.centerLeft, widthFactor: p.clamp(0, 1).toDouble(), child: ColoredBox(color: ink ?? _white)),
+        ],
+      ),
+    ),
+  );
+
+  /// A title's poster with its progress along the bottom.
+  Widget _streamThumb(OneStreamTitle t, double w, double h) => SizedBox(
+    width: w,
+    height: h,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        OneStreamArt(title: t, radius: _classic ? 10 : prefs.tileRadius * .5),
+        if (t.hasProgress)
+          Positioned(
+            left: 4,
+            right: 4,
+            bottom: 4,
+            child: _streamBar(t.progress, ink: Colors.white), // over the picture
+          ),
+      ],
+    ),
+  );
+
+  /// "S2 · E4 · 12 min left" (what One Stream says, and what's left), else the year.
+  static String _streamSub(OneStreamTitle t) {
+    final s = [?t.subtitle, ?t.left].join(' · ');
+    return s.isEmpty ? t.caption : s;
+  }
+
+  Widget _streamWords(OneStreamTitle t, double size) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: _t(size, weight: FontWeight.w500)),
+      Text(
+        _streamSub(t),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: _t(12, color: _soft, weight: FontWeight.w400),
+      ),
+    ],
+  );
 
   // ---- list rows (list layout) ----
 
@@ -787,6 +914,17 @@ class _TodayPanelState extends State<TodayPanel> {
               child: DayLine(prefs: prefs, legend: t.size == 'l', radius: _classic ? DS.rMedia : prefs.tileRadius, ink: _white),
             ),
           ),
+        ];
+      case 'stream':
+        if (_watching.isEmpty) return [_row(lead: _icon(Icons.movie_outlined), title: 'nothing to continue')];
+        return [
+          for (final s in _watching.take(t.size == 'l' ? 6 : 3))
+            _row(
+              lead: _streamThumb(s, 40, 56),
+              title: s.title,
+              sub: _streamSub(s),
+              onTap: () => OneStream.instance.open(s.link),
+            ),
         ];
       case 'actions':
         return [SizedBox(height: t.size == 'l' ? 180 : 96, child: _face(t))];
@@ -977,11 +1115,11 @@ class _TodayPanelState extends State<TodayPanel> {
       header: const SheetHeader(title: 'Add a widget', subtitle: 'One Launcher’s own, or any app’s'),
       actions: [
         for (final MapEntry(key: kind, value: (name, icon, _, size)) in todayKinds.entries)
-          if (!have.contains('today:$kind'))
+          if (!have.contains('today:$kind') && (kind != 'stream' || OneStream.instance.available.value))
             SheetAction(icon, name, () {
               Navigator.pop(context);
               HapticFeedback.mediumImpact();
-              _save([..._tiles, TileSpec('today:$kind', size)]);
+              _save([..._tiles, TileSpec('today:$kind', size)]).then((_) => kind == 'stream' ? _load() : null);
             }),
         SheetAction(Icons.widgets_outlined, 'App widget…', () {
           Navigator.pop(context);

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 
+import 'one_stream.dart';
 import 'tv_remote.dart';
 
 import 'quick_actions.dart';
@@ -112,6 +113,7 @@ class Apps {
           // changed (wiping them all flashed every icon to a letter).
           _icons.removeWhere((pkg, _) => !_ready.containsKey(pkg)); // retry ones that failed
           onAppsChanged?.call();
+          OneStream.instance.refresh(); // One Stream installed / removed
         case 'permissionsChanged':
           onPermissionsChanged?.call();
         case 'torchChanged':

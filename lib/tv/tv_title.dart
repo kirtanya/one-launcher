@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../one_stream.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
 import 'catalog.dart';
@@ -62,6 +63,18 @@ AppEntry? appForService(String service, List<AppEntry> apps) {
 }
 
 // ---- Poster tile ------------------------------------------------------------------
+
+/// A One Stream title as a catalog one (for [TvPoster]): the standard artwork for its IMDb id
+/// first, then One Stream's own picture.
+ShowTitle showTitleOf(OneStreamTitle t) => ShowTitle(
+  id: t.imdb ?? 'tmdb${t.tmdb ?? t.key}',
+  type: t.isTv ? 'series' : 'movie',
+  title: t.title,
+  year: t.year?.toString(),
+  poster: t.poster,
+  backdrop: t.backdrop,
+  rating: t.rating,
+);
 
 /// A show / film as a 2:3 poster: rating badge, title + year underneath.
 class TvPoster extends StatelessWidget {
@@ -240,6 +253,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
   // remote hasn't been touched yet, it moves to the first of them.
   final _everywhere = FocusNode(debugLabel: 'everywhere'), _firstWatch = FocusNode(debugLabel: 'watch');
   bool _moved = false; // a key was pressed on this page
+  OneStreamTitle? _stream; // One Stream's row for this title (its progress, when started there)
 
   @override
   void initState() {
@@ -272,6 +286,8 @@ class _TvTitlePageState extends State<TvTitlePage> {
             if (mounted && !_moved && _everywhere.hasPrimaryFocus && _firstWatch.context != null) _firstWatch.requestFocus();
           });
         });
+    // One Stream: "Play in One Stream" from the IMDb id; "Resume … · 12 min left" once it's started.
+    if (_inStream) OneStream.instance.titleFor(t.id, t.isTv ? 'tv' : 'movie').then((s) => _update(() => _stream = s));
     TvApps.instance.linkHandlers(Catalog.detailLink(t)).then<void>((o) => _update(() => _openers = o), onError: (Object _) {});
   }
 
@@ -297,6 +313,8 @@ class _TvTitlePageState extends State<TvTitlePage> {
       widget.onOpenApp(w.app);
     }
   }
+
+  bool get _inStream => OneStream.instance.available.value && widget.title.id.startsWith('tt');
 
   AppEntry? _installed(String package) => widget.apps.where((a) => a.package == package).firstOrNull;
 
@@ -424,11 +442,25 @@ class _TvTitlePageState extends State<TvTitlePage> {
           spacing: DS.s12,
           runSpacing: DS.s12,
           children: [
+            // One Stream first (the user's own app): play, or pick up where it was left.
+            if (_inStream)
+              TvActionPill(
+                key: const ValueKey('onestream'),
+                focusNode: _firstWatch,
+                leading: _installed(OneStream.package) == null
+                    ? null
+                    : SizedBox(width: 40, height: 22.5, child: TvAppArt(app: _installed(OneStream.package)!, width: 40)),
+                icon: Icons.play_arrow_rounded,
+                label: _stream?.hasProgress == true ? ['Resume in One Stream', ?_stream!.left].join(' · ') : 'Play in One Stream',
+                onSelect: () => OneStream.instance.open(
+                  _stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie'),
+                ),
+              ),
             // Keyed: buttons that arrive later never take over the focused one's place.
             for (final (i, w) in watch.indexed)
               TvActionPill(
                 key: ValueKey('watch:${w.app.package}'),
-                focusNode: i == 0 ? _firstWatch : null,
+                focusNode: i == 0 && !_inStream ? _firstWatch : null,
                 leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: w.app, width: 40)),
                 label: 'Watch on ${w.app.label}',
                 detail: w.link?.kind,

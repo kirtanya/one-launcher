@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'apps.dart';
+import 'one_stream.dart';
 import 'home.dart';
 import 'tiles/tiles_home.dart';
 import 'prefs.dart';
@@ -24,6 +25,7 @@ Future<void> main() async {
     ),
   );
   Apps.instance.init();
+  OneStream.instance.init(); // the user's streaming app, when installed
   final prefs = await Prefs.load();
   await Perf.init(prefs); // lighter effects on budget phones
   final theme = OneTheme(prefs);

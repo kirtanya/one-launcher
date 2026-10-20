@@ -52,6 +52,7 @@ class MainActivity : FlutterActivity() {
     private val widgets by lazy { WidgetHost(this) }
     private val backups by lazy { BackupFiles(this) }
     private val tv by lazy { TvRemote(this) { if (::channel.isInitialized) channel else null } }
+    private val oneStream by lazy { OneStream(this) }
     private val quick by lazy { QuickActions(this) { method, arg -> if (::channel.isInitialized) channel.invokeMethod(method, arg) } }
     private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
     private val worker = Executors.newSingleThreadExecutor()
@@ -103,6 +104,7 @@ class MainActivity : FlutterActivity() {
             if (tv.handle(call, result)) return@setMethodCallHandler
             if (media.handle(call, result)) return@setMethodCallHandler
             if (quick.handle(call, result)) return@setMethodCallHandler
+            if (oneStream.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getApps" -> worker.execute {
                     val apps = loadApps()

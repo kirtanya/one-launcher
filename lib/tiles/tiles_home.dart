@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../one_stream_widgets.dart';
 import '../search.dart';
 import '../system_settings.dart';
 import '../quick_actions.dart';
@@ -2432,6 +2433,9 @@ class _MetroResults extends StatelessWidget {
               onTap: () => onRun(() => Apps.instance.openSetting(st.action)),
             ),
         ],
+        // One Stream's movies & shows (when installed): a row of posters once it has results.
+        if (sources.contains('onestream'))
+          OneStreamSearchRow(query: query, header: _header('movies & shows'), ink: Colors.white, inkMuted: Colors.white60, inset: 4),
         if (web || play) ...[
           _header('web'),
           if (web)

@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
+import 'one_stream_widgets.dart';
 import 'prefs.dart';
 import 'ui/perf.dart';
 import 'ui/glass.dart';
@@ -468,6 +469,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
             : const [],
         web: sources.contains('google'),
         play: sources.contains('play'),
+        oneStream: sources.contains('onestream'),
         upward: upward,
         prefs: prefs,
         google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
@@ -1188,6 +1190,7 @@ Widget searchResults({
         : const [],
     web: sources.contains('google'),
     play: sources.contains('play'),
+    oneStream: sources.contains('onestream'),
     upward: false,
     prefs: prefs,
     google: apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
@@ -1210,6 +1213,7 @@ class _SearchResults extends StatelessWidget {
     required this.settings,
     required this.web,
     required this.play,
+    this.oneStream = false,
     required this.upward,
     required this.prefs,
     required this.google,
@@ -1223,6 +1227,7 @@ class _SearchResults extends StatelessWidget {
   final List<AppShortcut> shortcuts;
   final List<SystemSetting> settings;
   final bool web, play, upward;
+  final bool oneStream; // movies & shows from One Stream (shows itself once it has results)
   final Prefs prefs;
   final bool google; // the Google app is installed → say "Google"
   final ValueChanged<AppEntry> onTap, onLongPress;
@@ -1363,6 +1368,15 @@ class _SearchResults extends StatelessWidget {
           for (final st in settings)
             _WebRow(icon: st.icon, title: st.title, query: 'Settings', quoted: false, onTap: () => onRun(() => Apps.instance.openSetting(st.action))),
         ]),
+      // One Stream's movies & shows (when installed): a row of posters, before the web.
+      if (oneStream)
+        OneStreamSearchRow(
+          key: const ValueKey('oneStream'),
+          query: query,
+          header: _title('Movies & shows'),
+          wrap: (child) => OneCard(padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s12), child: child),
+          gap: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
+        ),
       // The web, like the Pixel search bar: hands the query to Google / the Play Store.
       if (web || play)
         OneCard(
@@ -1380,7 +1394,7 @@ class _SearchResults extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (i, w) in ordered.indexed) ...[if (i > 0) const SizedBox(height: DS.stack), w],
+        for (final (i, w) in ordered.indexed) ...[if (i > 0 && w is! OneStreamSearchRow) const SizedBox(height: DS.stack), w],
       ],
     );
   }

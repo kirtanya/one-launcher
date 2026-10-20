@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../one_stream.dart';
 import '../ui/ds.dart';
 import 'catalog.dart';
 import 'tv_apps.dart';
@@ -42,6 +43,10 @@ class _TvSearchState extends State<TvSearch> {
   List<ShowTitle> _live = const []; // the sources' own search (Cinemeta…)
   bool _loading = false;
   Object? _error;
+  // One Stream (the user's streaming app, when installed): its own search, as its own row.
+  Timer? _streamWait;
+  List<(OneStreamTitle, ShowTitle)> _stream = const [];
+  final _streamNodes = <String, FocusNode>{};
 
   @override
   void initState() {
@@ -71,6 +76,10 @@ class _TvSearchState extends State<TvSearch> {
   void dispose() {
     _catalog.removeListener(_onCatalog);
     _debounce?.cancel();
+    _streamWait?.cancel();
+    for (final n in _streamNodes.values) {
+      n.dispose();
+    }
     _q.dispose();
     for (final n in _posterNodes.values) {
       n.dispose();
@@ -88,6 +97,7 @@ class _TvSearchState extends State<TvSearch> {
       _local = _catalog.search(q);
       _error = null;
     });
+    _searchStream(q);
     _debounce?.cancel();
     if (!Catalog.enabled || q.length < 2) return;
     _debounce = Timer(const Duration(milliseconds: 450), () async {
@@ -107,6 +117,22 @@ class _TvSearchState extends State<TvSearch> {
       }
     });
   }
+
+  /// One Stream's search, once typing pauses (it goes to the network inside One Stream).
+  void _searchStream(String q) {
+    _streamWait?.cancel();
+    if (q.length < 2 || !OneStream.instance.available.value) {
+      if (_stream.isNotEmpty) setState(() => _stream = const []);
+      return;
+    }
+    _streamWait = Timer(const Duration(milliseconds: 450), () async {
+      final r = await OneStream.instance.search(q);
+      if (!mounted || _q.text.trim() != q) return;
+      setState(() => _stream = [for (final t in r) (t, showTitleOf(t))]);
+    });
+  }
+
+  FocusNode _streamNode(OneStreamTitle t) => _streamNodes[t.key] ??= FocusNode(debugLabel: 'one stream');
 
   FocusNode _posterNode(ShowTitle t) => _posterNodes[t.key] ??= FocusNode(debugLabel: 'poster');
 
@@ -153,6 +179,7 @@ class _TvSearchState extends State<TvSearch> {
     final posters = q.isEmpty ? _catalog.trending() : combineResults(raw, _local, _searched == raw ? _live : const []);
     final searchOn = Catalog.enabled;
     final shown = posters.take(18).toList();
+    final stream = raw.length >= 2 ? _stream.take(12).toList() : const <(OneStreamTitle, ShowTitle)>[];
     _shown = {for (final t in shown) t.key};
     if (_posterNodes.length > _shown.length) WidgetsBinding.instance.addPostFrameCallback((_) => _dropStaleNodes());
 
@@ -191,6 +218,7 @@ class _TvSearchState extends State<TvSearch> {
     // ↓ from the box: the first poster when there are shows & films, else the first matching app,
     // else the Google TV row.
     void down() {
+      if (stream.isNotEmpty) return _streamNode(stream.first.$1).requestFocus();
       final to = searchOn && shown.isNotEmpty ? _posterNode(shown.first) : (apps.isNotEmpty ? _firstApp : _firstAction);
       to.requestFocus();
     }
@@ -254,6 +282,21 @@ class _TvSearchState extends State<TvSearch> {
                     // With our own shows & films search on, those come first; Google TV's search
                     // and voice follow ("More ways to search"). Without it, Google TV leads.
                     if (!searchOn) ...googleRow('Search with Google TV'),
+
+                    // ---- One Stream: its own results, before the catalog's ----
+                    if (stream.isNotEmpty) ...[
+                      const SizedBox(height: DS.s24),
+                      Text(TvMetro.cased('In One Stream'), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
+                      const SizedBox(height: DS.s16),
+                      Wrap(
+                        spacing: DS.s16,
+                        runSpacing: DS.s20,
+                        children: [
+                          for (final (s, t) in stream)
+                            TvPoster(key: ValueKey('os:${s.key}'), title: t, focusNode: _streamNode(s), onSelect: () => OneStream.instance.open(s.link)),
+                        ],
+                      ),
+                    ],
 
                     // ---- Shows & films ----
                     if (searchOn) ...[

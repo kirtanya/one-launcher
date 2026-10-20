@@ -32,6 +32,7 @@ class TvActivity : FlutterActivity() {
     private val net = Executors.newFixedThreadPool(4) // catalog / details requests (artwork keeps its own threads)
     private val main = Handler(Looper.getMainLooper())
     private val content by lazy { TvContent(this) }
+    private val oneStream by lazy { OneStream(this) }
     // What's playing / paused right now (needs Notification access, like the phone's Now playing).
     private val media by lazy { MediaWatcher(this, artWidth = 960, square = false) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
 
@@ -46,6 +47,7 @@ class TvActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "one_launcher/tv")
         channel.setMethodCallHandler { call, result ->
             if (media.handle(call, result)) return@setMethodCallHandler
+            if (oneStream.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "getWatchNext" -> worker.execute {
                     val list = content.watchNext()

@@ -511,9 +511,15 @@ class Prefs extends ChangeNotifier {
   }
 
   /// What search looks through: apps, app shortcuts, phone settings, Google (web), Play Store.
+  /// Plus 'onestream' (movies & shows from One Stream, when installed): on unless switched off,
+  /// kept apart so lists saved before it existed still get it.
   static const searchSourceIds = ['apps', 'shortcuts', 'settings', 'google', 'play'];
-  Set<String> get searchIn => (_sp.getStringList('searchIn') ?? searchSourceIds).toSet();
+  Set<String> get searchIn => {...(_sp.getStringList('searchIn') ?? searchSourceIds), if (_sp.getBool('searchOneStream') ?? true) 'onestream'};
   Future<void> setSearchIn(String id, bool on) async {
+    if (id == 'onestream') {
+      await _sp.setBool('searchOneStream', on);
+      return notifyListeners();
+    }
     final s = searchIn;
     on ? s.add(id) : s.remove(id);
     await _sp.setStringList('searchIn', [
