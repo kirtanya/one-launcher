@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../one_stream.dart';
+import '../one_stream_sheet.dart';
 import '../one_stream_widgets.dart';
 import '../prefs.dart';
 import '../quick_actions.dart';
@@ -59,7 +60,11 @@ const todayKinds = <String, (String, IconData, List<String>, String)>{
   'actions': ('Quick actions', Icons.bolt_rounded, ['w', 'l'], 'w'),
   // One Stream's Continue watching (offered only while One Stream is installed; not a default).
   'stream': ('Continue watching', Icons.movie_outlined, ['w', 'l'], 'w'),
+  'downloads': ('Downloads', Icons.download_rounded, ['w', 'l'], 'w'), // One Stream's too
 };
+
+/// Kinds that need One Stream installed to be offered.
+const _streamKinds = {'stream', 'downloads'};
 
 const _sizeNames = {'s': 'Small', 'm': 'Medium', 'w': 'Wide', 'l': 'Large'};
 
@@ -96,6 +101,7 @@ class _TodayPanelState extends State<TodayPanel> {
   Map _events = const {}, _battery = const {}, _usage = const {};
   (DateTime, String?)? _alarm;
   List<OneStreamTitle> _watching = const []; // One Stream's Continue watching
+  List<OneStreamDownload> _downloads = const []; // …and its downloads
   bool _editing = false;
   Timer? _tick;
 
@@ -125,6 +131,11 @@ class _TodayPanelState extends State<TodayPanel> {
     if (_tiles.any((t) => t.id == 'today:stream')) {
       OneStream.instance.continueWatching().then((list) {
         if (mounted) setState(() => _watching = list);
+      });
+    }
+    if (_tiles.any((t) => t.id == 'today:downloads')) {
+      OneStream.instance.downloads().then((list) {
+        if (mounted) setState(() => _downloads = list);
       });
     }
     if (!mounted) return;
@@ -225,7 +236,10 @@ class _TodayPanelState extends State<TodayPanel> {
     'notes' => () => _showNotes(context),
     'remote' => () => showTvRemote(context, prefs: prefs),
     'day' => () => showDaySlots(context, prefs: prefs),
-    'stream' => _watching.isEmpty ? null : () => OneStream.instance.open(_watching.first.link),
+    'stream' => _watching.isEmpty ? null : () => showOneStreamTitle(context, _watching.first),
+    'downloads' => _downloads.where((d) => d.done && d.playLink != null).firstOrNull == null
+        ? null
+        : () => OneStream.instance.open(_downloads.firstWhere((d) => d.done && d.playLink != null).playLink!),
     _ => null,
   };
 
@@ -600,7 +614,7 @@ class _TodayPanelState extends State<TodayPanel> {
                   _flex(
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: _editing ? null : () => OneStream.instance.open(t.link),
+                      onTap: _editing ? null : () => showOneStreamTitle(context, t),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Row(
@@ -644,6 +658,34 @@ class _TodayPanelState extends State<TodayPanel> {
               ),
             ),
           ],
+        );
+      case 'downloads':
+        if (_downloads.isEmpty) return iconTile(Icons.download_rounded, 'no downloads', null);
+        // Each download: its name, how far / ready, and a bar while it moves.
+        return pad(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              label(_c('downloads')),
+              _grow(),
+              for (final dl in _downloads.take(big ? 4 : 2))
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _editing || !dl.done || dl.playLink == null ? null : () => OneStream.instance.open(dl.playLink!),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(dl.subtitle == null ? dl.title : '${dl.title} · ${dl.subtitle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: _t(14, weight: FontWeight.w500)),
+                        Text(dl.detail, maxLines: 1, overflow: TextOverflow.ellipsis, style: _t(12, color: _soft, weight: FontWeight.w400)),
+                        if (!dl.done && dl.progress >= 0) ...[const SizedBox(height: 4), _streamBar(dl.progress)],
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
         );
       case 'actions':
         final labels = prefs.quickLabels;
@@ -923,7 +965,18 @@ class _TodayPanelState extends State<TodayPanel> {
               lead: _streamThumb(s, 40, 56),
               title: s.title,
               sub: _streamSub(s),
-              onTap: () => OneStream.instance.open(s.link),
+              onTap: () => showOneStreamTitle(context, s),
+            ),
+        ];
+      case 'downloads':
+        if (_downloads.isEmpty) return [_row(lead: _icon(Icons.download_rounded), title: 'no downloads')];
+        return [
+          for (final dl in _downloads.take(t.size == 'l' ? 6 : 3))
+            _row(
+              lead: _icon(dl.done ? Icons.download_done_rounded : Icons.downloading_rounded),
+              title: dl.subtitle == null ? dl.title : '${dl.title} · ${dl.subtitle}',
+              sub: dl.detail,
+              onTap: dl.done && dl.playLink != null ? () => OneStream.instance.open(dl.playLink!) : null,
             ),
         ];
       case 'actions':
@@ -1115,11 +1168,11 @@ class _TodayPanelState extends State<TodayPanel> {
       header: const SheetHeader(title: 'Add a widget', subtitle: 'One Launcher’s own, or any app’s'),
       actions: [
         for (final MapEntry(key: kind, value: (name, icon, _, size)) in todayKinds.entries)
-          if (!have.contains('today:$kind') && (kind != 'stream' || OneStream.instance.available.value))
+          if (!have.contains('today:$kind') && (!_streamKinds.contains(kind) || OneStream.instance.available.value))
             SheetAction(icon, name, () {
               Navigator.pop(context);
               HapticFeedback.mediumImpact();
-              _save([..._tiles, TileSpec('today:$kind', size)]).then((_) => kind == 'stream' ? _load() : null);
+              _save([..._tiles, TileSpec('today:$kind', size)]).then((_) => _streamKinds.contains(kind) ? _load() : null);
             }),
         SheetAction(Icons.widgets_outlined, 'App widget…', () {
           Navigator.pop(context);

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'one_stream.dart';
+import 'one_stream_sheet.dart';
 import 'ui/ds.dart';
 
 /// A One Stream poster (or backdrop) from its https link; while it loads or when it can't,
@@ -55,7 +56,7 @@ class OneStreamArt extends StatelessWidget {
 
 /// Search → "Movies & shows": One Stream's results for [query] as a sideways row of posters
 /// (title + year / episode under). Asks ~400 ms after typing stops, from 2 letters; shows
-/// nothing while One Stream is missing or finds nothing. Tap → the title in One Stream.
+/// nothing while One Stream is missing or finds nothing. Tap → its sheet (here, not in One Stream).
 /// [header] / [wrap] / [ink]: the host search's own look (Classic card or Metro rows);
 /// [gap]: space around it, only while it shows.
 class OneStreamSearchRow extends StatefulWidget {
@@ -141,7 +142,7 @@ class _OneStreamSearchRowState extends State<OneStreamSearchRow> {
               excludeSemantics: true,
               child: InkWell(
                 borderRadius: BorderRadius.circular(DS.rMedia),
-                onTap: () => OneStream.instance.open(t.link),
+                onTap: () => showOneStreamTitle(context, t),
                 child: SizedBox(
                   width: 96,
                   child: Column(

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import io.flutter.plugin.common.MethodCall
@@ -79,6 +80,38 @@ class OneStream(private val context: Context) {
         return out
     }
 
+    /**
+     * An action in One Stream (watchlist_add / watchlist_remove / download / prepare /
+     * cancel_download): ContentResolver.call → its answer {ok, message}. Never throws.
+     */
+    fun action(method: String, arg: String?, extras: Map<String, Any?>): Map<String, Any?> {
+        if (!resolves()) return mapOf("ok" to false, "message" to "One Stream isn’t installed")
+        val bundle = Bundle().apply {
+            extras.forEach { (k, v) ->
+                when (v) {
+                    is String -> putString(k, v)
+                    is Int -> putInt(k, v)
+                    is Long -> putLong(k, v)
+                    is Double -> putDouble(k, v)
+                    is Boolean -> putBoolean(k, v)
+                    null -> {}
+                    else -> putString(k, v.toString())
+                }
+            }
+        }
+        return try {
+            val out = context.contentResolver.call(Uri.parse("content://$AUTHORITY"), method, arg, bundle)
+            if (out == null) {
+                mapOf("ok" to false, "message" to null)
+            } else {
+                @Suppress("DEPRECATION")
+                out.keySet().associateWith { key -> out.get(key)?.let { if (it is Number || it is Boolean || it is String) it else it.toString() } }
+            }
+        } catch (e: Exception) {
+            mapOf("ok" to false, "message" to null) // refused (SecurityException) or One Stream failed
+        }
+    }
+
     /** Opens a onestream:// link in One Stream itself. */
     fun open(link: String): Boolean = try {
         context.startActivity(
@@ -113,6 +146,16 @@ class OneStream(private val context: Context) {
                 }
             }
             "oneStreamOpen" -> result.success(open(call.argument<String>("link") ?: ""))
+            // {method, arg, extras}: actions run in One Stream (it may take a moment), off the main thread.
+            "oneStreamCall" -> {
+                val method = call.argument<String>("method") ?: ""
+                val arg = call.argument<String>("arg")
+                val extras = call.argument<Map<String, Any?>>("extras") ?: emptyMap()
+                pool.execute {
+                    val out = action(method, arg, extras)
+                    main.post { result.success(out) }
+                }
+            }
             else -> return false
         }
         return true

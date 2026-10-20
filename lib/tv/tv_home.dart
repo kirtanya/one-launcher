@@ -21,6 +21,7 @@ import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_metro.dart';
+import 'tv_one_stream.dart';
 import 'tv_search.dart';
 import 'tv_tiles.dart';
 import '../tiles/tiles_home.dart' show TileSpec;
@@ -684,7 +685,9 @@ class _TvHomeState extends State<TvHome> {
       case TvKind.app:
         tv.launch(item.package);
       case TvKind.resume when item.key.startsWith('os:'):
-        OneStream.instance.open(item.intent!); // One Stream picks up where it was
+        // Its page here (Resume first); One Stream opens only to play.
+        final s = _stream.where((s) => 'os:${s.key}' == item.key).firstOrNull;
+        s != null ? Navigator.of(context).push(tvFade(TvOneStreamPage(title: s))) : OneStream.instance.open(item.intent!);
       case TvKind.resume:
         final live = tv.media.value;
         if (item.historyKey != null && !(live?['active'] == true && live?['package'] == item.package)) {

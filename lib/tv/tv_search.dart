@@ -10,6 +10,7 @@ import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_metro.dart';
+import 'tv_one_stream.dart';
 import 'tv_parts.dart';
 import 'tv_title.dart';
 
@@ -145,6 +146,9 @@ class _TvSearchState extends State<TvSearch> {
       return true;
     });
   }
+
+  /// One Stream's own page for it, here on the TV (One Stream opens only to play).
+  void _openStream(OneStreamTitle s) => Navigator.of(context).push(tvFade(TvOneStreamPage(title: s)));
 
   void _openTitle(ShowTitle t) =>
       Navigator.of(context).push(tvFade(TvTitlePage(title: t, apps: widget.apps, searchTargets: _targets, onOpenApp: widget.onLaunch)));
@@ -293,7 +297,7 @@ class _TvSearchState extends State<TvSearch> {
                         runSpacing: DS.s20,
                         children: [
                           for (final (s, t) in stream)
-                            TvPoster(key: ValueKey('os:${s.key}'), title: t, focusNode: _streamNode(s), onSelect: () => OneStream.instance.open(s.link)),
+                            TvPoster(key: ValueKey('os:${s.key}'), title: t, focusNode: _streamNode(s), onSelect: () => _openStream(s)),
                         ],
                       ),
                     ],

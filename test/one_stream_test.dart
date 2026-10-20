@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,11 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/one_stream.dart';
+import 'package:one_launcher/one_stream_sheet.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tiles/tiles_home.dart' show TileSpec;
 import 'package:one_launcher/tiles/today_panel.dart';
 import 'package:one_launcher/tv/catalog.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
+import 'package:one_launcher/tv/tv_one_stream.dart';
 import 'package:one_launcher/tv/tv_search.dart';
 import 'package:one_launcher/tv/tv_title.dart';
 import 'package:one_launcher/ui/ds.dart';
@@ -42,14 +45,77 @@ final _continue = [
   {'key': 'def', 'type': 'movie', 'tmdb': 200, 'title': 'Arrival', 'year': 2016, 'progress': .75, 'remaining_min': 29, 'link': 'onestream://resume/def'},
 ];
 
+Map _details(Map p) => p['type'] == 'tv'
+    ? {
+        ..._found[1],
+        'overview': 'Ten thousand years before Paul, the sisterhood takes shape.',
+        'genres': 'Drama, Sci-Fi',
+        'seasons': 2,
+        'status': 'Returning',
+        'in_watchlist': 0,
+      }
+    : {
+        ..._found.first,
+        'overview': 'Paul unites with the Fremen while on a path of revenge.',
+        'genres': 'Sci-Fi, Adventure',
+        'runtime_min': 167,
+        'in_watchlist': 0,
+        'resume_key': 'dune',
+        'resume_progress': .3,
+      };
+
+List<Map> _episodes(Map p) => [
+  for (var e = 1; e <= 4; e++)
+    {
+      'season': p['season'],
+      'episode': e,
+      'name': ['The Hidden Hand', 'Two Wolves', 'Sisterhood Above All', 'Twice Born'][e - 1],
+      'air_date': '2024-11-${e + 10}',
+      'aired': e < 4 ? 1 : 0,
+      'progress': e == 1 ? 1.0 : (e == 2 ? .5 : -1.0),
+      'link': 'onestream://resume/s${p['season']}e$e',
+    },
+];
+
+List<Map> _sources(Map p) => [
+  {'token': 'tok-best', 'name': 'Dune.2160p', 'provider': 'Torrentio', 'quality': '2160p', 'size_bytes': 12400000000, 'seeds': 812, 'kind': 'torrent', 'best': 1, 'downloadable': 1},
+  {'token': 'tok-1080', 'name': 'Dune.1080p', 'provider': 'Torrentio', 'quality': '1080p', 'size_bytes': 2100000000, 'seeds': 340, 'kind': 'torrent', 'best': 0, 'downloadable': 1},
+  {'token': 'tok-web', 'name': 'Web', 'provider': 'Direct', 'quality': '720p', 'kind': 'stream', 'best': 0, 'downloadable': 0},
+];
+
+final _dl = [
+  {'key': 'dl1', 'title': 'Dune: Part Two', 'progress': .45, 'state': 'downloading', 'size_bytes': 2100000000},
+  {'key': 'dl2', 'title': 'Arrival', 'progress': 1.0, 'state': 'done', 'size_bytes': 1500000000, 'play_link': 'onestream://play?source=local-dl2'},
+];
+
+/// While set, /sources waits for it (the loading state).
+Completer<void>? _sourcesGate;
+
+/// One Stream's answers to actions ({ok, message}), like its provider's call().
+Map _act(String method) => switch (method) {
+  'watchlist_add' => {'ok': true, 'message': 'Added to your watchlist'},
+  'watchlist_remove' => {'ok': true, 'message': 'Removed from your watchlist'},
+  'download' => {'ok': true, 'message': 'Download started'},
+  'prepare' => {'ok': false, 'message': 'No peers right now — try another source'},
+  _ => {'ok': true},
+};
+
 /// Answers One Stream's calls like its provider would; [log] gets every call.
 Future<Object?>? _oneStream(MethodCall call, List<MethodCall> log, {bool available = true, bool watching = true}) {
   if (!call.method.startsWith('oneStream')) return null;
   log.add(call);
+  final args = call.arguments is Map ? call.arguments as Map : const {};
+  final params = args['params'] as Map? ?? const {};
+  if (args['path'] == '/sources' && _sourcesGate != null) return _sourcesGate!.future.then((_) => _sources(params));
   return Future.value(switch (call.method) {
     'oneStreamAvailable' => available,
     'oneStreamOpen' => true,
-    _ => switch ((call.arguments as Map)['path']) {
+    'oneStreamCall' => _act(args['method'] as String),
+    _ => switch (args['path']) {
+      '/details' => [_details(params)],
+      '/episodes' => _episodes(params),
+      '/sources' => _sources(params),
+      '/downloads' => _dl,
       '/search' => _found,
       '/continue' => watching ? _continue : const [],
       '/title' => [
@@ -118,10 +184,12 @@ void main() {
     expect(find.text('2024'), findsWidgets, reason: 'the year under each poster');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/50_one_stream_search.png'));
 
+    // Tap → its sheet here in One Launcher (One Stream isn't opened).
     await tester.tap(find.bySemanticsLabel('Dune: Prophecy, 2024'));
-    await tester.pump();
-    expect(calls.last.method, 'oneStreamOpen');
-    expect(calls.last.arguments, {'link': 'onestream://title/tv/1399'});
+    await tester.pumpAndSettle();
+    expect(find.byType(OneStreamTitleSheet), findsOneWidget);
+    expect(calls.where((c) => c.method == 'oneStreamOpen'), isEmpty);
+    await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
 
     // Settings → Search → Search in → Movies & shows off: the row goes.
@@ -157,9 +225,11 @@ void main() {
     expect(find.text('S1 · E3 · 18 min left'), findsOneWidget);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/51_one_stream_today.png'));
     await tester.tap(find.text('How lighthouses work').last);
-    await tester.pump();
-    expect(calls.last.method, 'oneStreamOpen');
-    expect(calls.last.arguments, {'link': 'onestream://resume/abc'});
+    await tester.pumpAndSettle();
+    expect(find.byType(OneStreamTitleSheet), findsOneWidget, reason: 'its sheet (Resume first)');
+    expect((calls.lastWhere((c) => c.method == 'oneStream' && (c.arguments as Map)['path'] == '/details').arguments as Map)['params'], {'type': 'tv', 'tmdb': 100});
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
 
     // Large: a row each, tap one.
     await prefs.setTodayTiles([const TileSpec('today:stream', 'l').toJson()]);
@@ -168,8 +238,10 @@ void main() {
     expect(find.text('2016'), findsNothing);
     expect(find.text('29 min left'), findsOneWidget, reason: 'no episode: just what’s left');
     await tester.tap(find.text('Arrival').last);
-    await tester.pump();
-    expect(calls.last.arguments, {'link': 'onestream://resume/def'});
+    await tester.pumpAndSettle();
+    expect(find.byType(OneStreamTitleSheet), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
 
     // List layout: rows with poster thumbs.
     await prefs.setTodayLook(layout: 'list');
@@ -249,8 +321,8 @@ void main() {
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>()?.title.title, 'Dune: Part Two');
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(calls.last.method, 'oneStreamOpen');
-    expect(calls.last.arguments, {'link': 'onestream://title/movie/693134'});
+    expect(find.byType(TvOneStreamPage), findsOneWidget, reason: 'its page here, not One Stream');
+    expect(calls.where((c) => c.method == 'oneStreamOpen'), isEmpty);
   });
 
   testWidgets('TV title page: "Resume in One Stream · 12 min left" first in Where to watch; else Play', (tester) async {
@@ -273,6 +345,13 @@ void main() {
     await tester.tap(find.text('Resume in One Stream · 12 min left'));
     await tester.pump();
     expect(calls.last.arguments, {'link': 'onestream://resume/dune'});
+    // "More in One Stream": its page here (from /title's tmdb).
+    await tester.tap(find.text('More in One Stream'));
+    await settle(tester);
+    expect(find.byType(TvOneStreamPage), findsOneWidget);
+    expect((calls.firstWhere((c) => c.method == 'oneStream' && (c.arguments as Map)['path'] == '/details').arguments as Map)['params'], {'type': 'movie', 'tmdb': 693134});
+    await tester.binding.handlePopRoute();
+    await settle(tester);
 
     // A title One Stream hasn't started: Play, by IMDb id.
     final other = ShowTitle(id: 'tt0000001', type: 'series', title: 'Other');
@@ -293,7 +372,7 @@ void main() {
     expect(find.text('Play in One Stream'), findsNothing);
   });
 
-  testWidgets('TV home: One Stream’s Continue watching joins the resume row (in the history’s place), OK resumes in One Stream', (tester) async {
+  testWidgets('TV home: One Stream’s Continue watching joins the resume row (in the history’s place), OK opens its page', (tester) async {
     await tv(tester);
     SharedPreferences.setMockInitialValues({});
     final prefs = await Prefs.load();
@@ -316,7 +395,179 @@ void main() {
     expect(focused(), 'continue:os:def', reason: 'the rest follow the history');
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
-    expect(calls.last.method, 'oneStreamOpen');
-    expect(calls.last.arguments, {'link': 'onestream://resume/def'});
+    expect(find.byType(TvOneStreamPage), findsOneWidget, reason: 'its page (Resume first)');
+    expect(find.text('Resume'), findsOneWidget, reason: 'started in One Stream');
+  });
+
+  // ---- Part 2: One Stream's title, inside One Launcher ----
+
+  OneStreamTitle movie() => OneStreamTitle.fromMap(_found.first);
+  OneStreamTitle series() => OneStreamTitle.fromMap(_found[1]);
+
+  /// Opens the sheet on the home screen (the same call search and Today make).
+  Future<void> sheet(WidgetTester tester, OneStreamTitle t, {bool loading = false}) async {
+    showOneStreamTitle(tester.element(find.byType(Scaffold).first), t);
+    if (!loading) {
+      await tester.pumpAndSettle();
+      return;
+    }
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 300)); // a spinner keeps going: no settling
+    }
+  }
+
+  Map lastAct(String method) => Map.of(calls.lastWhere((c) => c.method == 'oneStreamCall' && (c.arguments as Map)['method'] == method).arguments as Map);
+
+  testWidgets('phone sheet (film): story, Resume, watchlist live, sources → Play / Download, Prepare’s message, downloads', (tester) async {
+    await phone(tester);
+    await sheet(tester, movie());
+    expect(find.text('Dune: Part Two'), findsWidgets);
+    expect(find.text('2024 · 2 h 47 min · 8.5/10'), findsOneWidget);
+    expect(find.text('Sci-Fi, Adventure'), findsOneWidget);
+    expect(find.textContaining('Paul unites'), findsOneWidget);
+    expect(find.text('Resume'), findsOneWidget, reason: 'started in One Stream');
+    expect(find.text('2160p · Best'), findsOneWidget);
+    expect(find.text('12.4 GB · 812 seeds · Torrentio'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/52_one_stream_sheet.png'));
+
+    await tester.tap(find.text('Resume'));
+    await tester.pump();
+    expect(calls.last.arguments, {'link': 'onestream://resume/dune'});
+
+    // Watchlist: toggles at once, One Stream's words under the buttons.
+    await tester.tap(find.text('Watchlist'));
+    await tester.pumpAndSettle();
+    expect(lastAct('watchlist_add')['extras'], {'type': 'movie', 'tmdb': 693134});
+    expect(find.text('In watchlist'), findsOneWidget);
+    expect(find.text('Added to your watchlist'), findsOneWidget);
+    await tester.tap(find.text('In watchlist'));
+    await tester.pumpAndSettle();
+    expect(lastAct('watchlist_remove')['extras'], {'type': 'movie', 'tmdb': 693134});
+    expect(find.text('Watchlist'), findsOneWidget);
+
+    // Download (the best downloadable source) and Prepare (its answer, even when it fails).
+    await tester.tap(find.text('Download').first);
+    await tester.pumpAndSettle();
+    expect(lastAct('download')['extras'], {'token': 'tok-best'});
+    expect(find.text('Download started'), findsOneWidget);
+    await tester.tap(find.text('Prepare'));
+    await tester.pumpAndSettle();
+    expect(lastAct('prepare')['extras'], {'token': 'tok-best'});
+    expect(find.text('No peers right now — try another source'), findsOneWidget);
+
+    // A source → its menu → Play (its play link) / Download.
+    await tester.scrollUntilVisible(find.text('1080p'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('1080p'));
+    await tester.pumpAndSettle();
+    expect(find.text('Prepare to stream'), findsOneWidget);
+    await tester.tap(find.text('Play'));
+    await tester.pumpAndSettle();
+    expect(calls.lastWhere((c) => c.method == 'oneStreamOpen').arguments, {'link': 'onestream://play?source=tok-1080&type=movie&tmdb=693134'});
+    await tester.tap(find.text('720p'));
+    await tester.pumpAndSettle();
+    expect(find.text('Download'), findsOneWidget, reason: 'the sheet’s button only: this source can’t be downloaded');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    // This title's download, with its progress.
+    await tester.scrollUntilVisible(find.text('45% · 2.1 GB'), 120, scrollable: find.byType(Scrollable).last);
+    expect(find.text('Downloads'), findsOneWidget);
+    await tester.tap(find.byTooltip('Cancel download'));
+    await tester.pumpAndSettle();
+    expect(lastAct('cancel_download')['extras'], {'key': 'dl1'});
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('phone sheet (series): seasons, the episode in progress picked, its sources (loading → list), another episode', (tester) async {
+    await phone(tester);
+    _sourcesGate = Completer();
+    addTearDown(() => _sourcesGate = null);
+    await sheet(tester, series(), loading: true);
+    expect(find.text('Season 2'), findsOneWidget);
+    expect(find.text('Two Wolves'), findsOneWidget);
+    expect(find.text('Play E2'), findsOneWidget, reason: 'the episode in the middle of watching');
+    expect(find.text('Looking for sources… this can take a few seconds'), findsOneWidget);
+    var asked = calls.lastWhere((c) => (c.arguments as Map?)?['path'] == '/sources').arguments as Map;
+    expect(asked['params'], {'type': 'tv', 'tmdb': 1399, 'season': 1, 'episode': 2});
+    expect(asked['timeoutMs'], 30000);
+    // Play while it's still looking: waits for the best source, then plays it.
+    await tester.tap(find.text('Play E2'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Finding the best source…'), findsOneWidget);
+    _sourcesGate!.complete();
+    await tester.pumpAndSettle();
+    expect(calls.lastWhere((c) => c.method == 'oneStreamOpen').arguments, {'link': 'onestream://play?source=tok-best&type=tv&tmdb=1399&season=1&episode=2'});
+    expect(find.text('Sources · S1 E2'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/53_one_stream_series.png'));
+
+    _sourcesGate = null;
+    await tester.tap(find.text('Sisterhood Above All'));
+    await tester.pumpAndSettle();
+    asked = calls.lastWhere((c) => (c.arguments as Map?)?['path'] == '/sources').arguments as Map;
+    expect(asked['params'], {'type': 'tv', 'tmdb': 1399, 'season': 1, 'episode': 3});
+    expect(find.text('Play E3'), findsOneWidget);
+    await tester.tap(find.text('Season 2'));
+    await tester.pumpAndSettle();
+    expect((calls.lastWhere((c) => (c.arguments as Map?)?['path'] == '/episodes').arguments as Map)['params'], {'tmdb': 1399, 'season': 2});
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('phone sheet in the Tiles view speaks Metro (flat, lowercase); no sources → says so', (tester) async {
+    await phone(tester, stored: {'homeView': 'tiles'});
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (call.method == 'oneStream' && (call.arguments as Map)['path'] == '/sources') return const [];
+      return _oneStream(call, calls);
+    });
+    await sheet(tester, movie());
+    expect(find.text('resume'), findsOneWidget, reason: 'Metro: lowercase');
+    expect(find.text('no sources found'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/54_one_stream_sheet_metro.png'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('Today: "Downloads" widget — progress and ready ones; tap a ready one plays it', (tester) async {
+    final prefs = await phone(tester);
+    await prefs.setTodayTiles([const TileSpec('today:downloads', 'w').toJson()]);
+    await openToday(tester);
+    expect(find.text('Dune: Part Two'), findsOneWidget);
+    expect(find.text('45% · 2.1 GB'), findsOneWidget);
+    expect(find.text('Ready · 1.5 GB'), findsOneWidget);
+    await tester.tap(find.text('Arrival'));
+    await tester.pump();
+    expect(calls.last.arguments, {'link': 'onestream://play?source=local-dl2'});
+  });
+
+  testWidgets('TV page (series): seasons, episodes, sources → panel → Download; watchlist; Metro-free look', (tester) async {
+    await tv(tester);
+    await tester.pumpWidget(tvApp(TvOneStreamPage(title: series())));
+    await settle(tester);
+    expect(find.text('SERIES · ONE STREAM'), findsOneWidget);
+    expect(find.text('Season 2'), findsOneWidget);
+    expect(find.text('E2 · Two Wolves'), findsOneWidget);
+    expect(find.text('Play S1 E2'), findsOneWidget);
+    expect(find.text('2160p · Best'), findsOneWidget);
+    expect(find.text('Coming 2024-11-14'), findsOneWidget, reason: 'not out yet');
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_17_one_stream_page.png'));
+    // OK on a source → the side panel → Download.
+    await tester.ensureVisible(find.text('1080p'));
+    await settle(tester);
+    await tester.tap(find.text('1080p'));
+    await settle(tester);
+    await tester.tap(find.text('Download').last);
+    await settle(tester);
+    expect(lastAct('download')['extras'], {'token': 'tok-1080'});
+    expect(find.text('Download started'), findsOneWidget);
+    await tester.tap(find.text('Add to watchlist'));
+    await settle(tester);
+    expect(find.text('In watchlist'), findsOneWidget);
+    expect(lastAct('watchlist_add')['extras'], {'type': 'tv', 'tmdb': 1399});
+    // Play (with the remote: it starts focused).
+    expect(FocusManager.instance.primaryFocus?.context?.widget, isNotNull);
+    await tester.tap(find.text('Play S1 E2'));
+    await settle(tester);
+    expect(calls.lastWhere((c) => c.method == 'oneStreamOpen').arguments, {'link': 'onestream://play?source=tok-best&type=tv&tmdb=1399&season=1&episode=2'});
   });
 }

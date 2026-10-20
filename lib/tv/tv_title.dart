@@ -10,6 +10,7 @@ import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_metro.dart';
+import 'tv_one_stream.dart';
 import 'tv_parts.dart';
 
 // ---- Streaming service → the app on this TV ---------------------------------------
@@ -455,6 +456,14 @@ class _TvTitlePageState extends State<TvTitlePage> {
                 onSelect: () => OneStream.instance.open(
                   _stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie'),
                 ),
+              ),
+            // …and its page here (episodes, sources, watchlist, download), when One Stream knows it.
+            if (_stream?.tmdb != null)
+              TvActionPill(
+                key: const ValueKey('onestream:more'),
+                icon: Icons.read_more_rounded,
+                label: 'More in One Stream',
+                onSelect: () => Navigator.of(context).push(tvFade(TvOneStreamPage(title: _stream!))),
               ),
             // Keyed: buttons that arrive later never take over the focused one's place.
             for (final (i, w) in watch.indexed)
