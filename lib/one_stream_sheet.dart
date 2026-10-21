@@ -1,17 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'one_stream.dart';
 import 'one_stream_widgets.dart';
 import 'tiles/tiles_home.dart' show tileAccent, tileAccentText;
+import 'tv_cast.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
 
 /// A One Stream title, right here in One Launcher: picture, story, Play / Resume, watchlist,
 /// download, prepare to stream, its sources and (series) episodes by season — One Stream only
-/// opens when something actually plays. Classic: rounded, Sentence case; Metro: flat, lowercase.
+/// opens when something actually plays. With a TV paired: play / download it on the TV. Classic: rounded, Sentence case; Metro: flat, lowercase.
 Future<void> showOneStreamTitle(BuildContext context, OneStreamTitle title) =>
     showOneSheetWith(context, builder: (ctx) => OneStreamTitleSheet(title: title));
 
@@ -46,10 +48,12 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
 
   String? _note; // One Stream's answer to the last action
   bool _noteBad = false;
+  VoidCallback? _retry; // the last request to the TV, when it didn't get there
 
   @override
   void initState() {
     super.initState();
+    TvCast.prefs?.addListener(_tvChanged); // paired / forgotten while open
     if (tmdb == null) {
       _detailsDone = true;
       return;
@@ -72,6 +76,7 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
 
   @override
   void dispose() {
+    TvCast.prefs?.removeListener(_tvChanged);
     _poll?.cancel();
     super.dispose();
   }
@@ -128,10 +133,39 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
 
   // ---- actions ----
 
-  void _say(String text, {bool bad = false}) => setState(() {
+  void _say(String text, {bool bad = false, VoidCallback? retry}) => setState(() {
     _note = text;
     _noteBad = bad;
+    _retry = retry;
   });
+
+  void _tvChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// "On Kame TV": a TV is paired and One Stream answers here (the TV has its own).
+  bool get _onTv => TvCast.paired && tmdb != null && os.available.value;
+
+  /// Plays / downloads it in One Stream on the TV (the picked episode, for a series). [source]
+  /// (else the best one found so far) only helps the TV pick the same one: it searches itself.
+  Future<void> _cast({bool download = false, OneStreamSource? source}) async {
+    HapticFeedback.selectionClick();
+    final e = _episode;
+    if (widget.title.isTv && e == null) return _say('Pick an episode first');
+    final pool = [...?_sources?.where((s) => !download || s.downloadable)];
+    final hint = source ?? pool.where((s) => s.best).firstOrNull ?? pool.firstOrNull;
+    _say('Sending to ${TvCast.tvName}…');
+    final r = download
+        ? await TvCast.castDownload(widget.title, season: e?.season, episode: e?.episode, source: hint)
+        : await TvCast.castPlay(widget.title, season: e?.season, episode: e?.episode, source: hint);
+    if (!mounted) return;
+    if (r.ok) {
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.heavyImpact();
+    }
+    _say(r.message, bad: !r.ok, retry: r.ok ? null : () => _cast(download: download, source: source));
+  }
 
   void _reply(OneStreamReply r, String ok, String failed) => _say(r.message ?? (r.ok ? ok : failed), bad: !r.ok);
 
@@ -208,6 +242,17 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
         Navigator.pop(context);
         _prepare(s);
       }),
+      if (_onTv) ...[
+        SheetAction(Icons.tv_rounded, 'Play on TV', () {
+          Navigator.pop(context);
+          _cast(source: s);
+        }),
+        if (s.downloadable)
+          SheetAction(Icons.download_rounded, 'Download on TV', () {
+            Navigator.pop(context);
+            _cast(download: true, source: s);
+          }),
+      ],
     ],
   );
 
@@ -365,6 +410,32 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
             ],
           ),
         ),
+        // On the paired TV: the same title in One Stream there.
+        if (_onTv)
+          Padding(
+            key: const ValueKey('on-tv'),
+            padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  DS.cased('On ${TvCast.tvName}'),
+                  style: DS.metro
+                      ? TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 16, fontWeight: FontWeight.w400)
+                      : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13),
+                ),
+                const SizedBox(height: DS.s8),
+                Wrap(
+                  spacing: DS.s8,
+                  runSpacing: DS.s8,
+                  children: [
+                    _Button(key: const ValueKey('tv-play'), icon: Icons.tv_rounded, label: 'Play on TV', snug: true, onTap: () => _cast()),
+                    _Button(key: const ValueKey('tv-download'), icon: Icons.download_rounded, label: 'Download on TV', snug: true, onTap: () => _cast(download: true)),
+                  ],
+                ),
+              ],
+            ),
+          ),
         // One Stream's answer ("Download started").
         AnimatedSize(
           duration: Motion.snapDuration,
@@ -386,6 +457,10 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
                       Expanded(
                         child: Text(DS.cased(_note!), style: DS.rowSub.copyWith(color: _noteBad ? DS.alert : DS.ink)),
                       ),
+                      if (_retry != null) ...[
+                        const SizedBox(width: DS.s8),
+                        _Button(key: const ValueKey('retry'), label: 'Retry', compact: true, onTap: _retry!),
+                      ],
                     ],
                   ),
                 ),
@@ -476,11 +551,12 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
 /// The sheet's buttons. Classic: pills (the first an ink one); Metro: flat boxes, the accent
 /// for the main one and the chosen one, outlined otherwise, lowercase.
 class _Button extends StatelessWidget {
-  const _Button({super.key, this.icon, required this.label, required this.onTap, this.primary = false, this.selected = false, this.compact = false});
+  const _Button({super.key, this.icon, required this.label, required this.onTap, this.primary = false, this.selected = false, this.compact = false, this.snug = false});
   final IconData? icon;
   final String label;
   final VoidCallback onTap;
   final bool primary, selected, compact;
+  final bool snug; // full height, less padding: two long labels share a row
 
   @override
   Widget build(BuildContext context) {
@@ -503,7 +579,7 @@ class _Button extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: compact ? 40 : 48),
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: compact ? DS.s16 : DS.s20),
+              padding: EdgeInsets.symmetric(horizontal: compact || snug ? DS.s16 : DS.s20),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

@@ -6,6 +6,7 @@ import 'apps.dart';
 import 'one_stream.dart';
 import 'home.dart';
 import 'tiles/tiles_home.dart';
+import 'tv_cast.dart';
 import 'prefs.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
@@ -49,6 +50,7 @@ class _OneLauncherState extends State<OneLauncher> {
   @override
   void initState() {
     super.initState();
+    TvCast.prefs = widget.prefs; // the title sheet's "On <TV>" (the paired remote)
     theme.addListener(_repaint);
     Perf.lite.addListener(_repaint);
     AppIcon.themed = !widget.prefs.themedIcons; // differs → the first sync applies everything

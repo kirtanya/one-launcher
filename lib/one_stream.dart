@@ -142,11 +142,22 @@ class OneStreamSource {
       languages = _s(m, 'languages'),
       best = _b(m, 'best'),
       playLink = _s(m, 'play_link'),
-      downloadable = _b(m, 'downloadable');
+      downloadable = _b(m, 'downloadable'),
+      hash = _s(m, 'hash'),
+      file = switch (_i(m, 'file')) {
+        final int f when f >= 0 => f,
+        _ => null,
+      },
+      url = _s(m, 'url');
   final String token, name;
   final String? provider, quality, kind, languages, playLink;
   final int? sizeBytes, seeds;
   final bool best, downloadable;
+
+  /// What another device needs to pick this same source (newer One Stream only): the torrent's
+  /// info hash and file index, or a direct link.
+  final String? hash, url;
+  final int? file;
 
   /// "1080p" (else its name).
   String get label => quality ?? (name.isEmpty ? 'Source' : name);

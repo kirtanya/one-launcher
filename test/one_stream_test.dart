@@ -16,6 +16,8 @@ import 'package:one_launcher/tv/tv_apps.dart';
 import 'package:one_launcher/tv/tv_one_stream.dart';
 import 'package:one_launcher/tv/tv_search.dart';
 import 'package:one_launcher/tv/tv_title.dart';
+import 'package:one_launcher/tv_cast.dart';
+import 'package:one_launcher/tv_remote.dart';
 import 'package:one_launcher/ui/ds.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -78,9 +80,9 @@ List<Map> _episodes(Map p) => [
 ];
 
 List<Map> _sources(Map p) => [
-  {'token': 'tok-best', 'name': 'Dune.2160p', 'provider': 'Torrentio', 'quality': '2160p', 'size_bytes': 12400000000, 'seeds': 812, 'kind': 'torrent', 'best': 1, 'downloadable': 1},
-  {'token': 'tok-1080', 'name': 'Dune.1080p', 'provider': 'Torrentio', 'quality': '1080p', 'size_bytes': 2100000000, 'seeds': 340, 'kind': 'torrent', 'best': 0, 'downloadable': 1},
-  {'token': 'tok-web', 'name': 'Web', 'provider': 'Direct', 'quality': '720p', 'kind': 'stream', 'best': 0, 'downloadable': 0},
+  {'token': 'tok-best', 'name': 'Dune.2160p', 'provider': 'Torrentio', 'quality': '2160p', 'size_bytes': 12400000000, 'seeds': 812, 'kind': 'torrent', 'best': 1, 'downloadable': 1, 'hash': 'a1b2c3', 'file': 2, 'url': null},
+  {'token': 'tok-1080', 'name': 'Dune.1080p', 'provider': 'Torrentio', 'quality': '1080p', 'size_bytes': 2100000000, 'seeds': 340, 'kind': 'torrent', 'best': 0, 'downloadable': 1, 'hash': null, 'file': -1, 'url': null},
+  {'token': 'tok-web', 'name': 'Web', 'provider': 'Direct', 'quality': '720p', 'kind': 'stream', 'best': 0, 'downloadable': 0, 'url': 'https://cdn.example/dune 720.m3u8?a=1&b=2'},
 ];
 
 final _dl = [
@@ -129,6 +131,8 @@ Future<Object?>? _oneStream(MethodCall call, List<MethodCall> log, {bool availab
 void main() {
   final calls = <MethodCall>[];
   tearDown(() {
+    TvRemote.instance.status.value = TvStatus.idle;
+    TvRemote.instance.power.value = null;
     OneStream.instance.debugReset();
     OneStream.channel = const MethodChannel('one_launcher/apps');
   });
@@ -569,5 +573,135 @@ void main() {
     await tester.tap(find.text('Play S1 E2'));
     await settle(tester);
     expect(calls.lastWhere((c) => c.method == 'oneStreamOpen').arguments, {'link': 'onestream://play?source=tok-best&type=tv&tmdb=1399&season=1&episode=2'});
+  });
+
+  // ---- Part 3: play / download it on the paired TV (the phone remote) ----
+
+  const tvPrefs = <String, Object>{'tvHost': '192.168.1.40', 'tvName': 'Kame TV'};
+
+  /// The TV's side of the remote channel: [reachable] answers tvConnect (then says it's
+  /// connected and whether its screen is on: [screenOn]); links and keys go through.
+  void tvAnswers(WidgetTester tester, {required bool Function() reachable, bool? Function()? screenOn}) {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
+      if (_oneStream(call, calls) case final r?) return r;
+      calls.add(call);
+      switch (call.method) {
+        case 'tvConnect':
+          if (!reachable()) throw PlatformException(code: 'tv', message: 'Connection refused');
+          TvRemote.instance.onEvent({'state': 'connected'});
+          if (screenOn?.call() case final on?) TvRemote.instance.onEvent({'state': 'power', 'on': on});
+          return true;
+        case 'tvAppLink' || 'tvKey':
+          return true;
+      }
+      return null;
+    });
+  }
+
+  List<String> links() => [for (final c in calls.where((c) => c.method == 'tvAppLink')) (c.arguments as Map)['link'] as String];
+
+  testWidgets('phone sheet: no TV paired → no "On TV" buttons, none in a source’s menu', (tester) async {
+    await phone(tester);
+    await sheet(tester, movie());
+    expect(find.byKey(const ValueKey('on-tv')), findsNothing);
+    expect(find.text('Play on TV'), findsNothing);
+    await tester.scrollUntilVisible(find.text('1080p'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('1080p'));
+    await tester.pumpAndSettle();
+    expect(find.text('Prepare to stream'), findsOneWidget);
+    expect(find.text('Play on TV'), findsNothing);
+    expect(find.text('Download on TV'), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('phone sheet (film), TV paired: "On Kame TV" → Play / Download on TV send cast links with the source hint', (tester) async {
+    await phone(tester, stored: tvPrefs);
+    tvAnswers(tester, reachable: () => true, screenOn: () => true);
+    await sheet(tester, movie());
+    expect(find.text('On Kame TV'), findsOneWidget);
+    expect(find.text('Play on TV'), findsOneWidget);
+    expect(find.text('Download on TV'), findsOneWidget);
+
+    await tester.tap(find.text('Play on TV'));
+    await tester.pumpAndSettle();
+    expect(calls.firstWhere((c) => c.method == 'tvConnect').arguments, {'host': '192.168.1.40'});
+    expect(links().last, 'onestream://cast/play?type=movie&tmdb=693134&hash=a1b2c3&file=2', reason: 'the best source as the hint');
+    expect(calls.any((c) => c.method == 'tvKey'), isFalse, reason: 'screen on: no wake');
+    expect(find.text('Playing on Kame TV'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/55_one_stream_on_tv.png'));
+
+    // Already connected: no second connect.
+    await tester.tap(find.text('Download on TV'));
+    await tester.pumpAndSettle();
+    expect(calls.where((c) => c.method == 'tvConnect').length, 1);
+    expect(links().last, 'onestream://cast/download?type=movie&tmdb=693134&hash=a1b2c3&file=2');
+    expect(find.text('Downloading on Kame TV'), findsOneWidget);
+
+    // A source's menu: its own hint — a direct link, encoded; it can't be downloaded.
+    await tester.scrollUntilVisible(find.text('720p'), 120, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('720p'));
+    await tester.pumpAndSettle();
+    expect(find.text('Download on TV'), findsOneWidget, reason: 'the sheet’s button only');
+    await tester.tap(find.text('Play on TV').last);
+    await tester.pumpAndSettle();
+    expect(links().last, 'onestream://cast/play?type=movie&tmdb=693134&url=https%3A%2F%2Fcdn.example%2Fdune+720.m3u8%3Fa%3D1%26b%3D2');
+    // A torrent with no hint from One Stream: just the title.
+    await tester.tap(find.text('1080p'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Download on TV').last);
+    await tester.pumpAndSettle();
+    expect(links().last, 'onestream://cast/download?type=movie&tmdb=693134');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('phone sheet (series), TV asleep: wakes it, then plays the picked episode on it; Metro', (tester) async {
+    await phone(tester, stored: {...tvPrefs, 'homeView': 'tiles'});
+    tvAnswers(tester, reachable: () => true, screenOn: () => false);
+    await sheet(tester, series());
+    expect(find.text('on kame tv'), findsOneWidget, reason: 'Metro: lowercase');
+    await tester.tap(find.byKey(const ValueKey('tv-play')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('sending to kame tv…'), findsOneWidget);
+    expect((calls.lastWhere((c) => c.method == 'tvKey').arguments as Map)['code'], TvKey.wakeup, reason: 'the wake key, never power');
+    expect(links(), isEmpty, reason: 'the TV gets time to wake');
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(links().single, 'onestream://cast/play?type=tv&tmdb=1399&season=1&episode=2&hash=a1b2c3&file=2');
+    expect(find.text('playing on kame tv'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/56_one_stream_on_tv_metro.png'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('phone sheet, TV off / away: "Couldn’t reach Kame TV — is it on?" with Retry, which sends it', (tester) async {
+    await phone(tester, stored: tvPrefs);
+    var reachable = false;
+    tvAnswers(tester, reachable: () => reachable);
+    await sheet(tester, movie());
+    await tester.tap(find.text('Download on TV'));
+    await tester.pumpAndSettle();
+    expect(find.text('Couldn’t reach Kame TV — is it on?'), findsOneWidget);
+    expect(links(), isEmpty);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/57_one_stream_on_tv_failed.png'));
+    reachable = true; // power unknown: no wake, just send
+    await tester.tap(find.text('Retry'));
+    await tester.pump(const Duration(seconds: 1)); // a moment for the TV to say if its screen is on
+    await tester.pumpAndSettle();
+    expect(links().single, 'onestream://cast/download?type=movie&tmdb=693134&hash=a1b2c3&file=2');
+    expect(calls.any((c) => c.method == 'tvKey'), isFalse);
+    expect(find.text('Downloading on Kame TV'), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+  });
+
+  test('cast link: encodes every value; drops a phone-only (local) url; no file without a hash', () {
+    final t = OneStreamTitle.fromMap(const {'type': 'tv', 'tmdb': 7, 'title': 'X'});
+    final local = OneStreamSource(const {'token': 't', 'url': 'http://127.0.0.1:8080/stream/1', 'file': 3});
+    expect(TvCast.link('play', t, season: 1, episode: 10, source: local), 'onestream://cast/play?type=tv&tmdb=7&season=1&episode=10');
+    final odd = OneStreamSource(const {'token': 't', 'hash': 'a b&c', 'file': 0});
+    expect(TvCast.link('download', t, source: odd), 'onestream://cast/download?type=tv&tmdb=7&hash=a+b%26c&file=0');
   });
 }

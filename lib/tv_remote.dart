@@ -11,6 +11,9 @@ abstract final class TvKey {
   static const volumeUp = 24, volumeDown = 25, power = 26, menu = 82, playPause = 85;
   static const next = 87, previous = 88, mute = 164, input = 178, settings = 176;
   static const enter = 66, delete = 67;
+
+  /// Wakes the TV; unlike [power] it never turns it off.
+  static const wakeup = 224;
 }
 
 /// Direction of a key press on the wire.
@@ -31,6 +34,9 @@ class TvRemote {
   /// A text field is focused on the TV: (its current text, its label). Null when not typing.
   final ime = ValueNotifier<(String, String)?>(null);
 
+  /// Whether the TV's screen is on, when it has said (it does right after connecting).
+  final power = ValueNotifier<bool?>(null);
+
   /// The last problem, in words (connection lost, wrong code…).
   final error = ValueNotifier<String?>(null);
 
@@ -44,6 +50,9 @@ class TvRemote {
       case 'disconnected':
         status.value = TvStatus.disconnected;
         ime.value = null;
+        power.value = null;
+      case 'power':
+        power.value = m['on'] == true;
       case 'volume':
         volume.value = ((m['level'] as num).toInt(), (m['max'] as num).toInt(), m['muted'] == true);
       case 'ime':
@@ -179,11 +188,14 @@ class TvRemote {
   /// Opens the TV's own picture settings (backlight lives there), via One Launcher TV on the TV.
   Future<void> openPicture() => appLink('onelauncher://picture');
 
-  Future<void> appLink(String link) async {
+  /// Opens [link] on the TV. Returns an error message, or null when it was sent.
+  Future<String?> appLink(String link) async {
     try {
       await _ch.invokeMethod('tvAppLink', {'link': link});
+      return null;
     } catch (e) {
       error.value = _why(e);
+      return error.value;
     }
   }
 
@@ -200,6 +212,7 @@ class TvRemote {
     } catch (_) {}
     status.value = TvStatus.idle;
     volume.value = null;
+    power.value = null;
   }
 }
 
