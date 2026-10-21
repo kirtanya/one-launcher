@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 
 import 'apps.dart';
 import 'folders.dart';
+import 'one_stream.dart';
 import 'one_stream_widgets.dart';
 import 'prefs.dart';
 import 'ui/perf.dart';
@@ -1343,7 +1344,8 @@ class _SearchResults extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Nothing on your phone matches “$query”', style: DS.rowTitle),
+                    // With Movies & shows on, films may well match: say only what didn't.
+                    Text(oneStream && OneStream.instance.available.value ? 'No apps or settings match “$query”' : 'Nothing on your phone matches “$query”', style: DS.rowTitle),
                     if (web || play) Text('Try the web instead', style: DS.rowSub),
                   ],
                 ),
