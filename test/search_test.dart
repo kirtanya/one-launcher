@@ -109,7 +109,7 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'weather today');
     await tester.pumpAndSettle();
-    expect(find.text('Nothing on your phone matches “weather today”'), findsOneWidget);
+    expect(find.textContaining('Nothing on your phone matches'), findsNothing, reason: 'no empty card: the web rows lead');
     await tester.testTextInput.receiveAction(TextInputAction.go);
     await tester.pump();
     expect(calls.last.method, 'webSearch');
