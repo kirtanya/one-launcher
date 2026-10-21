@@ -133,7 +133,9 @@ class _RemoteSheetState extends State<_RemoteSheet> {
   }
 
   Future<void> _forget() async {
-    if (!await confirmReset(context, title: 'Forget ${prefs.tvName}?', body: 'The remote stops working until you pair again with a code on the TV.', action: 'Forget')) return;
+    if (!await confirmReset(context, title: 'Forget ${prefs.tvName}?', body: 'The remote stops working until you pair again with a code on the TV.', action: 'Forget')) {
+      return;
+    }
     final host = prefs.tvHost;
     if (host != null) await tv.forget(host);
     await prefs.setTv(null);
@@ -255,7 +257,13 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                       },
                     ),
                   ),
-                  _Round(icon: Icons.power_settings_new_rounded, tooltip: 'Power', danger: true, onTap: live ? () => _press(TvKey.power, strong: true) : null),
+                  _Round(
+                    icon: Icons.power_settings_new_rounded,
+                    tooltip: 'Power',
+                    danger: true,
+                    onTap: live ? () => _press(TvKey.power, strong: true) : null,
+                    onHold: live ? (d) => _hold(TvKey.power, d) : null,
+                  ),
                   PopupMenuButton<String>(
                     tooltip: 'More',
                     icon: Icon(Icons.more_vert_rounded, color: DS.ink),
@@ -300,14 +308,19 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                               return Column(
                                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
-                                  _DPad(size: pad, onKey: _press),
+                                  _DPad(size: pad, onKey: _press, onHold: _hold),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                     children: [
-                                      _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back)),
-                                      _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home)),
-                                      _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause)),
-                                      _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input)),
+                                      _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back), onHold: (d) => _hold(TvKey.back, d)),
+                                      _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home), onHold: (d) => _hold(TvKey.home, d)),
+                                      _Round(
+                                        icon: Icons.play_arrow_rounded,
+                                        tooltip: 'Play / pause',
+                                        onTap: () => _press(TvKey.playPause),
+                                        onHold: (d) => _hold(TvKey.playPause, d),
+                                      ),
+                                      _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input), onHold: (d) => _hold(TvKey.input, d)),
                                       _Round(
                                         icon: Icons.keyboard_rounded,
                                         tooltip: 'Type on TV',
@@ -390,6 +403,13 @@ class _RemoteSheetState extends State<_RemoteSheet> {
     strong ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
     tv.key(code);
   }
+
+  /// Like holding a button on the physical remote: the key goes down when the hold
+  /// starts and comes up when the finger lifts, so the TV sees a real long press.
+  void _hold(int code, bool down) {
+    if (down) HapticFeedback.heavyImpact();
+    tv.key(code, press: down ? TvPress.longStart : TvPress.longEnd);
+  }
 }
 
 class _UpperCase extends TextInputFormatter {
@@ -464,36 +484,77 @@ class _Primary extends StatelessWidget {
 
 /// A round remote button (56 pt).
 class _Round extends StatelessWidget {
-  const _Round({required this.icon, required this.tooltip, required this.onTap, this.danger = false});
+  const _Round({required this.icon, required this.tooltip, required this.onTap, this.onHold, this.danger = false});
   final IconData icon;
   final String tooltip;
   final VoidCallback? onTap;
+
+  /// Hold support (true = finger down, false = lifted). Off → the tooltip shows on hold.
+  final void Function(bool down)? onHold;
   final bool danger;
 
   @override
   Widget build(BuildContext context) => Tooltip(
     message: tooltip,
-    child: Pressable(
-      scale: .9,
-      child: Material(
-        color: danger ? DS.alert.withValues(alpha: .14) : DS.cardMuted,
-        // Metro: square tiles (the tile corner setting) instead of circles.
-        shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox.square(dimension: 56, child: Icon(icon, color: danger ? DS.alert : DS.ink)),
+    triggerMode: onHold == null ? null : TooltipTriggerMode.manual,
+    child: _Hold(
+      onHold: onHold,
+      child: Pressable(
+        scale: .9,
+        child: Material(
+          color: danger ? DS.alert.withValues(alpha: .14) : DS.cardMuted,
+          // Metro: square tiles (the tile corner setting) instead of circles.
+          shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: SizedBox.square(dimension: 56, child: Icon(icon, color: danger ? DS.alert : DS.ink)),
+          ),
         ),
       ),
     ),
   );
 }
 
+/// Turns a hold into a TV long press: [onHold] (true) once the hold is recognised,
+/// [onHold] (false) when the finger lifts or the gesture is lost. A quick tap passes
+/// through to the child.
+class _Hold extends StatefulWidget {
+  const _Hold({required this.onHold, required this.child});
+  final void Function(bool down)? onHold;
+  final Widget child;
+
+  @override
+  State<_Hold> createState() => _HoldState();
+}
+
+class _HoldState extends State<_Hold> {
+  bool _down = false;
+
+  void _set(bool down) {
+    if (_down == down) return;
+    _down = down;
+    widget.onHold?.call(down);
+  }
+
+  @override
+  void dispose() {
+    _set(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.onHold == null
+      ? widget.child
+      : GestureDetector(onLongPressStart: (_) => _set(true), onLongPressEnd: (_) => _set(false), onLongPressCancel: () => _set(false), child: widget.child);
+}
+
 /// The round D-pad: four arrow zones around an OK button. Holding an arrow repeats it.
 class _DPad extends StatelessWidget {
-  const _DPad({required this.size, required this.onKey});
+  const _DPad({required this.size, required this.onKey, this.onHold});
   final double size;
   final void Function(int code, {bool strong}) onKey;
+  final void Function(int code, bool down)? onHold;
 
   @override
   Widget build(BuildContext context) {
@@ -528,23 +589,27 @@ class _DPad extends StatelessWidget {
             Center(
               child: Tooltip(
                 message: 'OK',
-                child: Pressable(
-                  scale: .92,
-                  child: Material(
-                    color: DS.metro ? DS.hero : DS.ink,
-                    shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => onKey(TvKey.ok, strong: true),
-                      child: SizedBox.square(
-                        dimension: ok,
-                        child: Center(
-                          child: Text(
-                            DS.cased('OK'),
-                            style: DS.rowTitle.copyWith(
-                              color: DS.metro ? Colors.white : DS.card,
-                              fontWeight: DS.metro ? FontWeight.w300 : FontWeight.w600,
-                              fontSize: DS.metro ? 22 : null,
+                triggerMode: onHold == null ? null : TooltipTriggerMode.manual,
+                child: _Hold(
+                  onHold: onHold == null ? null : (d) => onHold!(TvKey.ok, d),
+                  child: Pressable(
+                    scale: .92,
+                    child: Material(
+                      color: DS.metro ? DS.hero : DS.ink,
+                      shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const CircleBorder(),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => onKey(TvKey.ok, strong: true),
+                        child: SizedBox.square(
+                          dimension: ok,
+                          child: Center(
+                            child: Text(
+                              DS.cased('OK'),
+                              style: DS.rowTitle.copyWith(
+                                color: DS.metro ? Colors.white : DS.card,
+                                fontWeight: DS.metro ? FontWeight.w300 : FontWeight.w600,
+                                fontSize: DS.metro ? 22 : null,
+                              ),
                             ),
                           ),
                         ),
@@ -850,20 +915,14 @@ class _TypingPanelState extends State<_TypingPanel> {
 
 /// The remote's quick apps: remove the ones on the row, add common TV apps, or any app by its
 /// package name (for apps not listed). Changes show on the remote at once.
-Future<Object?> showRemoteAppsEditor(
-  BuildContext context, {
-  required Prefs prefs,
-}) => showOneSheetWith(
+Future<Object?> showRemoteAppsEditor(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
   context,
   builder: (ctx) => ListenableBuilder(
     listenable: prefs,
     builder: (ctx, _) {
       final ids = prefs.remoteApps;
       Widget row(String title, String sub, Widget trailing) => Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: DS.s24,
-          vertical: DS.s4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s4),
         child: Row(
           children: [
             Expanded(
@@ -871,12 +930,7 @@ Future<Object?> showRemoteAppsEditor(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: DS.rowTitle),
-                  Text(
-                    sub,
-                    style: DS.rowSub.copyWith(fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(sub, style: DS.rowSub.copyWith(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ],
               ),
             ),
@@ -894,10 +948,7 @@ Future<Object?> showRemoteAppsEditor(
         children: [
           const Padding(
             padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
-            child: SheetHeader(
-              title: 'Quick apps',
-              subtitle: 'The app buttons on your remote',
-            ),
+            child: SheetHeader(title: 'Quick apps', subtitle: 'The app buttons on your remote'),
           ),
           eyebrow('On the remote'),
           if (ids.isEmpty)
@@ -922,10 +973,7 @@ Future<Object?> showRemoteAppsEditor(
                                 ..removeAt(i)
                                 ..insert(i - 1, id),
                             ),
-                      icon: Icon(
-                        Icons.arrow_upward_rounded,
-                        color: i == 0 ? DS.inkFaint : DS.ink,
-                      ),
+                      icon: Icon(Icons.arrow_upward_rounded, color: i == 0 ? DS.inkFaint : DS.ink),
                     ),
                     IconButton(
                       tooltip: 'Remove ${app.name}',
@@ -933,10 +981,7 @@ Future<Object?> showRemoteAppsEditor(
                         HapticFeedback.selectionClick();
                         prefs.setRemoteApps([...ids]..removeAt(i));
                       },
-                      icon: Icon(
-                        Icons.remove_circle_outline_rounded,
-                        color: DS.alert,
-                      ),
+                      icon: Icon(Icons.remove_circle_outline_rounded, color: DS.alert),
                     ),
                   ],
                 ),
@@ -991,28 +1036,19 @@ Future<void> _addOtherApp(BuildContext context, Prefs prefs) async {
         children: [
           TextField(
             controller: name,
-            decoration: const InputDecoration(
-              labelText: 'Name',
-              hintText: 'JioHotstar',
-            ),
+            decoration: const InputDecoration(labelText: 'Name', hintText: 'JioHotstar'),
           ),
           TextField(
             controller: pkg,
             autocorrect: false,
-            decoration: const InputDecoration(
-              labelText: 'Package name',
-              hintText: 'in.startv.hotstar',
-            ),
+            decoration: const InputDecoration(labelText: 'Package name', hintText: 'in.startv.hotstar'),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(d, false),
-          child: Text(
-            'Cancel',
-            style: DS.rowTitle.copyWith(color: DS.inkMuted),
-          ),
+          child: Text('Cancel', style: DS.rowTitle.copyWith(color: DS.inkMuted)),
         ),
         TextButton(
           onPressed: () => Navigator.pop(d, true),

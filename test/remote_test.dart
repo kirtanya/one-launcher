@@ -80,6 +80,24 @@ void main() {
     await tester.pumpAndSettle();
     expect((calls.lastWhere((c) => c.method == 'tvAppLink').arguments as Map)['link'], 'https://www.hotstar.com');
 
+    // Hold OK / Home → a real long press: key down when the hold starts, up when the finger lifts.
+    for (final (tip, code) in [('OK', 23), ('Home', 3)]) {
+      calls.clear();
+      await tester.ensureVisible(find.byTooltip(tip));
+      await tester.pumpAndSettle();
+      final g = await tester.startGesture(tester.getCenter(find.byTooltip(tip)));
+      await tester.pump(const Duration(milliseconds: 700));
+      List<Map> keys() => [for (final c in calls.where((c) => c.method == 'tvKey')) c.arguments as Map];
+      expect(keys().map((k) => (k['code'], k['direction'])), [(code, 1)], reason: '$tip: held down');
+      await g.up();
+      await tester.pumpAndSettle();
+      expect(keys().map((k) => (k['code'], k['direction'])), [(code, 1), (code, 2)], reason: '$tip: released, no extra tap');
+    }
+    calls.clear();
+    await tester.tap(find.byTooltip('OK'));
+    await tester.pumpAndSettle();
+    expect((calls.lastWhere((c) => c.method == 'tvKey').arguments as Map)['direction'], 3, reason: 'a tap is still a short press');
+
     // Drag the slider up → several volume-up presses (no absolute volume in the protocol).
     calls.clear();
     await tester.drag(find.byType(Slider).first, const Offset(60, 0));
