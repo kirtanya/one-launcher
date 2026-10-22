@@ -581,7 +581,7 @@ void main() {
 
   /// The TV's side of the remote channel: [reachable] answers tvConnect (then says it's
   /// connected and whether its screen is on: [screenOn]); links and keys go through.
-  void tvAnswers(WidgetTester tester, {required bool Function() reachable, bool? Function()? screenOn}) {
+  void tvAnswers(WidgetTester tester, {required bool Function() reachable, bool? Function()? screenOn, bool wakes = true}) {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
       if (_oneStream(call, calls) case final r?) return r;
       calls.add(call);
@@ -591,7 +591,11 @@ void main() {
           TvRemote.instance.onEvent({'state': 'connected'});
           if (screenOn?.call() case final on?) TvRemote.instance.onEvent({'state': 'power', 'on': on});
           return true;
-        case 'tvAppLink' || 'tvKey':
+        case 'tvKey':
+          // The wake key turns a sleeping TV's screen on (if it [wakes]).
+          if (wakes && (call.arguments as Map)['code'] == TvKey.wakeup) TvRemote.instance.onEvent({'state': 'power', 'on': true});
+          return true;
+        case 'tvAppLink':
           return true;
       }
       return null;
@@ -627,7 +631,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls.firstWhere((c) => c.method == 'tvConnect').arguments, {'host': '192.168.1.40'});
     expect(links().last, 'onestream://cast/play?type=movie&tmdb=693134&hash=a1b2c3&file=2', reason: 'the best source as the hint');
-    expect(calls.any((c) => c.method == 'tvKey'), isFalse, reason: 'screen on: no wake');
+    expect((calls.lastWhere((c) => c.method == 'tvKey').arguments as Map)['code'], TvKey.wakeup, reason: 'the wake key always goes first (never power)');
     expect(find.text('Playing on Kame TV'), findsOneWidget);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/55_one_stream_on_tv.png'));
 
@@ -665,8 +669,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('sending to kame tv…'), findsOneWidget);
     expect((calls.lastWhere((c) => c.method == 'tvKey').arguments as Map)['code'], TvKey.wakeup, reason: 'the wake key, never power');
-    expect(links(), isEmpty, reason: 'the TV gets time to wake');
-    await tester.pump(const Duration(seconds: 2));
+    expect(links(), isEmpty, reason: 'the TV gets time to wake and settle');
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(links().single, 'onestream://cast/play?type=tv&tmdb=1399&season=1&episode=2&hash=a1b2c3&file=2');
     expect(find.text('playing on kame tv'), findsOneWidget);
@@ -678,19 +682,21 @@ void main() {
   testWidgets('phone sheet, TV off / away: "Couldn’t reach Kame TV — is it on?" with Retry, which sends it', (tester) async {
     await phone(tester, stored: tvPrefs);
     var reachable = false;
-    tvAnswers(tester, reachable: () => reachable);
+    tvAnswers(tester, reachable: () => reachable, wakes: false);
     await sheet(tester, movie());
     await tester.tap(find.text('Download on TV'));
     await tester.pumpAndSettle();
     expect(find.text('Couldn’t reach Kame TV — is it on?'), findsOneWidget);
     expect(links(), isEmpty);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/57_one_stream_on_tv_failed.png'));
-    reachable = true; // power unknown: no wake, just send
+    reachable = true; // power never reported (standby): wake anyway, wait, wake again, then send
     await tester.tap(find.text('Retry'));
-    await tester.pump(const Duration(seconds: 1)); // a moment for the TV to say if its screen is on
+    await tester.pump(const Duration(seconds: 2));
+    expect(links(), isEmpty, reason: 'still waking');
+    await tester.pump(const Duration(seconds: 20));
     await tester.pumpAndSettle();
     expect(links().single, 'onestream://cast/download?type=movie&tmdb=693134&hash=a1b2c3&file=2');
-    expect(calls.any((c) => c.method == 'tvKey'), isFalse);
+    expect(calls.where((c) => c.method == 'tvKey' && (c.arguments as Map)['code'] == TvKey.wakeup).length, 2, reason: 'woke twice');
     expect(find.text('Downloading on Kame TV'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
     await tester.binding.handlePopRoute();

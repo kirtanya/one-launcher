@@ -19,8 +19,15 @@ abstract final class TvCast {
   /// How long to wait for the TV to answer when the remote isn't connected yet.
   static Duration connectTimeout = const Duration(seconds: 4);
 
-  /// How long a sleeping TV gets to wake before the link goes.
-  static Duration wakeTime = const Duration(milliseconds: 1500);
+  /// How long the TV gets to say whether its screen is on, once connected.
+  static Duration powerWait = const Duration(milliseconds: 1500);
+
+  /// How long a TV that wasn't known to be on gets to wake (then one more try, [rewakeWait]).
+  static Duration wakeWait = const Duration(seconds: 10);
+  static Duration rewakeWait = const Duration(seconds: 6);
+
+  /// After waking: a moment for the TV's home screen to be ready to take app links.
+  static Duration settle = const Duration(seconds: 2);
 
   /// A TV is paired (the phone remote is set up).
   static bool get paired => prefs?.tvHost != null;
@@ -62,26 +69,41 @@ abstract final class TvCast {
   static Future<TvCastReply> castDownload(OneStreamTitle title, {int? season, int? episode, OneStreamSource? source}) =>
       _send(link('download', title, season: season, episode: episode, source: source), 'Downloading on');
 
+  /// Wake, then play. A TV in standby often says nothing about its screen, and a link sent to a
+  /// sleeping TV is lost — so the wake key always goes first (it never turns a TV off). A TV not
+  /// known to be on gets time to wake (and a second wake after a reconnect), then a moment to
+  /// settle; waking can reset its network, so a failed send reconnects once and resends.
   static Future<TvCastReply> _send(String link, String doing) async {
     final host = prefs?.tvHost;
     final name = tvName;
     final failed = (ok: false, message: 'Couldn’t reach $name — is it on?');
     if (host == null) return (ok: false, message: 'Pair a TV first');
     final tv = TvRemote.instance;
-    if (tv.status.value != TvStatus.connected) {
-      final err = await tv.connect(host).timeout(connectTimeout, onTimeout: () => 'timed out');
-      if (err != null) return failed;
-      // Connected once the TV takes us as its remote; it says whether its screen is on just after.
-      if (!await _until(tv.status, (s) => s == TvStatus.connected, connectTimeout)) return failed;
-      await _until(tv.power, (on) => on != null, const Duration(milliseconds: 800));
+    if (!await _connect(tv, host)) return failed;
+    await _until(tv.power, (on) => on != null, powerWait);
+    final wasOn = tv.power.value == true;
+    await tv.key(TvKey.wakeup);
+    if (!wasOn) {
+      if (!await _until(tv.power, (on) => on == true, wakeWait)) {
+        if (await _connect(tv, host, again: true)) {
+          await tv.key(TvKey.wakeup);
+          await _until(tv.power, (on) => on == true, rewakeWait);
+        }
+      }
+      await Future<void>.delayed(settle);
     }
-    // Asleep (screen off): wake it — the wake key never turns a TV off. Unknown: just send.
-    if (tv.power.value == false) {
-      await tv.key(TvKey.wakeup);
-      await Future<void>.delayed(wakeTime);
+    if (await tv.appLink(link) != null) {
+      if (!await _connect(tv, host, again: true) || await tv.appLink(link) != null) return failed;
     }
-    if (await tv.appLink(link) != null) return failed;
     return (ok: true, message: '$doing $name');
+  }
+
+  /// Connects the remote (or, with [again], connects afresh); true once the TV takes us as its remote.
+  static Future<bool> _connect(TvRemote tv, String host, {bool again = false}) async {
+    if (!again && tv.status.value == TvStatus.connected) return true;
+    final err = await tv.connect(host).timeout(connectTimeout, onTimeout: () => 'timed out');
+    if (err != null) return false;
+    return _until(tv.status, (s) => s == TvStatus.connected, connectTimeout);
   }
 
   /// Waits until [test] holds for [value] (true), or [timeout] passes (false).
