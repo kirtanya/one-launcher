@@ -16,6 +16,7 @@ import 'ui/perf.dart';
 import 'ui/glass.dart';
 import 'search.dart';
 import 'search_dock.dart';
+import 'search_history.dart';
 import 'system_settings.dart';
 import 'quick_chips.dart';
 import 'quick_actions.dart';
@@ -49,7 +50,13 @@ class AppDrawer extends StatefulWidget {
     required this.onWebSearch,
     required this.onRun,
     required this.pullOpening,
+    required this.onPickRecent,
+    required this.onFillRecent,
   });
+
+  /// Recent searches (shown while search is open and empty): tap → typed in and searched;
+  /// the row's arrow → just filled in.
+  final ValueChanged<String> onPickRecent, onFillRecent;
 
   /// The search bar when it lives inside the drawer (Settings → Search bar: Top); null when it
   /// floats at the bottom of the screen.
@@ -445,16 +452,20 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     );
 
     // Results only once something is typed; an empty search keeps the usual list in place
-    // (so opening search never swaps the screen out from under the motion).
+    // (so opening search never swaps the screen out from under the motion) — or, with search
+    // history, shows the recent searches card.
     final q = widget.query.trim();
-    final showResults = widget.searching && q.isNotEmpty;
+    final history = widget.searching && q.isEmpty && RecentSearches.shows(prefs);
+    final showResults = (widget.searching && q.isNotEmpty) || history;
     // Bar at the bottom → results grow upward from it (best match nearest the bar).
     final upward = showResults && widget.searchBar == null;
     final List<Widget> content;
     if (showResults) {
       final sources = prefs.searchIn;
       if (sources.contains('shortcuts')) _loadShortcuts();
-      final results = _SearchResults(
+      final Widget results = history
+          ? RecentSearches(prefs: prefs, upward: upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent)
+          : _SearchResults(
         query: q,
         apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
         shortcuts: [
@@ -1357,6 +1368,7 @@ class _SearchResults extends StatelessWidget {
           header: _title('Movies & shows'),
           wrap: (child) => OneCard(padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s12), child: child),
           gap: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
+          onOpen: () => prefs.addSearch(query), // a poster opened: the search was used
         ),
       // The web, like the Pixel search bar: hands the query to Google / the Play Store.
       if (web || play)

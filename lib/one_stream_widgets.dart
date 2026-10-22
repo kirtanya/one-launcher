@@ -69,8 +69,10 @@ class OneStreamSearchRow extends StatefulWidget {
     this.ink,
     this.inkMuted,
     this.inset = DS.s12,
+    this.onOpen,
   });
   final String query;
+  final VoidCallback? onOpen; // a poster was opened (search history counts the search as used)
   final Widget header;
   final Widget Function(Widget child)? wrap;
   final EdgeInsets gap;
@@ -142,7 +144,10 @@ class _OneStreamSearchRowState extends State<OneStreamSearchRow> {
               excludeSemantics: true,
               child: InkWell(
                 borderRadius: BorderRadius.circular(DS.rMedia),
-                onTap: () => showOneStreamTitle(context, t),
+                onTap: () {
+                  widget.onOpen?.call();
+                  showOneStreamTitle(context, t);
+                },
                 child: SizedBox(
                   width: 96,
                   child: Column(

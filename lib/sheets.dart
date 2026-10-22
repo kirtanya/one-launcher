@@ -2595,6 +2595,11 @@ Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}
         _Group(null, [
           _SwitchRow(Icons.swipe_down_alt_rounded, 'Pull down to search', 'Drag the app drawer down at its top', prefs.pullToSearch, prefs.setPullToSearch),
           _SwitchRow(Icons.bolt_rounded, 'Open the only match', 'When search finds just one app', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
+          // Off: asks first, since the saved searches go too.
+          _SwitchRow(Icons.history_rounded, 'Save search history', 'Recent searches show when search opens', prefs.saveSearchHistory, (v) async {
+            if (!v && !await confirmReset(ctx, title: 'Stop saving searches?', body: 'Your recent searches are cleared too.', action: 'Turn off')) return;
+            prefs.setSaveSearchHistory(v);
+          }),
         ]),
         _Group('Search in', [
           for (final (id, icon, title, sub) in [

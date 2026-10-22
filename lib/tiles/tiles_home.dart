@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import '../apps.dart';
 import '../one_stream_widgets.dart';
 import '../search.dart';
+import '../search_history.dart';
 import '../system_settings.dart';
 import '../quick_actions.dart';
 import '../quick_chips.dart' show ShortcutIcon, ChipLook;
@@ -2129,22 +2130,40 @@ class _TileSearchState extends State<_TileSearch> {
         if (mounted) setState(() => _shortcuts = list ?? const []);
       });
     }
-    // Settings → Search → open the only match.
-    if (q.isNotEmpty && widget.prefs.autoOpenSingleMatch && widget.prefs.searchIn.contains('apps')) {
+    // Settings → Search → open the only match (not for a recent search put in the field).
+    if (q.isNotEmpty && !_filling && widget.prefs.autoOpenSingleMatch && widget.prefs.searchIn.contains('apps')) {
       final r = searchApps(widget.apps, q);
-      if (r.length == 1) return widget.onLaunch(r.first);
+      if (r.length == 1) return _open(r.first);
     }
     setState(() {});
   }
 
+  /// A recent search: typed into the field (cursor at the end), its results show — without
+  /// opening the only match by itself.
+  bool _filling = false;
+  void _setQuery(String q) {
+    _filling = true;
+    widget.text.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
+    _filling = false;
+    widget.focus.requestFocus();
+  }
+
+  /// An app opened from search: the search was used (search history).
+  void _open(AppEntry a) {
+    widget.prefs.addSearch(widget.text.text);
+    widget.onLaunch(a);
+  }
+
   void _run(Future<void> Function() action) async {
+    widget.prefs.addSearch(widget.text.text);
     widget.onClose();
     await action();
   }
 
   void _submit(String q) {
+    widget.prefs.addSearch(q);
     final best = searchApps(widget.apps, q);
-    if (best.isNotEmpty && widget.prefs.searchIn.contains('apps')) return widget.onLaunch(best.first);
+    if (best.isNotEmpty && widget.prefs.searchIn.contains('apps')) return _open(best.first);
     if (q.trim().isNotEmpty && widget.prefs.searchIn.contains('google')) _run(() => Apps.instance.webSearch(q.trim()));
   }
 
@@ -2160,9 +2179,11 @@ class _TileSearchState extends State<_TileSearch> {
       prefs: widget.prefs,
       apps: widget.apps,
       shortcuts: _shortcuts,
-      onLaunch: widget.onLaunch,
+      onLaunch: _open,
       onLongPress: widget.onAppMenu,
       onRun: _run,
+      onPickRecent: _setQuery,
+      onFillRecent: _setQuery,
     );
 
     return AnimatedBuilder(
@@ -2308,11 +2329,14 @@ class _MetroResults extends StatelessWidget {
     required this.onLaunch,
     required this.onLongPress,
     required this.onRun,
+    required this.onPickRecent,
+    required this.onFillRecent,
   });
   final String query;
   final Prefs prefs;
   final List<AppEntry> apps;
   final List<AppShortcut>? shortcuts;
+  final ValueChanged<String> onPickRecent, onFillRecent; // recent searches: search it / fill it in
   final ValueChanged<AppEntry> onLaunch, onLongPress;
   final void Function(Future<void> Function() action) onRun;
 
@@ -2382,6 +2406,8 @@ class _MetroResults extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Recent searches first (Settings → Search → Save search history), then your apps.
+          RecentSearches(prefs: prefs, metro: true, onPick: onPickRecent, onFill: onFillRecent),
           if (top.isNotEmpty) ...[_header('your apps'), for (final a in top) _app(a)],
         ],
       );
@@ -2435,7 +2461,14 @@ class _MetroResults extends StatelessWidget {
         ],
         // One Stream's movies & shows (when installed): a row of posters once it has results.
         if (sources.contains('onestream'))
-          OneStreamSearchRow(query: query, header: _header('movies & shows'), ink: Colors.white, inkMuted: Colors.white60, inset: 4),
+          OneStreamSearchRow(
+            query: query,
+            header: _header('movies & shows'),
+            ink: Colors.white,
+            inkMuted: Colors.white60,
+            inset: 4,
+            onOpen: () => prefs.addSearch(query), // a poster opened: the search was used
+          ),
         if (web || play) ...[
           _header('web'),
           if (web)

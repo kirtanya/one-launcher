@@ -269,7 +269,7 @@ class Prefs extends ChangeNotifier {
 
   /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
   /// the phone they were added on, so they can't be restored elsewhere.
-  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'todayTiles', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness'};
+  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'todayTiles', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness', 'searchHistory'};
 
   String exportBackup() {
     final out = <String, Object>{};
@@ -526,6 +526,34 @@ class Prefs extends ChangeNotifier {
       for (final x in searchSourceIds)
         if (s.contains(x)) x,
     ]);
+    notifyListeners();
+  }
+
+  /// Search history: recent searches, newest first, saved only once a search was used (Enter, or a
+  /// result opened). On this phone only — left out of backups.
+  static const searchHistoryMax = 20;
+  bool get saveSearchHistory => _sp.getBool('saveSearchHistory') ?? true;
+  List<String> get searchHistory => saveSearchHistory ? (_sp.getStringList('searchHistory') ?? const []) : const [];
+
+  /// Turning it off clears the history too.
+  Future<void> setSaveSearchHistory(bool v) async {
+    await _sp.setBool('saveSearchHistory', v);
+    if (!v) await _sp.remove('searchHistory');
+    notifyListeners();
+  }
+
+  /// Saves [query] at the top (a repeat, in any case, moves up). Under 2 letters isn't kept.
+  Future<void> addSearch(String query, {int at = 0}) async {
+    final q = query.trim();
+    if (q.length < 2 || !saveSearchHistory) return;
+    final list = [...searchHistory]..removeWhere((x) => x.toLowerCase() == q.toLowerCase());
+    list.insert(at.clamp(0, list.length), q);
+    await _setList('searchHistory', list.take(searchHistoryMax).toList());
+  }
+
+  Future<void> removeSearch(String query) => _setList('searchHistory', [...searchHistory]..remove(query));
+  Future<void> clearSearchHistory() async {
+    await _sp.remove('searchHistory');
     notifyListeners();
   }
 

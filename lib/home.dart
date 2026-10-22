@@ -183,6 +183,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         onWebSearch: _webSearch,
         onRun: _runFromSearch,
         pullOpening: _pullOpening,
+        onPickRecent: _setQuery,
+        onFillRecent: _setQuery,
       ),
     ),
   );
@@ -372,14 +374,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     if (open) _startSearch();
   }
 
+  /// A recent search: typed into the bar (cursor at the end), its results show. Never opens the
+  /// only match by itself — tapping a recent search means "show me these results".
+  void _setQuery(String q) {
+    _query.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
+    _focus.requestFocus();
+    setState(() {});
+  }
+
   /// A search result's action (app shortcut, settings page): run it, then tidy up.
   Future<void> _runFromSearch(Future<void> Function() action) async {
+    prefs.addSearch(_query.text); // used: into search history
     await action();
     Future.delayed(const Duration(milliseconds: 350), _stopSearch);
   }
 
   /// Search the web (or the Play Store) for what's typed, then tidy up like after an app launch.
   Future<void> _webSearch(String q, {bool play = false}) async {
+    prefs.addSearch(q);
     play ? await Apps.instance.playSearch(q) : await Apps.instance.webSearch(q);
     Future.delayed(const Duration(milliseconds: 350), _stopSearch);
   }
@@ -396,6 +408,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void _onSubmit(String q) {
     q = q.trim();
     if (q.isEmpty) return;
+    prefs.addSearch(q);
     final sources = prefs.searchIn;
     final r = sources.contains('apps') ? searchApps(_apps, q) : const <AppEntry>[];
     if (r.isNotEmpty) {
@@ -431,6 +444,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   Future<void> _launch(AppEntry app) async {
+    if (_searching) prefs.addSearch(_query.text); // opened from search: it was used
     prefs.recordLaunch(app.package);
     await Apps.instance.launch(app.package);
     // Reset quietly once the other app has covered us.
