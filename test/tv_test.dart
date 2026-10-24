@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
+import 'package:one_launcher/tv/tv_ratings.dart';
 import 'package:one_launcher/tv/tv_title.dart';
 import 'package:one_launcher/ui/ds.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -301,7 +302,7 @@ void main() {
     expect(find.text('Search Google TV for “night”'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_4_search.png'));
 
-    // ↓ to the posters; OK on one → its page: IMDb rating, where to watch (WatchHub links into
+    // ↓ to the posters (IMDb's pill on each); OK on one → its page: scores, where to watch (WatchHub links into
     // apps on this TV), Open in Nuvio, cast; the sources named at the bottom.
     TvPoster? poster() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>();
     for (var k = 0; k < 4 && poster() == null; k++) {
@@ -311,16 +312,17 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(poster()?.title.title, 'The Long Night');
     await _press(tester, LogicalKeyboardKey.select);
-    expect(find.text('Where to watch'), findsOneWidget);
     expect(find.text('Watch on Netflix'), findsOneWidget);
     expect(find.text('Watch on Hotstar'), findsOneWidget, reason: 'JioHotstar → the Hotstar app');
     expect(find.text('Watch on Prime Video'), findsOneWidget, reason: 'Amazon Video → Prime Video app');
-    expect(find.text('8.4 IMDb'), findsOneWidget);
+    expect(find.byWidgetPredicate((w) => w is ImdbBadge && w.score == 8.4 && w.size > 11), findsOneWidget, reason: 'IMDb’s pill, big');
+    expect(find.byType(RottenTomatoesBadge), findsNothing, reason: 'a series: IMDb only');
+    expect(find.text('Reviews · 12'), findsOneWidget);
     expect(find.text('Open in Nuvio'), findsOneWidget, reason: 'an installed app opens stremio:///detail/…');
     expect(find.text('Also on Google Play Movies (rent, buy)'), findsOneWidget, reason: 'no app for it here: listed');
     expect(find.text('Mira Rao'), findsOneWidget);
     expect(find.text('Trailer'), findsOneWidget);
-    expect(find.text('Data: Cinemeta · WatchHub'), findsOneWidget);
+    expect(find.text('Data: Cinemeta · WatchHub · OMDb · TMDB'), findsOneWidget);
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_6_title.png'));
   });
 }

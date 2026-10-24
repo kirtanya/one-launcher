@@ -462,7 +462,7 @@ void main() {
     }
     expect(_focused(), 'poster');
     await _press(tester, LogicalKeyboardKey.select);
-    expect(find.text('where to watch'), findsOneWidget);
+    expect(find.text('season 1'), findsOneWidget, reason: 'season tabs in Metro case');
     expect(find.text('cast'), findsOneWidget);
     expect(find.text('watch on netflix'), findsOneWidget);
     expect(_rounded(tester), isEmpty, reason: 'title page: pills, chips, cast, clips');

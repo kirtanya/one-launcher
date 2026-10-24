@@ -24,9 +24,17 @@ else
   echo "› No catalog_sources.txt: search uses the public Cinemeta + WatchHub"
 fi
 
+# A title's page: critics' scores from OMDb (./omdb.key) and reviews from TMDB (./tmdb.key, a v4
+# read access token). Both gitignored; their contents are never printed. Without a file that part
+# of the page is just left out.
+KEYS=()
+key() { tr -d ' \t\r\n' < "$1"; }
+if [ -s omdb.key ]; then KEYS+=(--dart-define=OMDB_KEY="$(key omdb.key)"); echo "› Scores: OMDb (omdb.key)"; else echo "› No omdb.key: no Rotten Tomatoes / Metacritic"; fi
+if [ -s tmdb.key ]; then KEYS+=(--dart-define=TMDB_TOKEN="$(key tmdb.key)"); echo "› Reviews: TMDB (tmdb.key)"; else echo "› No tmdb.key: no reviews"; fi
+
 echo "› TV build (arm + arm64, compressed)"
 flutter build apk --release --flavor tv -t lib/main_tv.dart --split-debug-info=symbols --obfuscate \
-  --target-platform android-arm,android-arm64 -P compressLibs=true ${CATALOG[@]+"${CATALOG[@]}"} >/dev/null
+  --target-platform android-arm,android-arm64 -P compressLibs=true ${CATALOG[@]+"${CATALOG[@]}"} ${KEYS[@]+"${KEYS[@]}"} >/dev/null
 mkdir -p ~/Desktop/APKs
 cp "$OUT/app-tv-release.apk" ~/Desktop/APKs/OneLauncherTV-$V.apk
 ls -lh ~/Desktop/APKs/OneLauncherTV-$V.apk | awk '{print $5, $9}'

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -6,12 +8,14 @@ import '../one_stream.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
 import 'catalog.dart';
+import 'ratings.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 import 'tv_metro.dart';
 import 'tv_one_stream.dart';
 import 'tv_parts.dart';
+import 'tv_ratings.dart';
 
 // ---- Streaming service → the app on this TV ---------------------------------------
 
@@ -77,7 +81,7 @@ ShowTitle showTitleOf(OneStreamTitle t) => ShowTitle(
   rating: t.rating,
 );
 
-/// A show / film as a 2:3 poster: rating badge, title + year underneath.
+/// A show / film as a 2:3 poster: IMDb's pill top left, title + year underneath.
 class TvPoster extends StatelessWidget {
   const TvPoster({super.key, required this.title, required this.onSelect, this.focusNode});
   final ShowTitle title;
@@ -125,7 +129,7 @@ class TvPoster extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title),
-                        if (t.rating != null) Positioned(top: DS.s8, right: DS.s8, child: _RatingBadge(t.rating!)),
+                        if (t.rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(t.rating!)),
                       ],
                     ),
                   ),
@@ -150,25 +154,6 @@ class TvPoster extends StatelessWidget {
       ),
     );
   }
-}
-
-class _RatingBadge extends StatelessWidget {
-  const _RatingBadge(this.rating);
-  final double rating;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(color: const Color(0xB3000000), borderRadius: TvMetro.corners(6)),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Icon(Icons.star_rounded, size: 13, color: Color(0xFFF5C518)),
-        const SizedBox(width: 2),
-        Text(rating.toStringAsFixed(1), style: TvDS.keycap.copyWith(fontSize: 11)),
-      ],
-    ),
-  );
 }
 
 /// A poster / backdrop: the first of [urls] that loads (fetched through Android, decoded small —
@@ -226,9 +211,11 @@ class ShowImage extends StatelessWidget {
 
 // ---- Details page ---------------------------------------------------------------
 
-/// A show or film, cinematic: backdrop, title, IMDb rating, where to watch (open it in its app on
-/// this TV), Open in Nuvio, trailer, cast. Details from the catalog sources (Cinemeta first);
-/// where to watch from WatchHub.
+/// A show or film, cinematic: backdrop; kind · year · runtime · genres; title; the critics' scores
+/// (IMDb, Rotten Tomatoes, Metacritic — only the ones there are); plot; where to watch (open it in
+/// its app on this TV), Open in Nuvio, trailer; reviews (OK opens one whole); cast. Details from the
+/// catalog sources (Cinemeta first); where to watch from WatchHub; scores from OMDb and reviews
+/// from TMDB when the build has their keys (ratings.dart).
 class TvTitlePage extends StatefulWidget {
   const TvTitlePage({super.key, required this.title, required this.apps, required this.searchTargets, required this.onOpenApp});
   final ShowTitle title;
@@ -255,15 +242,27 @@ class _TvTitlePageState extends State<TvTitlePage> {
   final _everywhere = FocusNode(debugLabel: 'everywhere'), _firstWatch = FocusNode(debugLabel: 'watch');
   bool _moved = false; // a key was pressed on this page
   OneStreamTitle? _stream; // One Stream's row for this title (its progress, when started there)
+  TitleRatings? _ratings; // Rotten Tomatoes, Metacritic (and IMDb when the catalog has none)
+  ShowReviews? _reviews;
+  // Series: the season shown, each shown season's episode scores (OMDb) and TMDB's fill-ins.
+  int? _season;
+  final _episodeRatings = <int, Map<int, double>>{};
+  final _tmdbEpisodes = <int, List<ShowEpisode>>{};
 
   @override
   void initState() {
     super.initState();
     final t = widget.title;
+    // Scores and reviews: asked once per page (kept on the TV for a week); the page never waits.
+    TitleExtras.instance.ratings(t).then((r) => _update(() => _ratings = r));
+    TitleExtras.instance.reviews(t).then((r) => _update(() => _reviews = r));
     Catalog.instance
         .details(t)
         .then(
-          (d) => _update(() => _details = d),
+          (d) {
+            _update(() => _details = d);
+            if (d.seasonNumbers.isNotEmpty) _showSeason(d.seasonNumbers.first);
+          },
           onError: (Object e) {
             debugPrint('Title details: ${e is CatalogException ? e : e.runtimeType}'); // addon names only, never links
             _update(() => _detailsError = e);
@@ -296,7 +295,85 @@ class _TvTitlePageState extends State<TvTitlePage> {
   void dispose() {
     _everywhere.dispose();
     _firstWatch.dispose();
+    for (final n in _nodes.values) {
+      n.dispose();
+    }
     super.dispose();
+  }
+
+  // ---- The rows (season tabs, episodes, reviews): ↑ / ↓ enter a row at its chosen tab or the card
+  // last on, never at whichever card happens to sit nearest. ----
+
+  final _nodes = <String, FocusNode>{}; // 'season:2', 'episode:2:5', 'review:0'
+  int? _lastEpisode; // in the season shown
+  int _lastReview = 0;
+
+  FocusNode _node(String key) => _nodes.putIfAbsent(key, () => FocusNode(debugLabel: key));
+
+  /// The row a node is in: 'season', 'episode', 'review' — null for the buttons, cast…
+  String? _rowOf(FocusNode? n) {
+    if (n == null) return null;
+    for (final e in _nodes.entries) {
+      if (identical(e.value, n)) return e.key.split(':').first;
+    }
+    return null;
+  }
+
+  List<String> get _rows => [
+    if (_season != null && (_details?.seasonNumbers.isNotEmpty ?? false)) ...['season', 'episode'],
+    if (_reviews?.list.isNotEmpty ?? false) 'review',
+  ];
+
+  FocusNode? _entry(String row) => switch (row) {
+    'season' => _node('season:$_season'),
+    'episode' => switch (_episodes(_season ?? 0)) {
+      final eps when eps.isNotEmpty => _node('episode:$_season:${_lastEpisode ?? eps.first.episode}'),
+      _ => null,
+    },
+    'review' => _node('review:$_lastReview'),
+    _ => null,
+  };
+
+  KeyEventResult _onPageKey(FocusNode _, KeyEvent e) {
+    if (e is KeyDownEvent) _moved = true;
+    if (e is KeyUpEvent) return KeyEventResult.ignored;
+    final dir = switch (e.logicalKey) {
+      LogicalKeyboardKey.arrowDown => TraversalDirection.down,
+      LogicalKeyboardKey.arrowUp => TraversalDirection.up,
+      _ => null,
+    };
+    final from = FocusManager.instance.primaryFocus;
+    if (dir == null || from == null) return KeyEventResult.ignored;
+    final rows = _rows, was = _rowOf(from);
+    // Leaving a row: remember the card it was on, to come back to.
+    final key = _nodes.entries.where((e) => identical(e.value, from)).firstOrNull?.key.split(':');
+    if (was == 'episode') _lastEpisode = int.tryParse(key!.last);
+    if (was == 'review') _lastReview = int.tryParse(key!.last) ?? 0;
+    String? target;
+    if (was != null) {
+      // Row to row in order; past the first / last row, the page's own ↑ / ↓ (buttons, cast).
+      final i = rows.indexOf(was) + (dir == TraversalDirection.down ? 1 : -1);
+      if (i >= 0 && i < rows.length) target = rows[i];
+    }
+    if (target != null) {
+      _enter(target);
+      return KeyEventResult.handled;
+    }
+    if (!from.focusInDirection(dir)) return KeyEventResult.handled;
+    // Focus moves at the end of this turn: then, if it landed in the rows from outside them, enter
+    // the first row going down, the last going up.
+    scheduleMicrotask(() {
+      final now = _rowOf(FocusManager.instance.primaryFocus);
+      if (mounted && now != null && now != was && rows.isNotEmpty) _enter(dir == TraversalDirection.down ? rows.first : rows.last);
+    });
+    return KeyEventResult.handled;
+  }
+
+  void _enter(String row) {
+    final entry = _entry(row);
+    if (entry?.context == null) return;
+    entry!.requestFocus();
+    Scrollable.ensureVisible(entry.context!, alignment: .5, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
   }
 
   void _update(VoidCallback f) {
@@ -313,6 +390,34 @@ class _TvTitlePageState extends State<TvTitlePage> {
     } else {
       widget.onOpenApp(w.app);
     }
+  }
+
+  /// Shows a season's episodes, then asks (once, only now) for their IMDb scores — and TMDB for
+  /// stills / plots Cinemeta doesn't have.
+  void _showSeason(int season) {
+    _update(() {
+      if (_season != season) _lastEpisode = null;
+      _season = season;
+    });
+    final t = widget.title;
+    if (!_episodeRatings.containsKey(season)) {
+      TitleExtras.instance.episodeRatings(t, season).then((r) {
+        if (r != null) _update(() => _episodeRatings[season] = r);
+      });
+    }
+    final eps = _details?.episodesOf(season) ?? const <ShowEpisode>[];
+    if (!_tmdbEpisodes.containsKey(season) && eps.any((e) => e.still == null || e.overview == null)) {
+      TitleExtras.instance.tmdbSeason(t, season).then((r) {
+        if (r != null) _update(() => _tmdbEpisodes[season] = r);
+      });
+    }
+  }
+
+  /// The season's episodes, Cinemeta's filled in from TMDB's.
+  List<ShowEpisode> _episodes(int season) {
+    final eps = _details?.episodesOf(season) ?? const <ShowEpisode>[];
+    final more = {for (final e in _tmdbEpisodes[season] ?? const <ShowEpisode>[]) e.episode: e};
+    return [for (final e in eps) more[e.episode] == null ? e : e.filledFrom(more[e.episode]!)];
   }
 
   bool get _inStream => OneStream.instance.available.value && widget.title.id.startsWith('tt');
@@ -346,10 +451,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
               padding: EdgeInsets.fromLTRB(TvDS.safe.left, 64, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
               child: Focus(
                 skipTraversal: true,
-                onKeyEvent: (_, e) {
-                  if (e is KeyDownEvent) _moved = true;
-                  return KeyEventResult.ignored;
-                },
+                onKeyEvent: _onPageKey,
                 child: FocusTraversalGroup(child: _body(t)),
               ),
             ),
@@ -361,12 +463,17 @@ class _TvTitlePageState extends State<TvTitlePage> {
 
   Widget _body(ShowTitle t) {
     final d = _details;
-    final meta = [
-      if (t.year != null) t.year!,
-      if ((d?.genres ?? t.genres).isNotEmpty) (d?.genres ?? t.genres).take(3).join(', '),
-      if (d?.runtime != null && d!.runtime! > 0) '${d.runtime! ~/ 60 > 0 ? '${d.runtime! ~/ 60} h ' : ''}${d.runtime! % 60} min',
+    // The eyebrow: FILM · 2024 · 2h 8m · DRAMA, MYSTERY (series: seasons instead of the runtime).
+    final runtime = d?.runtime != null && d!.runtime! > 0 ? '${d.runtime! ~/ 60 > 0 ? '${d.runtime! ~/ 60}h ' : ''}${d.runtime! % 60}m' : null;
+    final genres = (d?.genres ?? t.genres).take(3).join(', ');
+    final eyebrow = [
+      t.isTv ? 'Series' : 'Film',
+      ?t.year,
+      ?runtime,
       if (d?.seasons != null) '${d!.seasons} ${d.seasons == 1 ? 'season' : 'seasons'}',
+      if (genres.isNotEmpty) genres,
     ];
+    final reviews = _reviews?.list ?? const <ShowReview>[];
 
     // Where to watch: WatchHub's services with an app here (buttons), the rest listed underneath.
     final watch = <_Watch>[];
@@ -392,7 +499,12 @@ class _TvTitlePageState extends State<TvTitlePage> {
     }
 
     final hub = Catalog.instance.watchSourceName;
-    final dataFrom = {?d?.source, if (_linksDone && hub != null) hub};
+    final dataFrom = {
+      ?d?.source,
+      if (_linksDone && hub != null) hub,
+      if (_ratings?.rottenTomatoes != null || _ratings?.metascore != null || _episodeRatings.values.any((m) => m.isNotEmpty)) 'OMDb',
+      if (reviews.isNotEmpty) 'TMDB',
+    };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -404,24 +516,21 @@ class _TvTitlePageState extends State<TvTitlePage> {
             children: [
               // Tiles: the eyebrow in Metro's accent and case; the title big and light.
               TvMetro.on
-                  ? Text(TvMetro.cased(t.isTv ? 'Series' : 'Film'), style: TvMetro.header.copyWith(fontSize: 16))
-                  : Text(t.isTv ? 'SERIES' : 'FILM', style: TvDS.heroEyebrow),
+                  ? Text(TvMetro.cased(eyebrow.join(' · ')), style: TvMetro.header.copyWith(fontSize: 16), maxLines: 2, overflow: TextOverflow.ellipsis)
+                  : Text(
+                      [for (final e in eyebrow) identical(e, runtime) ? e : e.toUpperCase()].join(' · '),
+                      style: TvDS.heroEyebrow,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
               const SizedBox(height: DS.s8),
               Text(t.title, style: TvMetro.on ? TvMetro.title(size: 44) : TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: DS.s12),
-              Wrap(
-                spacing: DS.s12,
-                runSpacing: DS.s8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (t.rating != null) _Chip(icon: Icons.star_rounded, iconColor: const Color(0xFFF5C518), label: '${t.rating!.toStringAsFixed(1)} IMDb'),
-                  if (d?.status != null) _Chip(label: TvMetro.cased(d!.status!)),
-                  if (meta.isNotEmpty) Text(meta.join(' · '), style: TvDS.heroMeta),
-                ],
-              ),
+              const SizedBox(height: DS.s16),
+              // The scores there are (IMDb from the catalog, the rest from OMDb), then the series' status.
+              RatingsRow(imdb: t.rating, ratings: _ratings, trailing: [if (d?.status != null) _Chip(label: TvMetro.cased(d!.status!))]),
               if (t.overview != null) ...[
                 const SizedBox(height: DS.s16),
-                Text(t.overview!, style: TvDS.heroBody, maxLines: 4, overflow: TextOverflow.ellipsis),
+                Text(t.overview!, style: TvDS.heroBody, maxLines: 3, overflow: TextOverflow.ellipsis),
               ] else if (_detailsError != null) ...[
                 const SizedBox(height: DS.s16),
                 Text(
@@ -436,9 +545,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
         ),
         const SizedBox(height: DS.s24),
 
-        // ---- Where to watch ----
-        Text(TvMetro.cased('Where to watch'), style: TvMetro.headerOr(TvDS.rowTitleFocused)),
-        const SizedBox(height: DS.s12),
+        // ---- Where to watch: the actions, right under the plot ----
         Wrap(
           spacing: DS.s12,
           runSpacing: DS.s12,
@@ -521,6 +628,76 @@ class _TvTitlePageState extends State<TvTitlePage> {
           style: TvDS.heroBody.copyWith(fontSize: 13),
         ),
 
+        // ---- Series: season tabs, then that season's episodes ----
+        if (d != null && _season != null && d.seasonNumbers.isNotEmpty) ...[
+          const SizedBox(height: DS.s24),
+          SingleChildScrollView(
+            key: const ValueKey('seasons'),
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            child: Row(
+              children: [
+                for (final (i, n) in d.seasonNumbers.indexed) ...[
+                  if (i > 0) const SizedBox(width: DS.s12),
+                  TvSeasonTab(
+                    key: ValueKey('season:$n'),
+                    focusNode: _node('season:$n'),
+                    label: 'Season $n',
+                    selected: n == _season,
+                    onSelect: () => _showSeason(n),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: DS.s16),
+          SingleChildScrollView(
+            key: ValueKey('episodes:$_season'), // a new season starts at its first episode
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (i, e) in _episodes(_season!).indexed) ...[
+                  if (i > 0) const SizedBox(width: DS.s20),
+                  TvEpisodeCard(
+                    key: ValueKey('episode:${e.season}:${e.episode}'),
+                    focusNode: _node('episode:${e.season}:${e.episode}'),
+                    episode: e,
+                    rating: _episodeRatings[_season]?[e.episode],
+                    runtime: d.episodeRuntime,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+
+        // ---- Reviews (TMDB): a row of cards; OK opens one whole ----
+        if (reviews.isNotEmpty) ...[
+          const SizedBox(height: DS.s24),
+          Text('${TvMetro.cased('Reviews')} · ${_reviews!.total}', style: TvMetro.headerOr(TvDS.rowTitleFocused)),
+          const SizedBox(height: DS.s12),
+          SingleChildScrollView(
+            key: const ValueKey('reviews'),
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (i, r) in reviews.indexed) ...[
+                  if (i > 0) const SizedBox(width: DS.s16),
+                  TvReviewCard(
+                    focusNode: _node('review:$i'),
+                    review: r,
+                    onSelect: () => Navigator.of(context).push(tvFade(TvReviewPage(review: r, title: t.title))),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+
         // ---- Cast ----
         if (d?.cast.isNotEmpty ?? false) ...[
           const SizedBox(height: DS.s24),
@@ -553,10 +730,8 @@ class _TvTitlePageState extends State<TvTitlePage> {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.label, this.icon, this.iconColor});
+  const _Chip({required this.label});
   final String label;
-  final IconData? icon;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -565,13 +740,7 @@ class _Chip extends StatelessWidget {
       borderRadius: TvMetro.corners(6),
       border: Border.all(color: TvDS.inkMuted),
     ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null) ...[Icon(icon, size: 14, color: iconColor ?? TvDS.ink), const SizedBox(width: 4)],
-        Text(label, style: TvDS.keycap),
-      ],
-    ),
+    child: Text(label, style: TvDS.keycap),
   );
 }
 

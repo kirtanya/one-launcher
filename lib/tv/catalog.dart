@@ -729,6 +729,8 @@ class ShowDetails {
     this.cast = const [],
     this.trailer,
     this.status,
+    this.episodes = const [],
+    this.episodeRuntime,
   });
   final ShowTitle title;
   final String source; // the addon that answered ("Cinemeta")
@@ -738,6 +740,35 @@ class ShowDetails {
   final List<ShowPerson> cast; // cast, then director(s)
   final String? trailer; // YouTube video id
   final String? status; // series: "Ended", "Continuing"…
+  final List<ShowEpisode> episodes; // series: every episode (no specials), season by season
+  final int? episodeRuntime; // series: an episode's usual length, minutes
+
+  /// The seasons that have episodes, in order.
+  List<int> get seasonNumbers => {for (final e in episodes) e.season}.toList()..sort();
+
+  List<ShowEpisode> episodesOf(int season) => [for (final e in episodes) if (e.season == season) e]..sort((a, b) => a.episode.compareTo(b.episode));
+}
+
+/// One episode of a series (Cinemeta's "videos"; TMDB fills in a missing still / overview).
+class ShowEpisode {
+  const ShowEpisode({required this.season, required this.episode, this.name, this.overview, this.still, this.released, this.runtime});
+  final int season, episode;
+  final String? name; // "Greatness Achieved"
+  final String? overview;
+  final String? still; // picture link
+  final DateTime? released;
+  final int? runtime; // minutes
+
+  /// The same episode with what it was missing taken from [o].
+  ShowEpisode filledFrom(ShowEpisode o) => ShowEpisode(
+    season: season,
+    episode: episode,
+    name: name ?? o.name,
+    overview: overview ?? o.overview,
+    still: still ?? o.still,
+    released: released ?? o.released,
+    runtime: runtime ?? o.runtime,
+  );
 }
 
 class CatalogException implements Exception {
@@ -996,6 +1027,25 @@ ShowDetails? detailsFromMeta(Object? j, ShowTitle base, String source) {
       for (final v in videos)
         if (v is Map && v['season'] is num && (v['season'] as num) > 0) (v['season'] as num).toInt(),
   };
+  // Series: its episodes (specials, season 0, left out; one per season + number).
+  final episodes = <String, ShowEpisode>{};
+  if (base.isTv && videos is List) {
+    for (final v in videos) {
+      if (v is! Map || v['season'] is! num || (v['season'] as num) <= 0) continue;
+      final n = v['episode'] ?? v['number'];
+      if (n is! num) continue;
+      final e = ShowEpisode(
+        season: (v['season'] as num).toInt(),
+        episode: n.toInt(),
+        name: _str(v['name']) ?? _str(v['title']),
+        overview: _str(v['overview']) ?? _str(v['description']),
+        still: (v['thumbnail'] is String && (v['thumbnail'] as String).startsWith('http')) ? v['thumbnail'] as String : null,
+        released: DateTime.tryParse('${v['released'] ?? v['firstAired'] ?? ''}'),
+        runtime: parseRuntime(v['runtime']),
+      );
+      episodes.putIfAbsent('${e.season}:${e.episode}', () => e);
+    }
+  }
   String? person(Object? p) => p is String ? _str(p) : (p is Map ? _str(p['name']) : null);
   var cast = [
     for (final c in (m['cast'] as List?) ?? const [])
@@ -1020,6 +1070,8 @@ ShowDetails? detailsFromMeta(Object? j, ShowTitle base, String source) {
     ],
     trailer: trailerOf(m),
     status: base.isTv ? _str(m['status']) : null,
+    episodes: episodes.values.toList(),
+    episodeRuntime: base.isTv ? parseRuntime(m['runtime']) : null,
   );
 }
 
@@ -1374,7 +1426,23 @@ ShowDetails demoDetails(ShowTitle t) => ShowDetails(
   status: t.isTv ? 'Continuing' : null,
   cast: const [ShowPerson('Aarav Mehta'), ShowPerson('Mira Rao'), ShowPerson('Dev Iyer'), ShowPerson('Lena Ortiz'), ShowPerson('Kabir Sen', 'Director')],
   trailer: 'demoTrailer1',
+  episodeRuntime: t.isTv ? 48 : null,
+  episodes: t.isTv ? demoEpisodes : const [],
 );
+
+/// Two seasons: the first with four episodes (one without a plot), the second with three.
+final demoEpisodes = [
+  for (final (s, e, name, overview) in const [
+    (1, 1, 'First Frost', 'The town wakes to snow in August, and the sheriff finds tracks that lead nowhere.'),
+    (1, 2, 'Lanterns', 'Supplies run short; Mira makes a deal with the mill owner she may regret.'),
+    (1, 3, 'The Pass', null),
+    (1, 4, 'Greatness Achieved', 'A storm cuts the last road out. Everyone has to choose a side before dawn.'),
+    (2, 1, 'Thaw', 'Spring is a rumour. A stranger arrives claiming to know why the winter came.'),
+    (2, 2, 'Ice Road', 'The convoy sets out across the frozen lake.'),
+    (2, 3, 'Embers', 'What the fire uncovered in the chapel cellar.'),
+  ])
+    ShowEpisode(season: s, episode: e, name: name, overview: overview, released: DateTime(2023 + s, 1 + e * 2, 5 + e), runtime: e == 4 ? 61 : null),
+];
 
 List<ShowLink> demoLinks(ShowTitle t) => const [
   ShowLink(
