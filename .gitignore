@@ -54,3 +54,4 @@ tmdb.key
 
 # Stremio addon manifests for the TV catalog (may contain personal tokens; never commit)
 catalog_sources.txt
+omdb.key

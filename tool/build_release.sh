@@ -14,11 +14,12 @@ V=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml) # share files carry the 
 # One Stream titles' critics' scores (OMDb, ./omdb.key) and reviews (TMDB, ./tmdb.key: a v4 read
 # access token). Both gitignored, never printed; without a file that part is just left out.
 key() { tr -d ' \t\r\n' < "$1"; }
-if [ -s omdb.key ]; then FLAGS+=(--dart-define=OMDB_KEY="$(key omdb.key)"); echo "› Scores: OMDb (omdb.key)"; fi
-if [ -s tmdb.key ]; then FLAGS+=(--dart-define=TMDB_TOKEN="$(key tmdb.key)"); echo "› Reviews: TMDB (tmdb.key)"; fi
+KEYS=() # only your own phone build carries the keys; share files don't (anyone could pull them out)
+if [ -s omdb.key ]; then KEYS+=(--dart-define=OMDB_KEY="$(key omdb.key)"); echo "› Scores: OMDb (omdb.key)"; fi
+if [ -s tmdb.key ]; then KEYS+=(--dart-define=TMDB_TOKEN="$(key tmdb.key)"); echo "› Reviews: TMDB (tmdb.key)"; fi
 
 echo "› Phone build (arm64, uncompressed)"
-flutter build apk "${FLAGS[@]}" --target-platform android-arm64 >/dev/null
+flutter build apk "${FLAGS[@]}" ${KEYS[@]+"${KEYS[@]}"} --target-platform android-arm64 >/dev/null
 cp "$OUT/app-phone-release.apk" "$OUT/one-launcher-phone.apk"
 
 echo "› Share build: 64-bit phones (compressed)"
