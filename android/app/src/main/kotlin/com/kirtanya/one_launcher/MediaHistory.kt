@@ -117,7 +117,10 @@ class MediaHistory(private val context: Context) {
         val file = File(File(context.filesDir, "history").apply { mkdirs() }, "${key.hashCode().toUInt()}.jpg")
         if (file.exists()) return file.path
         ArtFetch.bitmapOf(meta)?.let { return write(file, it) }
-        val uri = ArtFetch.uriOf(meta) ?: return null
+        val uri = ArtFetch.uriOf(meta) ?: return null.also {
+            // What the app does share (to match its titles better). Stays on the TV.
+            android.util.Log.i("OneArt", "no picture from $key: " + meta.keySet().joinToString { k -> "$k=${meta.getString(k)?.take(60)}" })
+        }
         if (!fetching.add(key)) return null
         ArtFetch.async {
             val path = ArtFetch.load(context, uri, 960)?.let { write(file, it) }

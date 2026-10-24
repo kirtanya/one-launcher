@@ -202,6 +202,7 @@ class _TvHomeState extends State<TvHome> {
           appName: m['app'] as String?,
           meta: _joinMeta([m['artist'] as String?, if (dur > 0) _left(dur - pos)]),
           art: art is Uint8List ? MemoryImage(art) : null,
+          image: art is Uint8List ? null : _lookupArt(m['title'] as String, m['artist'] as String?),
           progress: dur > 0 ? (pos / dur).clamp(0, 1) : null,
           playing: m['playing'] == true,
         ),
@@ -248,6 +249,7 @@ class _TvHomeState extends State<TvHome> {
           appName: (h['app'] as String?) ?? appName(pkg),
           meta: _joinMeta([h['subtitle'] as String?, if (dur > 0 && pos > 0) _left(dur - pos), _ago((h['at'] as num?)?.toInt())]),
           art: artPath != null && !TvApps.demo ? FileImage(File(artPath)) : null,
+          image: artPath == null ? _lookupArt(title, h['subtitle'] as String?) : null,
           progress: dur > 0 && pos > 0 ? (pos / dur).clamp(0, 1) : null,
           historyKey: h['key'] as String?,
         ),
@@ -353,6 +355,28 @@ class _TvHomeState extends State<TvHome> {
       progress: dur > 0 && pos > 0 ? (pos / dur).clamp(0, 1) : null,
       intent: p['intent'] as String?,
     );
+  }
+
+  /// Apps that share no picture at all (JioHotstar): the show's artwork from the catalog, found
+  /// by name. Only an exact name match counts, so a show never gets someone else's poster.
+  final _artLookups = <String, String?>{};
+  String? _lookupArt(String title, String? show) {
+    if (TvApps.demo) return null;
+    String fold(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final episode = RegExp(r'^\s*S\d+\W*E\d+', caseSensitive: false);
+    final hasShow = show?.trim().isNotEmpty ?? false;
+    if (!hasShow && episode.hasMatch(title)) return null; // an episode's own name: not the show's
+    final q = ((show?.trim().isNotEmpty ?? false) ? show! : title).replaceFirst(RegExp(r'^\s*S\d+\W*E\d+\W*', caseSensitive: false), '').trim();
+    if (q.length < 2) return null;
+    if (_artLookups.containsKey(q)) return _artLookups[q];
+    _artLookups[q] = null; // looked up once
+    Catalog.instance.searchOnline(q).then((list) {
+      final t = list.where((t) => fold(t.title) == fold(q)).firstOrNull;
+      if (t == null || !mounted) return;
+      _artLookups[q] = t.id.startsWith('tt') ? t.backdrops.first : t.backdrops.last;
+      _regroup();
+    }, onError: (_) {});
+    return null;
   }
 
   static String? _joinMeta(List<String?> parts) {
