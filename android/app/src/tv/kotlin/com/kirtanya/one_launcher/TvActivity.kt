@@ -396,10 +396,11 @@ class TvActivity : FlutterActivity() {
             }
         }
         Thread {
-            try {
-                contentResolver.call(Uri.parse("content://com.kirtanya.reel.launcher"), "stop_engine", null, null)
+            // One Stream says what it did: "One Stream stopped", or why not ("A download is running").
+            val stream = try {
+                contentResolver.call(Uri.parse("content://com.kirtanya.reel.launcher"), "stop_engine", null, null)?.getString("message")
             } catch (_: Exception) {
-                // One Stream missing, older, or busy playing: nothing to stop.
+                null // One Stream missing or older: nothing to stop
             }
             if (Build.VERSION.SDK_INT < 34) {
                 val pkgs = (loadApps().mapNotNull { it["package"] as? String }).toSet() - packageName
@@ -418,7 +419,8 @@ class TvActivity : FlutterActivity() {
                 val head = if (freed > 20) "Freed $freed MB" else "Cleaned up"
                 android.widget.Toast.makeText(
                     this,
-                    "$head · ${freeMb()} MB memory · ${freeGb()} GB storage free" + if (clearCaches) "" else "\nAllow All files access to also clear every app's cache",
+                    "$head · ${freeMb()} MB memory · ${freeGb()} GB storage free" + (stream?.let { "\n$it" } ?: "") +
+                        if (clearCaches) "" else "\nAllow All files access to also clear every app's cache",
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
             }
