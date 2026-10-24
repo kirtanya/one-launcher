@@ -16,4 +16,6 @@ const tvActions = <String, (String, IconData)>{
   't:accessibility': ('Accessibility', Icons.accessibility_new_rounded),
   't:playstore': ('Get apps', Icons.shop_outlined),
   't:settings': ('Settings', Icons.settings_outlined),
+  // Stops what Android lets an app stop in the background and clears our own cache (TvActivity.boost).
+  't:boost': ('Free up memory', Icons.cleaning_services_outlined),
 };

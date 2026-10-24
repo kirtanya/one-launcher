@@ -462,14 +462,28 @@ class Prefs extends ChangeNotifier {
   }
 
   /// TV: the quick action chips above the rows, in order ("t:…" built-in, `a:<package>` apps).
-  static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings'];
+  // Free up memory goes last: the first chip is focused when home opens, and a stray OK mustn't fire it.
+  static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings', 't:boost'];
 
   /// The phone remote's quick apps (ids from remoteAppCatalog, or `c:name|package` for one
   /// the user typed in), left to right.
   static const remoteAppsDefault = ['youtube', 'netflix', 'prime', 'hotstar'];
   List<String> get remoteApps => _sp.getStringList('remoteApps') ?? remoteAppsDefault;
   Future<void> setRemoteApps(List<String> ids) => _setList('remoteApps', ids);
-  List<String> get tvQuickActions => _sp.getStringList('tvQuickActions') ?? tvQuickDefault;
+  List<String> get tvQuickActions {
+    final saved = _sp.getStringList('tvQuickActions');
+    if (saved == null) return tvQuickDefault;
+    // "Free up memory" arrived later: add it once, at the end, to a row the user already set up.
+    if (_sp.getBool('tvBoostSeeded') != true) {
+      _sp.setBool('tvBoostSeeded', true);
+      if (!saved.contains('t:boost')) {
+        final seeded = [...saved, 't:boost'];
+        _sp.setStringList('tvQuickActions', seeded);
+        return seeded;
+      }
+    }
+    return saved;
+  }
   Future<void> setTvQuickActions(List<String> ids) => _setList('tvQuickActions', ids);
 
   /// TV: apps opened from the launcher, newest first ("Jump back in").

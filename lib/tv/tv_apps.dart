@@ -212,7 +212,15 @@ class TvApps {
   Future<void> launch(String package) => _call('launch', {'package': package});
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
-  Future<void> openAction(String id) => _call('openAction', {'id': id});
+  Future<void> openAction(String id) {
+    // Free up memory: drop our decoded images too (they come back as rows scroll into view).
+    if (id == 't:boost') {
+      PaintingBinding.instance.imageCache
+        ..clear()
+        ..clearLiveImages();
+    }
+    return _call('openAction', {'id': id});
+  }
   Future<void> openSettings() => _call('openSettings');
   Future<void> openInputs() => _call('openInputs');
   Future<void> openHomeSettings() => _call('openHomeSettings');

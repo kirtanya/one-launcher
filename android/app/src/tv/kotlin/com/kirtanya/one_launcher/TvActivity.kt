@@ -348,6 +348,7 @@ class TvActivity : FlutterActivity() {
 
     /** Quick actions: each tries the TV's own screen first, then a general one, then Settings. */
     private fun openAction(id: String): Boolean {
+        if (id == "t:boost") return boost()
         fun c(cls: String) = Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.$cls")
         val candidates = when (id) {
             "t:inputs" -> listOf(Intent("com.android.tv.action.VIEW_INPUTS"))
@@ -366,6 +367,41 @@ class TvActivity : FlutterActivity() {
             else -> emptyList()
         }
         return candidates.any { open(it) } || open(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    /**
+     * "Free up memory": asks Android to stop every app's background processes (what a normal app
+     * may do — anything playing or showing keeps running) and empties our own cache. Other apps'
+     * caches can't be cleared without system rights. Says how much memory came back.
+     */
+    private fun boost(): Boolean {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        fun freeMb(): Long = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem / (1024 * 1024)
+        val before = freeMb()
+        Thread {
+            var stopped = 0
+            val pkgs = (loadApps().mapNotNull { it["package"] as? String } +
+                packageManager.getInstalledApplications(0).map { it.packageName }).toSet() - packageName
+            for (p in pkgs) {
+                try {
+                    am.killBackgroundProcesses(p)
+                    stopped++
+                } catch (_: Exception) {
+                }
+            }
+            cacheDir.listFiles()?.forEach { it.deleteRecursively() }
+            System.gc()
+            Thread.sleep(1500) // Android takes a moment to hand the memory back
+            val freed = (freeMb() - before).coerceAtLeast(0)
+            runOnUiThread {
+                android.widget.Toast.makeText(
+                    this,
+                    if (freed > 0) "Freed $freed MB · ${freeMb()} MB free" else "Background apps stopped · ${freeMb()} MB free",
+                    android.widget.Toast.LENGTH_LONG,
+                ).show()
+            }
+        }.start()
+        return true
     }
 
     /**
