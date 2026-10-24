@@ -462,7 +462,7 @@ class Prefs extends ChangeNotifier {
   }
 
   /// TV: the quick action chips above the rows, in order ("t:…" built-in, `a:<package>` apps).
-  // Free up memory goes last: the first chip is focused when home opens, and a stray OK mustn't fire it.
+  // Speed up goes last: the first chip is focused when home opens, and a stray OK mustn't fire it.
   static const tvQuickDefault = ['t:inputs', 't:assistant', 't:wifi', 't:sound', 't:settings', 't:boost'];
 
   /// The phone remote's quick apps (ids from remoteAppCatalog, or `c:name|package` for one
@@ -473,7 +473,7 @@ class Prefs extends ChangeNotifier {
   List<String> get tvQuickActions {
     final saved = _sp.getStringList('tvQuickActions');
     if (saved == null) return tvQuickDefault;
-    // "Free up memory" arrived later: add it once, at the end, to a row the user already set up.
+    // "Speed up" arrived later: add it once, at the end, to a row the user already set up.
     if (_sp.getBool('tvBoostSeeded') != true) {
       _sp.setBool('tvBoostSeeded', true);
       if (!saved.contains('t:boost')) {

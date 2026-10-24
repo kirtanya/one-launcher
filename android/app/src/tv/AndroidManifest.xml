@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Quick action "Free up memory": stop other apps' background processes. -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES"/>
+    <!-- Quick action "Speed up": opening Android's "Clear app cache?" screen needs All files access. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/>
     <!-- Brightness from the phone's remote (granted once: "Modify system settings") -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions"/>
     <application

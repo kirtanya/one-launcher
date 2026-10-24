@@ -25,6 +25,8 @@ import java.util.concurrent.Executors
  * TV apps announce themselves with LEANBACK_LAUNCHER and a 16:9 banner; phone-style apps
  * that only have LAUNCHER are listed too (they open fine, just with their icon).
  */
+private const val REQUEST_CLEAR_CACHE = 7101
+
 class TvActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
@@ -370,23 +372,42 @@ class TvActivity : FlutterActivity() {
     }
 
     /**
-     * "Free up memory": asks Android to stop every app's background processes (what a normal app
-     * may do — anything playing or showing keeps running) and empties our own cache. Other apps'
-     * caches can't be cleared without system rights. Says how much memory came back.
+     * "Speed up" — what an app may really do to make the TV quicker (Android 14 no longer lets an
+     * app stop other apps, so that alone did nothing):
+     *  1. One Stream's engine stops if nothing is playing (it keeps a foreground service otherwise);
+     *  2. our own caches and memory are freed (the Flutter side drops its images too);
+     *  3. every app's cache is cleared through Android's own "Clear app cache?" screen — the user
+     *     confirms with the remote (needs All files access, granted once);
+     *  4. older Android only: other apps' background processes are stopped.
+     * Then it says how much memory and storage are free.
      */
     private fun boost(): Boolean {
         val am = getSystemService(android.app.ActivityManager::class.java)
         fun freeMb(): Long = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem / (1024 * 1024)
+        fun freeGb(): String = "%.1f".format(android.os.StatFs(filesDir.path).availableBytes / 1e9)
         val before = freeMb()
+        // All apps' caches: Android's own confirmation screen, when we're allowed to open it.
+        val clearCaches = Build.VERSION.SDK_INT >= 30 && android.os.Environment.isExternalStorageManager()
+        if (clearCaches) {
+            try {
+                @Suppress("DEPRECATION")
+                startActivityForResult(Intent(android.os.storage.StorageManager.ACTION_CLEAR_APP_CACHE), REQUEST_CLEAR_CACHE)
+            } catch (_: Exception) {
+            }
+        }
         Thread {
-            var stopped = 0
-            val pkgs = (loadApps().mapNotNull { it["package"] as? String } +
-                packageManager.getInstalledApplications(0).map { it.packageName }).toSet() - packageName
-            for (p in pkgs) {
-                try {
-                    am.killBackgroundProcesses(p)
-                    stopped++
-                } catch (_: Exception) {
+            try {
+                contentResolver.call(Uri.parse("content://com.kirtanya.reel.launcher"), "stop_engine", null, null)
+            } catch (_: Exception) {
+                // One Stream missing, older, or busy playing: nothing to stop.
+            }
+            if (Build.VERSION.SDK_INT < 34) {
+                val pkgs = (loadApps().mapNotNull { it["package"] as? String }).toSet() - packageName
+                for (p in pkgs) {
+                    try {
+                        am.killBackgroundProcesses(p)
+                    } catch (_: Exception) {
+                    }
                 }
             }
             cacheDir.listFiles()?.forEach { it.deleteRecursively() }
@@ -394,9 +415,10 @@ class TvActivity : FlutterActivity() {
             Thread.sleep(1500) // Android takes a moment to hand the memory back
             val freed = (freeMb() - before).coerceAtLeast(0)
             runOnUiThread {
+                val head = if (freed > 20) "Freed $freed MB" else "Cleaned up"
                 android.widget.Toast.makeText(
                     this,
-                    if (freed > 0) "Freed $freed MB · ${freeMb()} MB free" else "Background apps stopped · ${freeMb()} MB free",
+                    "$head · ${freeMb()} MB memory · ${freeGb()} GB storage free" + if (clearCaches) "" else "\nAllow All files access to also clear every app's cache",
                     android.widget.Toast.LENGTH_LONG,
                 ).show()
             }

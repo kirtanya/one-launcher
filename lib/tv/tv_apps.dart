@@ -213,7 +213,7 @@ class TvApps {
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
   Future<void> openAction(String id) {
-    // Free up memory: drop our decoded images too (they come back as rows scroll into view).
+    // Speed up: drop our decoded images too (they come back as rows scroll into view).
     if (id == 't:boost') {
       PaintingBinding.instance.imageCache
         ..clear()
