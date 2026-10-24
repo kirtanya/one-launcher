@@ -68,6 +68,8 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('resume', 'Resume button', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('controls', 'Player controls ⏮ ⏯ ⏭', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('quick', 'Quick actions', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('quickLabels', 'Chip labels', [('always', 'Always'), ('focus', 'Only when focused'), ('never', 'Never (icons only)')], 'always'),
+      TvOption('quickSize', 'Chip size', [(.8, 'Small'), (1.0, 'Medium'), (1.2, 'Large')], 1.0),
     ],
   ),
   (

@@ -77,7 +77,7 @@ class TvRow {
   double get cardW => (wide ? TvDS.wideW : TvDS.tileW) * TvLook.number('cardScale');
   double get cardH => (wide ? TvDS.wideH : TvDS.tileH) * TvLook.number('cardScale');
   double get height =>
-      chips ? TvDS.cardRowPad + 40 + TvDS.cardRowGap : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
+      chips ? TvDS.cardRowPad + 40 * TvLook.get<double>('quickSize') + TvDS.cardRowGap : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
 }
 
 /// The TV home screen, cinematic: the focused item's artwork fills the screen behind a
@@ -1765,6 +1765,9 @@ class _QuickChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final edit = item.key == 'q:edit';
     final icon = edit ? Icons.add_rounded : tvActions[item.key]?.$2;
+    // Customise → Resume & quick actions: chip size, and labels always / only when focused / never.
+    final k = TvLook.get<double>('quickSize');
+    final labels = TvLook.get<String>('quickLabels');
     return Semantics(
       button: true,
       label: edit ? 'Edit quick actions' : item.title,
@@ -1780,11 +1783,11 @@ class _QuickChip extends StatelessWidget {
           curve: Motion.pop,
           child: AnimatedContainer(
             duration: TvLook.anim(Motion.pressIn * 2),
-            height: 40,
-            padding: EdgeInsets.symmetric(horizontal: edit ? DS.s12 : DS.s16),
+            height: 40 * k,
+            padding: EdgeInsets.symmetric(horizontal: (edit || labels == 'never' || (labels == 'focus' && !f) ? DS.s12 : DS.s16) * k),
             decoration: BoxDecoration(
               color: f ? TvDS.surfaceFocused : const Color(0x33000000),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20 * k),
               border: Border.all(color: f ? Colors.transparent : TvDS.line),
             ),
             child: Row(
@@ -1794,11 +1797,14 @@ class _QuickChip extends StatelessWidget {
                 if (item.app != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(width: 32, height: 18, child: TvAppArt(app: item.app!, width: 32)),
+                    child: SizedBox(width: 32 * k, height: 18 * k, child: TvAppArt(app: item.app!, width: 32 * k)),
                   )
                 else if (icon != null)
-                  Icon(icon, size: 20, color: f ? TvDS.onLight : TvDS.ink),
-                if (!edit) ...[const SizedBox(width: DS.s8), Text(item.title, style: TvDS.hint.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink))],
+                  Icon(icon, size: 20 * k, color: f ? TvDS.onLight : TvDS.ink),
+                if (!edit && (labels == 'always' || (labels == 'focus' && f))) ...[
+                  SizedBox(width: DS.s8 * k),
+                  Text(item.title, style: TvDS.hint.copyWith(fontSize: 14 * k, color: f ? TvDS.onLight : TvDS.ink)),
+                ],
                 if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
               ],
             ),

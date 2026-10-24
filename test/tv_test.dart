@@ -41,6 +41,35 @@ Future<void> _press(WidgetTester t, LogicalKeyboardKey k) async {
 }
 
 void main() {
+  testWidgets('TV: quick action chips — labels always / only when focused / never, and size', (tester) async {
+    await _loadFonts();
+    TvApps.demo = true;
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncherTv(prefs: prefs));
+    await tester.pumpAndSettle();
+    expect(find.text('Network'), findsOneWidget, reason: 'labels by default');
+    double chipHeight() => tester.getSize(find.ancestor(of: find.byIcon(Icons.wifi_rounded), matching: find.byType(AnimatedContainer)).first).height;
+    expect(chipHeight(), 40);
+
+    await prefs.setTvSetting('quickLabels', 'never');
+    await tester.pumpAndSettle();
+    expect(find.text('Network'), findsNothing, reason: 'icons only');
+    expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+
+    await prefs.setTvSetting('quickLabels', 'focus');
+    await tester.pumpAndSettle();
+    expect(find.text('Network'), findsNothing, reason: 'not focused');
+    expect(find.text('Inputs'), findsOneWidget, reason: 'the focused (first) chip keeps its label');
+
+    await prefs.setTvSetting('quickSize', .8);
+    await tester.pumpAndSettle();
+    expect(chipHeight(), closeTo(32, .1), reason: 'small chips');
+  });
+
   testWidgets('TV: remote moves tile by tile, rows remember their spot, OK-hold opens options, search', (tester) async {
     await _loadFonts();
     TvApps.demo = true;
