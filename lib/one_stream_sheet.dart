@@ -4,15 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'one_stream.dart';
+import 'one_stream_extras.dart';
 import 'one_stream_widgets.dart';
+import 'ratings.dart';
 import 'tiles/tiles_home.dart' show tileAccent, tileAccentText;
 import 'tv_cast.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
 
-/// A One Stream title, right here in One Launcher: picture, story, Play / Resume, watchlist,
-/// download, prepare to stream, its sources and (series) episodes by season — One Stream only
+/// A One Stream title, right here in One Launcher: picture, story, critics' scores (IMDb · Rotten
+/// Tomatoes · Metacritic), Play / Resume, watchlist, download, prepare to stream, its sources,
+/// (series) episodes by season with their own IMDb scores, and reviews — One Stream only
 /// opens when something actually plays. With a TV paired: play / download it on the TV. Classic: rounded, Sentence case; Metro: flat, lowercase.
 Future<void> showOneStreamTitle(BuildContext context, OneStreamTitle title) =>
     showOneSheetWith(context, builder: (ctx) => OneStreamTitleSheet(title: title));
@@ -46,6 +49,11 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
   List<OneStreamDownload> _downloads = const [];
   Timer? _poll;
 
+  // Critics' scores and reviews (OMDb / TMDB, ratings.dart): asked when the sheet opens, kept a week.
+  TitleRatings? _ratings;
+  ShowReviews? _reviews;
+  final _episodeRatings = <int, Map<int, double>>{}; // season → episode → IMDb score
+
   String? _note; // One Stream's answer to the last action
   bool _noteBad = false;
   VoidCallback? _retry; // the last request to the TV, when it didn't get there
@@ -54,6 +62,14 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
   void initState() {
     super.initState();
     TvCast.prefs?.addListener(_tvChanged); // paired / forgotten while open
+    if (extrasTitleOf(widget.title) case final x?) {
+      TitleExtras.instance.ratings(x).then((r) {
+        if (mounted) setState(() => _ratings = r);
+      });
+      TitleExtras.instance.reviews(x).then((r) {
+        if (mounted) setState(() => _reviews = r);
+      });
+    }
     if (tmdb == null) {
       _detailsDone = true;
       return;
@@ -88,6 +104,11 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
       _season = season;
       _episodes = null;
     });
+    if (extrasTitleOf(widget.title) case final x? when !_episodeRatings.containsKey(season)) {
+      TitleExtras.instance.episodeRatings(x, season).then((r) {
+        if (r != null && mounted) setState(() => _episodeRatings[season] = r);
+      });
+    }
     final list = await os.episodes(tmdb!, season);
     if (!mounted || _season != season) return;
     setState(() => _episodes = list);
@@ -373,6 +394,7 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
                 style: DS.rowSub.copyWith(color: DS.ink, fontWeight: FontWeight.w500),
               ),
               if (d?.genres != null) Text(d!.genres!, style: DS.rowSub.copyWith(fontSize: 13)),
+              if (_ratings != null && !_ratings!.isEmpty) ...[const SizedBox(height: DS.s12), PhoneRatingsRow(ratings: _ratings)],
               if (d?.overview != null) ...[
                 const SizedBox(height: DS.s8),
                 Text(d!.overview!, maxLines: 5, overflow: TextOverflow.ellipsis, style: DS.rowSub.copyWith(color: DS.ink, height: 1.35)),
@@ -486,22 +508,18 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
             _row(lead: _square(Icon(Icons.tv_off_rounded, color: DS.metro ? Colors.white : DS.ink)), title: DS.cased('No episodes listed'))
           else
             for (final e in _episodes!)
-              _row(
+              PhoneEpisodeRow(
                 key: ValueKey('ep:${e.season}:${e.episode}'),
+                episode: e,
                 selected: _episode?.season == e.season && _episode?.episode == e.episode,
-                lead: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _square(Text(e.code, style: DS.rowTitle.copyWith(fontSize: 14, color: DS.metro ? Colors.white : DS.ink))),
-                      if (e.progress > 0) Positioned(left: 4, right: 4, bottom: 4, child: _bar(e.progress, colour: DS.metro ? Colors.white : null)),
-                    ],
-                  ),
-                ),
-                title: e.name,
-                sub: [if (!e.aired) DS.cased('Coming ${e.airDate ?? 'soon'}') else ?e.airDate, if (e.progress >= .95) DS.cased('Watched')].join(' · '),
+                rating: _episodeRatings[e.season]?[e.episode],
+                still: e.still == null
+                    ? ColoredBox(
+                        color: DS.metro ? tileAccent() : DS.ink.withValues(alpha: .08),
+                        child: Center(child: Text(e.code, style: DS.rowTitle.copyWith(fontSize: 14, color: DS.metro ? Colors.white : DS.ink))),
+                      )
+                    : Image.network(e.still!, fit: BoxFit.cover, cacheWidth: 240, errorBuilder: (_, _, _) => ColoredBox(color: DS.cardMuted)),
+                progressBar: e.progress > 0 ? _bar(e.progress, colour: Colors.white) : null,
                 onTap: e.aired ? () => _pick(e) : null,
               ),
         ],
@@ -526,6 +544,9 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
                 onTap: () => _sourceMenu(s),
               ),
         ],
+
+        // ---- Reviews (TMDB): sideways cards, tap one for all of it ----
+        PhoneReviewsSection(reviews: _reviews, title: t.title, header: _header),
 
         // ---- Downloads (this title's, in One Stream) ----
         if (_downloads.isNotEmpty) ...[

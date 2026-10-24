@@ -8,7 +8,7 @@ import '../one_stream.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
 import 'catalog.dart';
-import 'ratings.dart';
+import '../ratings.dart';
 import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
@@ -70,7 +70,8 @@ AppEntry? appForService(String service, List<AppEntry> apps) {
 // ---- Poster tile ------------------------------------------------------------------
 
 /// A One Stream title as a catalog one (for [TvPoster]): the standard artwork for its IMDb id
-/// first, then One Stream's own picture.
+/// first, then One Stream's own picture. Its score is IMDb's when known (the catalog's, or one
+/// already looked up) — One Stream's own is TMDB's, so it isn't shown as IMDb's.
 ShowTitle showTitleOf(OneStreamTitle t) => ShowTitle(
   id: t.imdb ?? 'tmdb${t.tmdb ?? t.key}',
   type: t.isTv ? 'series' : 'movie',
@@ -78,7 +79,7 @@ ShowTitle showTitleOf(OneStreamTitle t) => ShowTitle(
   year: t.year?.toString(),
   poster: t.poster,
   backdrop: t.backdrop,
-  rating: t.rating,
+  rating: t.imdb == null ? null : Catalog.instance.byId(t.imdb!)?.rating ?? TitleExtras.instance.imdbNow(t.imdb),
 );
 
 /// A show / film as a 2:3 poster: IMDb's pill top left, title + year underneath.

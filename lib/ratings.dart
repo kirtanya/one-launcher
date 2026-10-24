@@ -3,22 +3,27 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/painting.dart' show Color;
 
-import 'catalog.dart';
-import 'tv_apps.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// A title page's critics' scores and reviews, from two optional services. Each needs a key that
-/// tool/build_tv.sh builds in (--dart-define, read from the gitignored omdb.key / tmdb.key); without
-/// one that part of the page is simply not shown.
+import 'tv/catalog.dart';
+import 'tv/tv_apps.dart';
+
+/// A title page's critics' scores and reviews (phone and TV), from two optional services. Each
+/// needs a key that the build scripts build in (tool/build_tv.sh, tool/build_release.sh:
+/// --dart-define, read from the gitignored omdb.key / tmdb.key); without one that part of the page
+/// is simply not shown.
 ///
 /// - **Ratings** (OMDb): IMDb, Rotten Tomatoes and Metacritic for an IMDb id. The free key allows
 ///   1,000 requests a day, so it's only asked when a title page opens — never for posters — and
-///   each answer is kept on the TV for a week.
+///   each answer is kept on the device for a week (posters show an IMDb score only once it's known).
 /// - **Reviews** (TMDB): the IMDb id → TMDB's film / series → its user reviews. Kept a week too.
 ///
 /// Everything fails quietly (no connection, a bad key, a slow answer): the page just goes without.
 /// Keys never reach a log.
+///
+/// Network and storage: the TV's own Android stack and files folder ([useTv], main_tv.dart); on the
+/// phone, dart:io and the app's preferences (the default).
 class TitleExtras {
   TitleExtras._();
   static final instance = TitleExtras._();
@@ -33,6 +38,60 @@ class TitleExtras {
   static String get omdbKey => debugOmdbKey ?? _omdbKey;
   static String get tmdbToken => debugTmdbToken ?? _tmdbToken;
 
+  /// GET → (status, body); status -1 = no answer.
+  static Future<(int, String)> Function(String url, Map<String, String> headers) transport = _ioGet;
+
+  /// Reads / writes the saved answers (JSON).
+  static Future<String?> Function() readSaved = _prefsRead;
+  static Future<void> Function(String json) writeSaved = _prefsWrite;
+
+  /// The TV: requests through Android (TvApps.httpGet), answers in a file in its files folder.
+  static void useTv() {
+    transport = (url, headers) => TvApps.instance.httpGet(url, headers: headers);
+    readSaved = () async {
+      final dir = await TvApps.instance.filesDir();
+      if (dir == null) return null;
+      final f = File('$dir/title_extras.json');
+      return f.existsSync() ? f.readAsString() : null;
+    };
+    writeSaved = (json) async {
+      final dir = await TvApps.instance.filesDir();
+      if (dir != null) await File('$dir/title_extras.json').writeAsString(json);
+    };
+  }
+
+  /// The phone (the default): dart:io, the app's preferences.
+  static void usePhone() {
+    transport = _ioGet;
+    readSaved = _prefsRead;
+    writeSaved = _prefsWrite;
+  }
+
+  static Future<(int, String)> _ioGet(String url, Map<String, String> headers) async {
+    final client = HttpClient()..connectionTimeout = timeout;
+    try {
+      final req = await client.getUrl(Uri.parse(url));
+      headers.forEach(req.headers.set);
+      final res = await req.close();
+      return (res.statusCode, await res.transform(utf8.decoder).join());
+    } catch (e) {
+      return (-1, e.runtimeType.toString());
+    } finally {
+      client.close();
+    }
+  }
+
+  static const _prefsKey = 'titleExtras';
+  static Future<String?> _prefsRead() async => (await SharedPreferences.getInstance()).getString(_prefsKey);
+  static Future<void> _prefsWrite(String json) async => (await SharedPreferences.getInstance()).setString(_prefsKey, json);
+
+  /// Tests / previews: the sample answers (also whenever [TvApps.demo]).
+  static bool demo = false;
+  static bool get _demo => demo || TvApps.demo;
+
+  /// Bumped when saved answers arrive (posters showing a known IMDb score rebuild).
+  final changed = ValueNotifier<int>(0);
+
   static const keep = Duration(days: 7); // answers are kept this long
   static const timeout = Duration(seconds: 8);
   static const maxKept = 400; // titles in the saved file (oldest go first)
@@ -44,13 +103,13 @@ class TitleExtras {
   final _episodes = <String, Future<Map<int, double>?>>{};
   final _seasons = <String, Future<List<ShowEpisode>?>>{};
   final _tmdbIds = <String, Future<int?>>{};
+  final _imdbIds = <String, Future<String?>>{};
 
   // The saved answers, each {at, r}: 'o' scores by IMDb id, 'v' reviews by title key, 'e' episode
   // scores by 'tt…:season', 's' TMDB seasons by 'tt…:season', 'i' TMDB ids. Read once, written after a change.
   Map<String, Map<String, Object?>>? _saved;
   Future<void>? _loading;
   Timer? _saveSoon;
-  String? _path;
 
   @visibleForTesting
   void debugReset() {
@@ -59,10 +118,25 @@ class TitleExtras {
     _episodes.clear();
     _seasons.clear();
     _tmdbIds.clear();
+    _imdbIds.clear();
     _saved = null;
     _loading = null;
-    _path = null;
     _saveSoon?.cancel();
+  }
+
+  /// Reads the saved answers now (so [imdbNow] knows them); posters rebuild through [changed].
+  void warm() => _loading ??= _load();
+
+  /// The IMDb score already known for an IMDb id (from a page opened in the last week), else null.
+  /// Never asks the network: posters use this.
+  double? imdbNow(String? imdb) {
+    if (imdb == null) return null;
+    if (_demo) return demoImdb[imdb];
+    warm();
+    final e = _saved?['o']?[imdb];
+    if (e is! Map || e['at'] is! int || e['r'] is! Map) return null;
+    if (DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(e['at'] as int)) > keep) return null;
+    return ((e['r'] as Map)['i'] as num?)?.toDouble();
   }
 
   /// IMDb / Rotten Tomatoes / Metacritic for [t]; null when there's no key, no IMDb id or no answer.
@@ -92,22 +166,27 @@ class TitleExtras {
   }
 
   Future<TitleRatings?> _ratingsOf(ShowTitle t) async {
-    if (TvApps.demo) return demoRatings(t);
-    if (omdbKey.isEmpty || !t.id.startsWith('tt')) return null;
-    final kept = await _kept('o', t.id);
+    if (_demo) return demoRatings(t);
+    if (omdbKey.isEmpty) return null;
+    final imdb = await _imdbId(t);
+    if (imdb == null) return null;
+    final kept = await _kept('o', imdb);
     if (kept is Map) return TitleRatings.fromJson(kept);
-    final (status, body) = await _get('https://www.omdbapi.com/?apikey=${Uri.encodeQueryComponent(omdbKey)}&i=${t.id}');
+    final (status, body) = await _get('https://www.omdbapi.com/?apikey=${Uri.encodeQueryComponent(omdbKey)}&i=$imdb');
     if (status != 200) {
       debugPrint('Ratings: OMDb answered $status'); // never the link (it holds the key)
       return null;
     }
     final r = ratingsFromOmdb(jsonDecode(body));
-    if (r != null) _keep('o', t.id, r.toJson());
+    if (r != null) {
+      _keep('o', imdb, r.toJson());
+      changed.value++;
+    }
     return r;
   }
 
   Future<ShowReviews?> _reviewsOf(ShowTitle t) async {
-    if (TvApps.demo) return demoReviews(t);
+    if (_demo) return demoReviews(t);
     if (tmdbToken.isEmpty) return null;
     final kept = await _kept('v', t.key);
     if (kept is Map) return ShowReviews.fromJson(kept);
@@ -148,13 +227,32 @@ class TitleExtras {
     });
   }
 
+  /// The IMDb id for [t]: its own, or (One Stream's TMDB-only titles) TMDB's external ids (kept).
+  Future<String?> _imdbId(ShowTitle t) {
+    if (t.id.startsWith('tt')) return Future.value(t.id);
+    final tmdb = t.id.startsWith('tmdb') ? int.tryParse(t.id.substring(4)) : null;
+    if (tmdb == null || tmdbToken.isEmpty) return Future.value();
+    return _once(_imdbIds, t.key, () async {
+      final kept = await _kept('x', t.key);
+      if (kept is String) return kept.isEmpty ? null : kept;
+      final (status, body) = await _get('https://api.themoviedb.org/3/${t.isTv ? 'tv' : 'movie'}/$tmdb/external_ids', headers: _tmdbHeaders);
+      if (status != 200) return null;
+      final j = jsonDecode(body);
+      final id = j is Map && j['imdb_id'] is String && (j['imdb_id'] as String).startsWith('tt') ? j['imdb_id'] as String : '';
+      _keep('x', t.key, id);
+      return id.isEmpty ? null : id;
+    });
+  }
+
   Future<Map<int, double>?> _episodeRatingsOf(ShowTitle t, int season) async {
-    if (TvApps.demo) return demoEpisodeRatings(t, season);
-    if (omdbKey.isEmpty || !t.id.startsWith('tt') || !t.isTv) return null;
-    final key = '${t.id}:$season';
+    if (_demo) return demoEpisodeRatings(t, season);
+    if (omdbKey.isEmpty || !t.isTv) return null;
+    final imdb = await _imdbId(t);
+    if (imdb == null) return null;
+    final key = '$imdb:$season';
     final kept = await _kept('e', key);
     if (kept is Map) return {for (final e in kept.entries) int.parse('${e.key}'): (e.value as num).toDouble()};
-    final (status, body) = await _get('https://www.omdbapi.com/?apikey=${Uri.encodeQueryComponent(omdbKey)}&i=${t.id}&Season=$season');
+    final (status, body) = await _get('https://www.omdbapi.com/?apikey=${Uri.encodeQueryComponent(omdbKey)}&i=$imdb&Season=$season');
     if (status != 200) {
       debugPrint('Episode scores: OMDb answered $status');
       return null;
@@ -166,7 +264,7 @@ class TitleExtras {
   }
 
   Future<List<ShowEpisode>?> _tmdbSeasonOf(ShowTitle t, int season) async {
-    if (TvApps.demo || tmdbToken.isEmpty || !t.isTv) return null;
+    if (_demo || tmdbToken.isEmpty || !t.isTv) return null;
     final key = '${t.id}:$season';
     final kept = await _kept('s', key);
     if (kept is List) return [...kept.map(episodeFromJson).nonNulls];
@@ -183,11 +281,11 @@ class TitleExtras {
   }
 
   Future<(int, String)> _get(String url, {Map<String, String> headers = const {}}) =>
-      TvApps.instance.httpGet(url, headers: headers).timeout(timeout, onTimeout: () => (-1, 'timeout'));
+      transport(url, headers).timeout(timeout, onTimeout: () => (-1, 'timeout')).catchError((Object _) => (-1, 'error'));
 
-  // ---- Kept on the TV ----
+  // ---- Kept on the device ----
 
-  static const _kinds = ['o', 'v', 'e', 's', 'i'];
+  static const _kinds = ['o', 'v', 'e', 's', 'i', 'x'];
 
   Future<Object?> _kept(String kind, String id) async {
     await (_loading ??= _load());
@@ -199,17 +297,16 @@ class TitleExtras {
 
   Future<void> _load() async {
     _saved = {for (final k in _kinds) k: {}};
+    if (_demo) return;
     try {
-      final dir = await TvApps.instance.filesDir();
-      if (dir == null) return;
-      _path = '$dir/title_extras.json';
-      final f = File(_path!);
-      if (!f.existsSync()) return;
-      final j = jsonDecode(await f.readAsString());
+      final raw = await readSaved();
+      if (raw == null) return;
+      final j = jsonDecode(raw);
       if (j is! Map) return;
       for (final k in _kinds) {
         if (j[k] is Map) _saved![k] = Map<String, Object?>.from(j[k] as Map);
       }
+      changed.value++;
     } catch (e) {
       debugPrint('Ratings: couldn’t read the saved answers (${e.runtimeType})');
     }
@@ -227,10 +324,10 @@ class TitleExtras {
   }
 
   Future<void> _save() async {
-    final path = _path, saved = _saved;
-    if (path == null || saved == null) return;
+    final saved = _saved;
+    if (saved == null || _demo) return;
     try {
-      await File(path).writeAsString(jsonEncode(saved));
+      await writeSaved(jsonEncode(saved));
     } catch (e) {
       debugPrint('Ratings: couldn’t save (${e.runtimeType})');
     }
@@ -264,13 +361,6 @@ class TitleRatings {
   static TitleRatings fromJson(Map j) =>
       TitleRatings(imdb: (j['i'] as num?)?.toDouble(), rottenTomatoes: (j['t'] as num?)?.toInt(), metascore: (j['m'] as num?)?.toInt());
 }
-
-/// Metacritic's colour for a Metascore: green from 61, yellow 40–60, red below 40.
-Color metascoreColour(int score) => score >= 61
-    ? const Color(0xFF66CC33)
-    : score >= 40
-    ? const Color(0xFFFFCC33)
-    : const Color(0xFFFF0000);
 
 /// One user review (TMDB).
 class ShowReview {
@@ -467,6 +557,9 @@ String _entities(String s) => s.replaceAllMapped(RegExp(r'&(#x[0-9a-fA-F]+|#\d+|
 // =====================================================================================
 // Sample data (tests / previews: no network)
 // =====================================================================================
+
+/// Sample IMDb scores already known (posters).
+const demoImdb = {'tt9000001': 8.4, 'tt9000002': 7.6, 'tt9000003': 7.1, 'tt9000004': 6.9};
 
 /// Films: all three scores (Coastline fresh, Final Over rotten); series: IMDb only.
 TitleRatings? demoRatings(ShowTitle t) => switch (t.id) {

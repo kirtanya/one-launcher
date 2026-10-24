@@ -52,6 +52,9 @@ class Catalog extends ChangeNotifier {
   final _addons = <String, Addon>{}; // manifest link → addon (saved with the catalog; refreshed on update)
   List<String> _builtFrom = const []; // the sources the saved catalog was made from
 
+  /// The catalog's entry for an IMDb id, if it has one.
+  ShowTitle? byId(String id) => _byId[id];
+
   /// When the catalog last updated (null = never).
   DateTime? updated;
   bool loaded = false;

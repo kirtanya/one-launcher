@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/tv/catalog.dart';
-import 'package:one_launcher/tv/ratings.dart';
+import 'package:one_launcher/ratings.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
 import 'package:one_launcher/tv/tv_parts.dart';
 import 'package:one_launcher/tv/tv_ratings.dart';
@@ -195,6 +195,7 @@ void main() {
       TvApps.demo = false;
       TitleExtras.debugOmdbKey = 'omdb-test';
       TitleExtras.debugTmdbToken = 'tmdb-test';
+      TitleExtras.useTv();
       TitleExtras.instance.debugReset();
       TestWidgetsFlutterBinding.ensureInitialized().defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/tv'), (call) async {
         calls.add(call);
@@ -246,6 +247,7 @@ void main() {
     tearDown(() {
       TvApps.demo = true;
       TitleExtras.debugOmdbKey = TitleExtras.debugTmdbToken = null;
+      TitleExtras.usePhone();
       TitleExtras.instance.debugReset();
       TestWidgetsFlutterBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/tv'), null);
       dir.deleteSync(recursive: true);

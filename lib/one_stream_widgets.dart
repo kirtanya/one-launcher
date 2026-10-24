@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'one_stream.dart';
+import 'one_stream_extras.dart';
 import 'one_stream_sheet.dart';
 import 'ui/ds.dart';
 
 /// A One Stream poster (or backdrop) from its https link; while it loads or when it can't,
-/// a tinted panel with the title. Corners: the design language's media radius.
+/// a tinted panel with the title. Corners: the design language's media radius. Posters big enough
+/// carry IMDb's pill top left once the title's IMDb score is known (One Stream's own score is
+/// TMDB's, so it's never shown as IMDb's).
 class OneStreamArt extends StatelessWidget {
   const OneStreamArt({super.key, required this.title, this.backdrop = false, this.radius});
   final OneStreamTitle title;
@@ -38,7 +41,7 @@ class OneStreamArt extends StatelessWidget {
               ),
             ),
     );
-    return ClipRRect(
+    final art = ClipRRect(
       borderRadius: BorderRadius.circular(radius ?? DS.rMedia),
       child: url == null
           ? fallback
@@ -49,6 +52,18 @@ class OneStreamArt extends StatelessWidget {
               cacheWidth: backdrop ? 640 : 240,
               frameBuilder: (context, child, frame, sync) => frame == null && !sync ? fallback : child,
               errorBuilder: (_, _, _) => fallback,
+            ),
+    );
+    if (backdrop || t.imdb == null) return art;
+    return LayoutBuilder(
+      builder: (context, c) => c.maxWidth < 72
+          ? art // a small thumbnail: no room for it
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                art,
+                Positioned(top: 6, left: 6, child: PosterImdbPill(imdb: t.imdb)),
+              ],
             ),
     );
   }

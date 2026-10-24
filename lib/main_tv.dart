@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'one_stream.dart';
 import 'prefs.dart';
+import 'ratings.dart';
 import 'tv/tv_apps.dart';
 import 'tv/tv_home.dart';
 import 'tv/tv_metro.dart';
@@ -18,6 +19,7 @@ Future<void> main() async {
   TvApps.instance.init();
   OneStream.channel = const MethodChannel('one_launcher/tv');
   OneStream.instance.init(); // the user's streaming app, when installed
+  TitleExtras.useTv(); // scores & reviews through Android's network stack, kept in the files folder
   final prefs = await Prefs.load();
   final theme = OneTheme(prefs); // same colour engine as the phone (Customise → Colours)
   await theme.refreshSystem();

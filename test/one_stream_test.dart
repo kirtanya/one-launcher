@@ -7,7 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/one_stream.dart';
+import 'package:one_launcher/one_stream_extras.dart';
 import 'package:one_launcher/one_stream_sheet.dart';
+import 'package:one_launcher/one_stream_widgets.dart';
+import 'package:one_launcher/ratings.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tiles/tiles_home.dart' show TileSpec;
 import 'package:one_launcher/tiles/today_panel.dart';
@@ -19,6 +22,7 @@ import 'package:one_launcher/tv/tv_title.dart';
 import 'package:one_launcher/tv_cast.dart';
 import 'package:one_launcher/tv_remote.dart';
 import 'package:one_launcher/ui/ds.dart';
+import 'package:one_launcher/ui/rating_badges.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// One Stream (the user's streaming app) inside One Launcher: its provider is mocked on the
@@ -489,7 +493,7 @@ void main() {
     addTearDown(() => _sourcesGate = null);
     await sheet(tester, series(), loading: true);
     expect(find.text('Season 2'), findsOneWidget);
-    expect(find.text('Two Wolves'), findsOneWidget);
+    expect(find.text('E2 · Two Wolves'), findsOneWidget);
     expect(find.text('Play E2'), findsOneWidget, reason: 'the episode in the middle of watching');
     expect(find.text('Looking for sources… this can take a few seconds'), findsOneWidget);
     var asked = calls.lastWhere((c) => (c.arguments as Map?)?['path'] == '/sources').arguments as Map;
@@ -506,7 +510,7 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/53_one_stream_series.png'));
 
     _sourcesGate = null;
-    await tester.tap(find.text('Sisterhood Above All'));
+    await tester.tap(find.text('E3 · Sisterhood Above All'));
     await tester.pumpAndSettle();
     asked = calls.lastWhere((c) => (c.arguments as Map?)?['path'] == '/sources').arguments as Map;
     expect(asked['params'], {'type': 'tv', 'tmdb': 1399, 'season': 1, 'episode': 3});
@@ -709,5 +713,155 @@ void main() {
     expect(TvCast.link('play', t, season: 1, episode: 10, source: local), 'onestream://cast/play?type=tv&tmdb=7&season=1&episode=10');
     final odd = OneStreamSource(const {'token': 't', 'hash': 'a b&c', 'file': 0});
     expect(TvCast.link('download', t, source: odd), 'onestream://cast/download?type=tv&tmdb=7&hash=a+b%26c&file=0');
+  });
+
+  // ---- Critics' scores and reviews on the phone (OMDb / TMDB answers faked) ----
+
+  group('phone ratings & reviews', () {
+    final asked = <String>[];
+    String? saved;
+    setUp(() {
+      asked.clear();
+      saved = null;
+      TvApps.demo = false; // the TV tests above leave their sample mode on
+      TitleExtras.debugOmdbKey = 'omdb-test';
+      TitleExtras.debugTmdbToken = 'tmdb-test';
+      TitleExtras.readSaved = () async => saved;
+      TitleExtras.writeSaved = (j) async => saved = j;
+      TitleExtras.transport = (url, headers) async {
+        asked.add(url);
+        final u = Uri.parse(url);
+        if (u.host == 'www.omdbapi.com') {
+          final season = u.queryParameters['Season'];
+          if (season != null) {
+            return (
+              200,
+              '{"Episodes":[{"Episode":"1","imdbRating":"8.1"},{"Episode":"2","imdbRating":"N/A"},{"Episode":"3","imdbRating":"7.4"}],"Response":"True"}',
+            );
+          }
+          return u.queryParameters['i'] == 'tt15239678'
+              ? (
+                  200,
+                  '{"imdbRating":"8.5","Metascore":"79","Ratings":[{"Source":"Rotten Tomatoes","Value":"92%"},{"Source":"Metacritic","Value":"79/100"}],"Response":"True"}',
+                )
+              : (200, '{"imdbRating":"7.1","Metascore":"N/A","Ratings":[],"Response":"True"}');
+        }
+        if (u.path.startsWith('/3/find/')) return (200, '{"movie_results":[{"id":693134}],"tv_results":[{"id":1399}]}');
+        if (u.path.endsWith('/movie/693134/reviews')) {
+          return (
+            200,
+            '{"results":['
+                '{"author":"Chris Sawin","author_details":{"rating":9},"content":"**Denis Villeneuve** finishes what he started. Sand, scale and sound that pins you to the seat.\\r\\n\\r\\nThe last hour is the best blockbuster filmmaking in years, and the ending earns every minute of the build.","created_at":"2024-03-01T10:00:00Z"},'
+                '{"author":"msbreviews","author_details":{"rating":null},"content":"A rare sequel that deepens everything.","created_at":"2024-03-04T10:00:00Z"}'
+                '],"total_results":7}',
+          );
+        }
+        return (200, '{"results":[],"total_results":0}');
+      };
+      TitleExtras.instance.debugReset();
+    });
+    tearDown(() {
+      TitleExtras.debugOmdbKey = TitleExtras.debugTmdbToken = null;
+      TitleExtras.usePhone();
+      TitleExtras.instance.debugReset();
+    });
+
+    testWidgets('film, 375 wide: IMDb · Rotten Tomatoes · Metascore under the story; reviews → the whole review', (tester) async {
+      await phone(tester);
+      await sheet(tester, movie());
+      expect(tester.view.physicalSize.width / tester.view.devicePixelRatio, closeTo(375, 1));
+      expect(find.descendant(of: find.byKey(const ValueKey('ratings')), matching: find.byType(ImdbBadge)), findsOneWidget);
+      expect(find.text('92%'), findsOneWidget);
+      expect(find.text('79'), findsOneWidget);
+      expect(find.text('Metascore'), findsOneWidget);
+      expect(asked.where((u) => u.contains('omdbapi')).length, 1, reason: 'one OMDb request for the page');
+      await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/58_phone_ratings_film.png'));
+
+      // Reviews: under the sources; cards big enough to tap; tap → the whole review.
+      await tester.scrollUntilVisible(find.text('Reviews · 7'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      expect(find.byType(PhoneReviewCard), findsNWidgets(2));
+      final card = tester.getSize(find.byType(PhoneReviewCard).first);
+      expect(card.width >= 48 && card.height >= 48, isTrue, reason: '48×48 touch target');
+      await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/59_phone_reviews.png'));
+      await tester.tap(find.byType(PhoneReviewCard).first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('review-sheet')), findsOneWidget);
+      final open = find.byKey(const ValueKey('review-sheet'));
+      expect(find.descendant(of: open, matching: find.textContaining('the ending earns every minute')), findsOneWidget, reason: 'all of it');
+      expect(find.textContaining('**'), findsNothing, reason: 'markdown taken out');
+      expect(find.text('1 Mar 2024'), findsOneWidget);
+      await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/60_phone_review_open.png'));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      // Posters now know its IMDb score (no request of their own): the pill on the search poster.
+      final before = asked.length;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(child: SizedBox(width: 96, height: 144, child: OneStreamArt(title: movie()))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ImdbBadge), findsOneWidget);
+      expect(find.text('8.5'), findsOneWidget);
+      expect(asked.length, before, reason: 'posters never ask');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(child: SizedBox(width: 96, height: 144, child: OneStreamArt(title: series()))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ImdbBadge), findsNothing, reason: 'not known yet: no pill');
+      await tester.pump(const Duration(seconds: 3)); // the answers are saved a moment later
+    });
+
+    testWidgets('series, 360 wide: IMDb only; each episode its own IMDb pill (none for N/A); no reviews, no row', (tester) async {
+      await phone(tester);
+      tester.view.devicePixelRatio = 3; // 360 dp wide (Pixel 8)
+      await tester.pumpAndSettle();
+      await sheet(tester, series());
+      expect(tester.view.physicalSize.width / tester.view.devicePixelRatio, 360);
+      final row = find.byKey(const ValueKey('ratings'));
+      expect(find.descendant(of: row, matching: find.byType(ImdbBadge)), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.byType(RottenTomatoesBadge)), findsNothing);
+      expect(find.descendant(of: row, matching: find.byType(MetacriticBadge)), findsNothing);
+      double? pill(int e) => tester
+          .widgetList<ImdbBadge>(find.descendant(of: find.byKey(ValueKey('ep:1:$e')), matching: find.byType(ImdbBadge)))
+          .firstOrNull
+          ?.score;
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('ep:1:3')), 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      expect([pill(1), pill(2), pill(3)], [8.1, null, 7.4]);
+      expect(asked.where((u) => u.contains('Season=1')).length, 1, reason: 'one request for the season shown');
+      expect(asked.where((u) => u.contains('Season=2')), isEmpty, reason: 'not for seasons not shown');
+      final ep = tester.getSize(find.byKey(const ValueKey('ep:1:1')));
+      expect(ep.height, greaterThanOrEqualTo(48));
+      expect(find.text('E1 · The Hidden Hand'), findsOneWidget);
+      expect(find.textContaining('Reviews'), findsNothing);
+      expect(tester.takeException(), isNull, reason: 'no overflow at 360');
+      await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/61_phone_ratings_series_360.png'));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3)); // the answers are saved a moment later
+    });
+
+    testWidgets('Tiles view: same badges (brand colours), Metro corners, lowercase headers', (tester) async {
+      await phone(tester, stored: {'homeView': 'tiles'});
+      await sheet(tester, movie());
+      expect(find.byType(RottenTomatoesBadge), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('reviews · 7'), 200, scrollable: find.byType(Scrollable).last);
+      await tester.pumpAndSettle();
+      await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/62_phone_ratings_metro.png'));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 3)); // the answers are saved a moment later
+    });
   });
 }
