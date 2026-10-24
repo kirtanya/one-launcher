@@ -193,6 +193,35 @@ class TvTilesStartState extends State<TvTilesStart> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => land());
+    FocusManager.instance.addListener(_onFocus);
+  }
+
+  // ---- Background: the focused item's artwork (Customise → Tiles → Background) ----
+  ImageProvider? _focusArt;
+  Timer? _artTimer;
+
+  /// Settles a beat after the focus stops, so moving quickly across tiles doesn't flicker.
+  void _onFocus() {
+    if (TvLook.str('tileBg') != 'focus') return;
+    final f = FocusManager.instance.primaryFocus;
+    final id = _nodes.entries.where((e) => e.value == f).firstOrNull?.key;
+    if (id == null) return;
+    _artTimer?.cancel();
+    _artTimer = Timer(TvLook.anim(const Duration(milliseconds: 280)), () => _pickArt(id));
+  }
+
+  Future<void> _pickArt(String id) async {
+    if (id.startsWith('q:')) return; // quick actions have no picture: keep the last one
+    ImageProvider? art;
+    if (id.startsWith('r:')) {
+      art = _resumeCards.where((r) => 'r:${r.key}' == id).firstOrNull?.info.art;
+    } else if (id == 'resume') {
+      art = widget.resume?.art;
+    } else {
+      final t = _placed.where((p) => p.$1.id == id).firstOrNull?.$1;
+      if (t != null && t.isApp) art = TvApps.instance.backdropNow(t.package) ?? await TvApps.instance.backdrop(t.package);
+    }
+    if (mounted && art != _focusArt) setState(() => _focusArt = art);
   }
 
   @override
@@ -214,6 +243,8 @@ class TvTilesStartState extends State<TvTilesStart> {
 
   @override
   void dispose() {
+    FocusManager.instance.removeListener(_onFocus);
+    _artTimer?.cancel();
     _scroll.dispose();
     _page.dispose();
     for (final n in _nodes.values) {
@@ -561,6 +592,24 @@ class TvTilesStartState extends State<TvTilesStart> {
         );
       case 'accent':
         return ColoredBox(color: Color.lerp(a, Colors.black, .25)!);
+      case 'focus':
+        // The focused show / app's artwork, softened and dimmed; nothing focused with a
+        // picture: what you're watching; nothing at all: the accent glow.
+        final art = _focusArt ?? widget.resume?.art ?? widget.resumeCards.map((r) => r.info.art).nonNulls.firstOrNull;
+        return AnimatedSwitcher(
+          duration: TvLook.anim(const Duration(milliseconds: 700)),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+          child: art == null
+              ? DecoratedBox(
+                  key: const ValueKey('glow'),
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .45), TvDS.canvas]),
+                  ),
+                )
+              : TvArtWash(key: ValueKey(art), art: art),
+        );
       case 'art':
         // The artwork of what you're watching, dimmed; no artwork: the accent glow.
         final art = widget.resume?.art ?? widget.resumeCards.map((r) => r.info.art).nonNulls.firstOrNull;
@@ -1283,4 +1332,47 @@ class TvTileButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A picture as a background: softened (drawn tiny and stretched — a cheap, steady blur that
+/// costs nothing per frame), dimmed, and darker towards the bottom and left where the title,
+/// headings and tile names sit. Settles from a slight zoom as it fades in.
+class TvArtWash extends StatelessWidget {
+  const TvArtWash({super.key, required this.art});
+  final ImageProvider art;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      TweenAnimationBuilder<double>(
+        tween: Tween(begin: TvLook.str('motion') == 'reduced' ? 1.1 : 1.18, end: 1.1),
+        duration: const Duration(milliseconds: 1800),
+        curve: Curves.easeOutCubic,
+        builder: (context, s, child) => Transform.scale(scale: s, child: child),
+        child: Image(
+          image: ResizeImage(art, width: 64, policy: ResizeImagePolicy.fit),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.high,
+          gaplessPlayback: true,
+        ),
+      ),
+      const ColoredBox(color: Color(0x8C000000)),
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x66000000), Color(0x00000000), Color(0xB3000000)],
+            stops: [0, .35, 1],
+          ),
+        ),
+      ),
+      const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0x80000000), Color(0x00000000)], stops: [0, .5]),
+        ),
+      ),
+    ],
+  );
 }

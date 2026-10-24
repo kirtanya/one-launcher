@@ -4,14 +4,10 @@ import android.app.Activity
 import android.content.Intent
 import android.database.Cursor
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Build
 import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * Shows and films from the streaming apps, where Android lets a launcher see them.
@@ -82,29 +78,8 @@ class TvContent(private val activity: Activity) {
     }
 
     /** Artwork from a program (https, content:// or android.resource://), at most [maxWidth] wide, as JPEG. */
-    fun image(uri: String, maxWidth: Int): ByteArray? = try {
-        val bytes = open(Uri.parse(uri))?.use { it.readBytes() }
-        bytes?.let { raw ->
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
-            var sample = 1
-            while (bounds.outWidth / (sample * 2) >= maxWidth) sample *= 2
-            val bmp = BitmapFactory.decodeByteArray(raw, 0, raw.size, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return@let null
-            val w = minOf(maxWidth, bmp.width)
-            val scaled = if (w == bmp.width) bmp else Bitmap.createScaledBitmap(bmp, w, maxOf(1, bmp.height * w / bmp.width), true)
-            ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
-        }
-    } catch (e: Exception) {
-        null
-    }
-
-    private fun open(uri: Uri): InputStream? = when (uri.scheme) {
-        "http", "https" -> (URL(uri.toString()).openConnection() as HttpURLConnection).run {
-            connectTimeout = 6000
-            readTimeout = 10000
-            inputStream
-        }
-        else -> resolver.openInputStream(uri)
+    fun image(uri: String, maxWidth: Int): ByteArray? = ArtFetch.load(activity, uri, maxWidth)?.let { bmp ->
+        ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
     }
 
     private fun <T> query(uri: Uri, map: (Cursor) -> T?): List<T> = try {

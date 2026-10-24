@@ -106,20 +106,44 @@ class MediaHistory(private val context: Context) {
         prefs(context).edit().putString(KEY, next.toString()).apply()
     }
 
-    /** Artwork to a small JPEG (once per item); returns its path. */
+    private val fetching = mutableSetOf<String>()
+
+    /**
+     * Artwork to a small JPEG (once per item); returns its path. When the app only gives a link
+     * (Hotstar, Prime Video, Netflix…), it downloads in the background and the item gets its
+     * picture a moment later.
+     */
     private fun saveArt(key: String, meta: MediaMetadata): String? {
         val file = File(File(context.filesDir, "history").apply { mkdirs() }, "${key.hashCode().toUInt()}.jpg")
         if (file.exists()) return file.path
-        val bmp = meta.getBitmap(MediaMetadata.METADATA_KEY_ART) ?: meta.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: meta.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON) ?: return null
-        return try {
-            val w = minOf(960, bmp.width)
-            val scaled = Bitmap.createScaledBitmap(bmp, w, maxOf(1, bmp.height * w / bmp.width), true)
-            file.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 85, it) }
-            file.path
-        } catch (e: Exception) {
-            null
+        ArtFetch.bitmapOf(meta)?.let { return write(file, it) }
+        val uri = ArtFetch.uriOf(meta) ?: return null
+        if (!fetching.add(key)) return null
+        ArtFetch.async {
+            val path = ArtFetch.load(context, uri, 960)?.let { write(file, it) }
+            main.post {
+                fetching.remove(key)
+                if (path != null) setArt(key, path)
+            }
         }
+        return null
+    }
+
+    private fun write(file: File, bmp: Bitmap): String? = try {
+        file.outputStream().use { ArtFetch.fit(bmp, 960).compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        file.path
+    } catch (e: Exception) {
+        null
+    }
+
+    /** Gives a saved item its downloaded picture. */
+    private fun setArt(key: String, path: String) {
+        val items = load(context)
+        for (i in 0 until items.length()) {
+            val o = items.getJSONObject(i)
+            if (o.optString("key") == key) o.put("art", path)
+        }
+        prefs(context).edit().putString(KEY, items.toString()).apply()
     }
 
     companion object {

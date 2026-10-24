@@ -126,25 +126,35 @@ class MediaWatcher(
     private fun art(meta: MediaMetadata?, key: String): ByteArray? {
         if (key == artKey) return artBytes
         artKey = key
-        val bmp = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-            ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        artBytes = bmp?.let {
-            if (!square) {
-                // Keep the picture's shape (video stills are wide), just cap its size.
-                val w = minOf(artWidth, it.width)
-                val scaled = Bitmap.createScaledBitmap(it, w, maxOf(1, it.height * w / it.width), true)
-                return@let ByteArrayOutputStream().also { o -> scaled.compress(Bitmap.CompressFormat.JPEG, 88, o) }.toByteArray()
+        artBytes = ArtFetch.bitmapOf(meta)?.let(::encode)
+        // Only a link (Hotstar, Prime Video, Netflix…): fetch it, then send the picture.
+        val uri = if (artBytes == null) ArtFetch.uriOf(meta) else null
+        if (uri != null) {
+            ArtFetch.async {
+                val bytes = ArtFetch.load(activity, uri, artWidth)?.let(::encode)
+                main.post {
+                    if (artKey == key && bytes != null) {
+                        artBytes = bytes
+                        send()
+                    }
+                }
             }
-            val size = artWidth
-            val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            // Centre-crop into a square.
-            val s = minOf(it.width, it.height)
-            val src = android.graphics.Rect((it.width - s) / 2, (it.height - s) / 2, (it.width + s) / 2, (it.height + s) / 2)
-            Canvas(out).drawBitmap(it, src, android.graphics.Rect(0, 0, size, size), null)
-            ByteArrayOutputStream().also { o -> out.compress(Bitmap.CompressFormat.PNG, 100, o) }.toByteArray()
         }
         return artBytes
+    }
+
+    private fun encode(it: Bitmap): ByteArray {
+        if (!square) {
+            // Keep the picture's shape (video stills are wide), just cap its size.
+            return ByteArrayOutputStream().also { o -> ArtFetch.fit(it, artWidth).compress(Bitmap.CompressFormat.JPEG, 88, o) }.toByteArray()
+        }
+        val size = artWidth
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        // Centre-crop into a square.
+        val s = minOf(it.width, it.height)
+        val src = android.graphics.Rect((it.width - s) / 2, (it.height - s) / 2, (it.width + s) / 2, (it.height + s) / 2)
+        Canvas(out).drawBitmap(it, src, android.graphics.Rect(0, 0, size, size), null)
+        return ByteArrayOutputStream().also { o -> out.compress(Bitmap.CompressFormat.PNG, 100, o) }.toByteArray()
     }
 
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {
