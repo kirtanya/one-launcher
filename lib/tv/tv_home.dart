@@ -14,6 +14,7 @@ import '../ui/palette.dart';
 import '../ui/theme.dart';
 import '../ui/motion.dart';
 import 'catalog.dart';
+import 'episode_art.dart';
 import 'tv_actions.dart';
 import 'tv_all_apps.dart';
 import 'tv_apps.dart';
@@ -365,7 +366,17 @@ class _TvHomeState extends State<TvHome> {
     String fold(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     final episode = RegExp(r'^\s*S\d+\W*E\d+', caseSensitive: false);
     final hasShow = show?.trim().isNotEmpty ?? false;
-    if (!hasShow && episode.hasMatch(title)) return null; // an episode's own name: not the show's
+    if (!hasShow && episode.hasMatch(title)) {
+      // Only "S4 E9 Greatness Achieved" (JioHotstar): find the show by the episode's name.
+      if (_artLookups.containsKey(title)) return _artLookups[title];
+      _artLookups[title] = null;
+      EpisodeArt.instance.find(title).then((url) {
+        if (url == null || !mounted) return;
+        _artLookups[title] = url;
+        _regroup();
+      });
+      return null;
+    }
     final q = ((show?.trim().isNotEmpty ?? false) ? show! : title).replaceFirst(RegExp(r'^\s*S\d+\W*E\d+\W*', caseSensitive: false), '').trim();
     if (q.length < 2) return null;
     if (_artLookups.containsKey(q)) return _artLookups[q];
