@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// Artwork for an episode when the app that plays it shares only "S4 E9 Greatness Achieved"
 /// (JioHotstar: no picture, no show name).
 ///
@@ -68,25 +70,66 @@ class EpisodeArt {
 
   final _found = <String, Future<String?>>{};
 
-  /// The episode's picture link (or the show's backdrop), or null. Looked up once per title.
-  /// When a lookup couldn't reach the internet, the next call tries again.
-  /// Lookups run one at a time (a row of 20 episodes at once makes Wikidata refuse them all), and
-  /// a title whose lookup failed waits a minute before it's tried again.
-  Future<String?> find(String title) {
-    final failed = _failedAt[title];
-    if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 1)) return Future.value(null);
-    return _found.putIfAbsent(title, () {
-      final run = _queue.then((_) => _find(title)).catchError((_) {
-        _failedAt[title] = DateTime.now();
-        return _forget(title);
-      });
-      _queue = run.then((_) => Future<void>.delayed(const Duration(milliseconds: 400)));
-      return run;
-    });
+  /// The episode's picture link (or the show's backdrop), or null. Each title is asked once
+  /// ever: answers (also "nothing found") are kept on the device. Name lookups run one at a time,
+  /// and when Wikidata says "too many requests" they all pause for a few minutes; a lookup that
+  /// couldn't finish is asked again later.
+  Future<String?> find(String title) => _found.putIfAbsent(title, () => _cached(title, () => _find(title), queued: true));
+
+  Future<String?> _cached(String key, Future<String?> Function() compute, {bool queued = false}) async {
+    final kept = await _keptMap();
+    if (kept.containsKey(key)) return kept[key]!.isEmpty ? null : kept[key];
+    try {
+      Future<String?> run() {
+        if (_pausedUntil?.isAfter(DateTime.now()) ?? false) throw const SocketException('paused: too many requests');
+        return compute();
+      }
+
+      final String? answer;
+      if (queued) {
+        final job = _queue.then((_) => run());
+        _queue = job.then((_) => Future<void>.delayed(const Duration(milliseconds: 400)), onError: (_) {});
+        answer = await job;
+      } else {
+        answer = await run();
+      }
+      await _keep(key, answer);
+      return answer;
+    } catch (_) {
+      _found.remove(key); // asked again next time
+      return null;
+    }
   }
 
   Future<void> _queue = Future.value();
-  final _failedAt = <String, DateTime>{};
+  static DateTime? _pausedUntil;
+
+  // ---- Answers kept on the device ("" = nothing found) ----
+  static const _storeKey = 'tvEpisodeArt', _keepMax = 400;
+  Map<String, String>? _kept;
+  SharedPreferences? _sp;
+
+  Future<Map<String, String>> _keptMap() async {
+    if (_kept != null) return _kept!;
+    try {
+      _sp = await SharedPreferences.getInstance();
+      final raw = _sp!.getString(_storeKey);
+      _kept = raw == null ? {} : Map<String, String>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      _kept = {}; // no device storage (tools, tests): this session only
+    }
+    return _kept!;
+  }
+
+  Future<void> _keep(String key, String? answer) async {
+    final kept = await _keptMap();
+    kept.remove(key);
+    kept[key] = answer ?? '';
+    while (kept.length > _keepMax) {
+      kept.remove(kept.keys.first);
+    }
+    await _sp?.setString(_storeKey, jsonEncode(kept));
+  }
 
   Future<String?> _find(String title) async {
     final p = parse(title);
@@ -105,7 +148,8 @@ class EpisodeArt {
           'format': 'json',
         }),
       );
-      final hits = wiki is Map ? (wiki['search'] as List? ?? const []) : const [];
+      if (wiki is! Map) throw const SocketException('search unavailable'); // not "nothing found": asked again later
+      final hits = wiki['search'] as List? ?? const [];
       shows = showsFrom(
         [
           for (final h in hits)
@@ -131,18 +175,12 @@ class EpisodeArt {
   /// be there by name.
   Future<String?> inShow(String show, String title, {bool sure = true}) {
     final key = '$show|$title|$sure';
-    return _found.putIfAbsent(key, () => _inShow(show, title, sure).catchError((_) => _forget(key)));
+    return _found.putIfAbsent(key, () => _cached(key, () => _inShow(show, title, sure)));
   }
 
   Future<String?> _inShow(String show, String title, bool sure) async {
     final p = parse(title);
     return p == null ? null : await _pictureIn(show, p, backdrop: sure);
-  }
-
-  /// A lookup that couldn't reach the internet: asked again next time.
-  String? _forget(String key) {
-    _found.remove(key);
-    return null;
   }
 
   /// [p]'s still in [show]'s catalog listing, else (with [backdrop], or when the episode is
@@ -221,6 +259,7 @@ class EpisodeArt {
       for (var attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) await Future<void>.delayed(const Duration(seconds: 2));
         final (status, body) = await get(url.toString());
+        if (status == 429) _pausedUntil = DateTime.now().add(const Duration(minutes: 5)); // Wikidata: too many requests
         if (status != 200) log?.call('episode art: $status from ${url.host}${status < 0 ? ' ($body)' : ''}');
         if (status == 404) return null;
         if (status == 200) {
