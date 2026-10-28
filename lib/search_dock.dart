@@ -30,7 +30,15 @@ class SearchDock extends StatelessWidget {
     this.onSwipeClose,
     this.onRemote,
     this.onRemoteLongPress,
+    this.tab = 'home',
+    this.onHome,
   });
+
+  /// The bottom nav's selected tab at rest: 'home', 'search', 'remote' or 'settings'.
+  final String tab;
+
+  /// The nav's Home tab (back to the clock); null = the plain search dock (inside the drawer).
+  final VoidCallback? onHome;
 
   /// TV remote button between the bar and settings (null = hidden, Settings → TV remote).
   final VoidCallback? onRemote;
@@ -62,11 +70,6 @@ class SearchDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final bottom = inline ? DS.s8 : math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12;
-    final small = compact && !active && !inline;
-    // Settings sits right of the bar at rest; they slide out while searching
-    // or while the list is scrolled (dock shrinks to just the search circle).
-    final tools = !active && !small;
-
     // Searching at the bottom: swipe down on the bar to close search (the results above
     // scroll on their own, so this is the one place that closes it).
     final swipeToClose = active && !inline;
@@ -89,72 +92,103 @@ class SearchDock extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(inline ? DS.gutter : DS.s16, 0, inline ? DS.gutter : DS.s16, bottom),
         child: SizedBox(
           height: height,
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final w = c.maxWidth;
-              // Room on the right for settings (and the remote button, when shown).
-              final tray = onRemote != null ? _slot * 2 : _slot;
-              final pillRight = active ? _slot : (small ? 0.0 : tray);
-              final pillWidth = active ? w - _slot : (small ? height : w - tray);
-              Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
-                duration: Motion.snapDuration,
-                curve: Motion.snap,
-                top: 0,
-                bottom: 0,
-                right: right,
-                width: height,
-                child: AnimatedOpacity(
-                  duration: Motion.snapDuration,
-                  curve: Curves.easeOut,
-                  opacity: shown ? 1 : 0,
-                  child: IgnorePointer(ignoring: !shown, child: child),
-                ),
-              );
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // The pill. Anchored to the right so it shrinks into a circle on the right.
-                  AnimatedPositioned(
-                    duration: Motion.snapDuration,
-                    curve: Motion.settle,
-                    top: 0,
-                    bottom: 0,
-                    right: pillRight,
-                    width: pillWidth,
-                    child: _Pill(
-                      small: small,
-                      active: active,
-                      controller: controller,
-                      focus: focus,
-                      hint: hint,
-                      onActivate: onActivate,
-                      onChanged: onChanged,
-                      onSubmitted: onSubmitted,
-                    ),
-                  ),
-                  if (onRemote != null)
-                    slide(
-                      right: tools ? _slot : -_slot,
-                      shown: tools,
-                      child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!, onLongPress: onRemoteLongPress),
-                    ),
-                  slide(
-                    right: tools ? 0 : -_slot,
-                    shown: tools,
-                    child: _DockCircle(icon: Icons.tune_rounded, tooltip: 'Launcher settings', onTap: onSettings),
-                  ),
-                  // Close button slides in from the right while searching.
-                  slide(
-                    right: active ? 0 : -(height + DS.s16),
-                    shown: active,
-                    child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: onClose),
-                  ),
-                ],
-              );
-            },
+          // At rest at the bottom: the floating nav. Searching: the nav turns into the search field
+          // (+ close), crossfading in place with a slight settle.
+          child: AnimatedSwitcher(
+            duration: Motion.snapDuration,
+            switchInCurve: Motion.settle,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, a) => FadeTransition(
+              opacity: a,
+              child: ScaleTransition(scale: Tween(begin: .96, end: 1.0).animate(a), child: child),
+            ),
+            child: onHome != null && !active && !inline
+                ? _NavBar(
+                    key: const ValueKey('nav'),
+                    selected: tab,
+                    tabs: [
+                      _NavTab('home', Icons.home_rounded, 'Home', onHome!, tooltip: 'Home screen'),
+                      _NavTab('search', Icons.search_rounded, 'Search', onActivate),
+                      if (onRemote != null)
+                        _NavTab('remote', Icons.settings_remote_rounded, 'Remote', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'TV remote'),
+                      _NavTab('settings', Icons.tune_rounded, 'Settings', onSettings, tooltip: 'Launcher settings'),
+                    ],
+                  )
+                : KeyedSubtree(key: const ValueKey('search'), child: _searchLayout()),
           ),
         ),
       ),
+    );
+  }
+
+  /// The search dock (no nav): the pill, the remote and settings circles right of it at rest; while
+  /// searching or scrolled they slide out (scrolled: the dock shrinks to just the search circle).
+  Widget _searchLayout() {
+    final small = compact && !active && !inline;
+    final tools = !active && !small;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        // Room on the right for settings (and the remote button, when shown).
+        final tray = onRemote != null ? _slot * 2 : _slot;
+        final pillRight = active ? _slot : (small ? 0.0 : tray);
+        final pillWidth = active ? w - _slot : (small ? height : w - tray);
+        Widget slide({required double right, required bool shown, required Widget child}) => AnimatedPositioned(
+          duration: Motion.snapDuration,
+          curve: Motion.snap,
+          top: 0,
+          bottom: 0,
+          right: right,
+          width: height,
+          child: AnimatedOpacity(
+            duration: Motion.snapDuration,
+            curve: Curves.easeOut,
+            opacity: shown ? 1 : 0,
+            child: IgnorePointer(ignoring: !shown, child: child),
+          ),
+        );
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // The pill. Anchored to the right so it shrinks into a circle on the right.
+            AnimatedPositioned(
+              duration: Motion.snapDuration,
+              curve: Motion.settle,
+              top: 0,
+              bottom: 0,
+              right: pillRight,
+              width: pillWidth,
+              child: _Pill(
+                small: small,
+                active: active,
+                controller: controller,
+                focus: focus,
+                hint: hint,
+                onActivate: onActivate,
+                onChanged: onChanged,
+                onSubmitted: onSubmitted,
+              ),
+            ),
+            if (onRemote != null)
+              slide(
+                right: tools ? _slot : -_slot,
+                shown: tools,
+                child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!, onLongPress: onRemoteLongPress),
+              ),
+            slide(
+              right: tools ? 0 : -_slot,
+              shown: tools,
+              child: _DockCircle(icon: Icons.tune_rounded, tooltip: 'Launcher settings', onTap: onSettings),
+            ),
+            // Close button slides in from the right while searching.
+            slide(
+              right: active ? 0 : -(height + DS.s16),
+              shown: active,
+              child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: onClose),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -258,6 +292,113 @@ class _Pill extends StatelessWidget {
                         ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavTab {
+  const _NavTab(this.id, this.icon, this.label, this.onTap, {this.onLongPress, this.tooltip});
+  final String id, label;
+  final String? tooltip; // long-press hint (defaults to the label)
+  final IconData icon;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+}
+
+/// The floating bottom nav: one glass pill of icon tabs, equal widths. An accent capsule sits behind
+/// the selected icon and slides to the tab tapped; the icons crossfade between ink and accent ink.
+class _NavBar extends StatelessWidget {
+  const _NavBar({super.key, required this.tabs, required this.selected});
+  final List<_NavTab> tabs;
+  final String selected;
+
+  static const _inset = 4.0; // capsule inside the pill: 56 - 2 × 4 = 48 tall, a full touch target
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
+      child: glassOr(
+        colour: DS.card,
+        shape: const StadiumBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(_inset),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final w = c.maxWidth / tabs.length;
+              final on = tabs.indexWhere((t) => t.id == selected);
+              return Stack(
+                children: [
+                  if (on >= 0)
+                    AnimatedPositioned(
+                      duration: Motion.snapDuration,
+                      curve: Motion.settle,
+                      left: on * w,
+                      top: 0,
+                      bottom: 0,
+                      width: w,
+                      child: DecoratedBox(
+                        decoration: ShapeDecoration(color: DS.hero, shape: const StadiumBorder()),
+                      ),
+                    ),
+                  Row(
+                    children: [
+                      for (final (i, t) in tabs.indexed)
+                        Expanded(
+                          child: _NavButton(tab: t, selected: i == on),
+                        ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavButton extends StatelessWidget {
+  const _NavButton({required this.tab, required this.selected});
+  final _NavTab tab;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: tab.label,
+      child: Tooltip(
+        message: tab.tooltip ?? tab.label,
+        // Remote's long-press offers to hide it; the hint would cover that sheet.
+        triggerMode: tab.onLongPress != null ? TooltipTriggerMode.manual : TooltipTriggerMode.longPress,
+        child: Pressable(
+          scale: .9,
+          child: SizedBox(
+            height: SearchDock.height - _NavBar._inset * 2,
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  tab.onTap();
+                },
+                onLongPress: tab.onLongPress,
+                child: Center(
+                  child: TweenAnimationBuilder<Color?>(
+                    tween: ColorTween(end: selected ? DS.heroInk : DS.ink),
+                    duration: Motion.snapDuration,
+                    builder: (context, colour, _) => Icon(tab.icon, color: colour, size: 24),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

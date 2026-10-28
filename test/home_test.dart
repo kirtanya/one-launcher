@@ -98,7 +98,7 @@ void main() {
     expect(tester.getTopLeft(find.text('WhatsApp').first).dx, lessThan(tester.getTopLeft(find.text('Figma')).dx));
     expect(find.byIcon(Icons.push_pin), findsNothing);
     expect(find.byTooltip('Customise pinned & most used'), findsOneWidget);
-    expect(find.text('Search 20 apps'), findsOneWidget, reason: 'dock starts as a full bar');
+    expect(find.byTooltip('Search'), findsOneWidget, reason: 'dock starts as a full bar');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/1_rest.png'));
 
     // Top carousel: swipe left on the clock → Screen time.

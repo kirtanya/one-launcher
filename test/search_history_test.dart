@@ -35,7 +35,7 @@ void main() {
   }
 
   Future<void> openSearch(WidgetTester tester) async {
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
   }
 

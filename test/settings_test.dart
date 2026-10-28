@@ -64,9 +64,9 @@ void main() {
     expect(remote, lessThan(tester.getCenter(find.byTooltip('Launcher settings')).dx));
     await tester.tap(find.byTooltip('Launcher settings'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Remote button'));
+    await tester.ensureVisible(find.text('Remote tab'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Remote button'));
+    await tester.tap(find.text('Remote tab'));
     await tester.pumpAndSettle();
     expect(prefs.remoteButton, isFalse);
     expect(find.byTooltip('TV remote'), findsNothing, reason: 'hidden from the dock');

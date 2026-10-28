@@ -104,7 +104,7 @@ void main() {
     expect(find.byTooltip('Launcher settings'), findsOneWidget, reason: 'settings sits next to it');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/18_search_top.png'));
 
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'weather today');
@@ -119,7 +119,7 @@ void main() {
 
   testWidgets('search finds phone settings; sources can be switched off; results stack upward from the bar', (tester) async {
     final prefs = await launch(tester);
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'wifi');
     await tester.pumpAndSettle();
@@ -132,7 +132,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 400));
 
     // Bar at the bottom: the best app match sits lowest, the web card above it.
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'sp');
     await tester.pumpAndSettle();
@@ -150,7 +150,7 @@ void main() {
 
   testWidgets('more results than fit above the keyboard: the best match still sits just above the bar', (tester) async {
     await launch(tester);
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 1000); // keyboard up (physical px)
     await tester.enterText(find.byType(TextField), 's'); // apps + many phone settings
@@ -170,7 +170,7 @@ void main() {
 
   testWidgets('bar at the bottom: dragging the results scrolls them (search stays open); swiping the bar down closes', (tester) async {
     await launch(tester);
-    await tester.tap(find.text('Search 7 apps'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 1000); // keyboard up: results outgrow the space
     await tester.enterText(find.byType(TextField), 's');

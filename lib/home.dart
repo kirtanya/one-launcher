@@ -68,6 +68,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// scrolling only rebuilds the dock, never the screen or the list.
   final _compact = ValueNotifier<bool>(false);
 
+  /// The bottom nav's tab: Home at rest; Remote / Settings while their page is open.
+  String _tab = 'home';
+
   /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
   final _pull = ValueNotifier<double>(0);
 
@@ -206,9 +209,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onChanged: _onQuery,
     onSubmitted: _onSubmit,
     onSettings: _settings,
-    onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+    onRemote: prefs.remoteButton ? () => _openTab('remote', () => showTvRemote(context, prefs: prefs)) : null,
     onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
+    // At the bottom the dock is the nav (Home · Search · Remote · Settings); in the drawer, just search.
+    tab: _tab,
+    onHome: inline ? null : _navHome,
   );
+
+  /// A nav tab whose page opens over home: its tab lights up while open, then Home again.
+  Future<void> _openTab(String tab, Future<void> Function() open) async {
+    setState(() => _tab = tab);
+    await open();
+    if (mounted) setState(() => _tab = 'home');
+  }
+
+  /// The nav's Home: back to the clock (closes search, the list and the today panel).
+  void _navHome() {
+    _stopSearch();
+    _drawerKey.currentState?.reset();
+    _collapse();
+    _toPanel(1);
+    if (_tab != 'home') setState(() => _tab = 'home');
+  }
 
   @override
   void initState() {
@@ -470,7 +492,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   void _settings() {
     HapticFeedback.mediumImpact();
-    showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme);
+    _openTab('settings', () => showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme));
   }
 
   // ---- Build ---------------------------------------------------------------

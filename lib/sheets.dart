@@ -1675,8 +1675,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             _Setting(
               'TV remote',
               Icons.settings_remote_rounded,
-              'Remote button',
-              prefs.remoteButton ? 'Next to search' : 'Hidden',
+              'Remote tab',
+              prefs.remoteButton ? 'In the bottom bar' : 'Hidden',
               keywords: 'tv television google tv control',
               value: prefs.remoteButton,
               onChanged: prefs.setRemoteButton,
@@ -2297,7 +2297,7 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
           padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
           child: SheetHeader(title: 'TV remote', subtitle: 'Control your Google TV from the dock'),
         ),
-        _Group(null, [_SwitchRow(Icons.settings_remote_rounded, 'Remote button', 'Between search and settings', prefs.remoteButton, prefs.setRemoteButton)]),
+        _Group(null, [_SwitchRow(Icons.settings_remote_rounded, 'Remote tab', 'In the bottom bar, between Search and Settings', prefs.remoteButton, prefs.setRemoteButton)]),
         _Group('Your TV', [
           if (prefs.tvHost == null)
             _NavRow(Icons.add_link_rounded, 'Set up a TV', 'Pair once with the code on your TV', () {

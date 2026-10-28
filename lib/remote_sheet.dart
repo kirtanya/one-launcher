@@ -16,9 +16,9 @@ void offerHideRemote(BuildContext context, {required Prefs prefs}) {
   HapticFeedback.mediumImpact();
   showOneSheet(
     context,
-    header: const SheetHeader(title: 'TV remote button', subtitle: 'Turn it back on in Settings → TV remote'),
+    header: const SheetHeader(title: 'Remote tab', subtitle: 'Turn it back on in Settings → TV remote'),
     actions: [
-      SheetAction(Icons.visibility_off_outlined, 'Hide remote button', () {
+      SheetAction(Icons.visibility_off_outlined, 'Hide the Remote tab', () {
         Navigator.pop(context);
         prefs.setRemoteButton(false);
       }),
