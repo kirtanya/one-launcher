@@ -15,6 +15,7 @@ import '../ui/theme.dart';
 import '../ui/motion.dart';
 import '../ui/perf.dart';
 import 'catalog.dart';
+import 'app_trending.dart';
 import 'episode_art.dart';
 import 'tv_actions.dart';
 import 'tv_all_apps.dart';
@@ -1365,7 +1366,15 @@ class _Backdrop extends StatelessWidget {
         builder: (context, s) => s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true)),
       );
     }
-    // Apps: their banner, pre-blurred on the TV into a soft wash.
+    // Streaming apps: what's popular on them now, one picture after another (their own art until
+    // the first arrives). Other apps: their banner, pre-blurred on the TV into a soft wash.
+    if (it.kind == TvKind.app && AppTrending.has(it.package)) {
+      return _TrendingShow(package: it.package, still: TvLook.str('motion') == 'reduced', drift: drift, fallback: _appWash(it, settle));
+    }
+    return _appWash(it, settle);
+  }
+
+  Widget _appWash(TvItem it, Widget Function(Widget) settle) {
     if (it.kind == TvKind.app) {
       Widget wash(MemoryImage img) => settle(
         Opacity(
@@ -1386,6 +1395,84 @@ class _Backdrop extends StatelessWidget {
       gradient: RadialGradient(center: const Alignment(.4, -.3), radius: 1.1, colors: [tvTint(it.title).withValues(alpha: .55), Colors.transparent]),
     ),
   );
+}
+
+/// What's popular on a streaming app (AppTrending), one picture every 2 s with a crossfade and
+/// a slight drift; the app's own art ([fallback]) until the first one is ready. The next picture
+/// loads while this one shows, and the show only moves on once it's there.
+class _TrendingShow extends StatefulWidget {
+  const _TrendingShow({required this.package, required this.fallback, this.still = false, this.drift = true});
+  final String package;
+  final Widget fallback;
+  final bool still, drift; // reduced motion: no zoom; lighter effects: no drift
+
+  @override
+  State<_TrendingShow> createState() => _TrendingShowState();
+}
+
+class _TrendingShowState extends State<_TrendingShow> {
+  static const every = Duration(seconds: 2), fade = Duration(milliseconds: 700);
+  List<({String title, String image})> _titles = const [];
+  int _i = -1; // showing
+  MemoryImage? _shown;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    AppTrending.instance.titles(widget.package).then((list) {
+      if (!mounted || list.isEmpty) return;
+      _titles = list;
+      _next();
+      _timer = Timer.periodic(every, (_) => _next());
+    });
+  }
+
+  /// Moves on to the next picture that has loaded, and starts loading the one after it.
+  void _next() {
+    if (_titles.isEmpty || !mounted) return;
+    final n = (_i + 1) % _titles.length;
+    final img = TvApps.instance.imageNow(_titles[n].image, width: 960);
+    if (img == null) {
+      TvApps.instance.image(_titles[n].image, width: 960); // ready by the next tick
+      return;
+    }
+    setState(() {
+      _i = n;
+      _shown = img;
+    });
+    AppTrending.instance.showing.value = (package: widget.package, title: _titles[n].title);
+    TvApps.instance.image(_titles[(n + 1) % _titles.length].image, width: 960);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    if (AppTrending.instance.showing.value?.package == widget.package) AppTrending.instance.showing.value = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final img = _shown;
+    return AnimatedSwitcher(
+      duration: fade,
+      layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+      child: img == null
+          ? KeyedSubtree(key: const ValueKey(-1), child: widget.fallback)
+          : KeyedSubtree(
+              key: ValueKey(_i),
+              child: RepaintBoundary(
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: widget.still || !widget.drift ? 1.0 : 1.04, end: 1.0), // eases back while it shows
+                  duration: every + fade,
+                  builder: (context, s, child) => Transform.scale(scale: s, alignment: _Backdrop._focusPoint, child: child),
+                  child: Image(image: img, fit: BoxFit.cover, alignment: _Backdrop._focusPoint, gaplessPlayback: true),
+                ),
+              ),
+            ),
+    );
+  }
 }
 
 // ---- Title block ---------------------------------------------------------------
@@ -1436,6 +1523,26 @@ class _HeroInfo extends StatelessWidget {
       children: [
         if (eyebrow.isNotEmpty) ...[Text(eyebrow, style: TvDS.heroEyebrow, maxLines: 1, overflow: TextOverflow.ellipsis), const SizedBox(height: DS.s8)],
         Text(it.title, style: TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+        // A streaming app: what the picture behind is ("Popular on Netflix · Lupin").
+        if (it.kind == TvKind.app && AppTrending.has(it.package))
+          ValueListenableBuilder(
+            valueListenable: AppTrending.instance.showing,
+            builder: (context, now, _) => AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: now?.package != it.package
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      key: ValueKey(now!.title),
+                      padding: const EdgeInsets.only(top: DS.s8),
+                      child: Text(
+                        'Popular on ${AppTrending.providers[it.package]!.$2} · ${now.title}',
+                        style: TvDS.heroMeta,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+            ),
+          ),
         if (it.meta != null) ...[const SizedBox(height: DS.s8), Text(it.meta!, style: TvDS.heroMeta, maxLines: 1, overflow: TextOverflow.ellipsis)],
         if (it.progress != null) ...[const SizedBox(height: DS.s12), SizedBox(width: 220, child: _Progress(value: it.progress!))],
         if (it.description != null) ...[
