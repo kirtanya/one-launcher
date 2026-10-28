@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'prefs.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
+import 'ui/perf.dart';
 
 /// Search → "Recent searches": shows while search is open and nothing is typed (Settings →
 /// Search → Save search history). Tap a row → it's typed in and searched (and moves to the top);
@@ -194,7 +195,8 @@ class _RecentSearchesState extends State<RecentSearches> {
     _gone.removeWhere((q) => !history.contains(q)); // saved: no longer needed (and Undo brings it back)
     final rows = [
       for (final (i, q) in history.indexed)
-        if (!_gone.contains(q)) _row(q, i),
+        // A short cascade on arrival, newest (nearest the bar) first; rows already shown don't replay.
+        if (!_gone.contains(q)) _Cascade(key: ValueKey(q), index: i, upward: widget.upward, child: _row(q, i)),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
     if (metro) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_header(), ...rows]);
@@ -202,6 +204,31 @@ class _RecentSearchesState extends State<RecentSearches> {
       padding: const EdgeInsets.symmetric(vertical: DS.s4),
       // Title stays on top; newest sits nearest the bar.
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_header(), ...(widget.upward ? rows.reversed : rows)]),
+    );
+  }
+}
+
+/// One recent search fading in a beat after the one before it (index × 40 ms), rising from the
+/// bar's side. Mounted once per row, so updates and removals don't replay it.
+class _Cascade extends StatelessWidget {
+  const _Cascade({super.key, required this.index, required this.child, required this.upward});
+  final int index;
+  final Widget child;
+  final bool upward;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Perf.lite.value || index > 8) return child;
+    final start = (index * .08).clamp(0.0, .6);
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Interval(start, 1, curve: Curves.easeOutCubic),
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        child: Transform.translate(offset: Offset(0, (upward ? 10 : -10) * (1 - t)), child: child),
+      ),
     );
   }
 }

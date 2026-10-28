@@ -404,7 +404,10 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     // changes with the clock, so it isn't cached with the folders.
     final recent = prefs.recentInstalls ? recentInstalls(apps, prefs) : const <AppEntry>[];
     final groups = [if (recent.isNotEmpty) (recentlyInstalled, recent), ...folderGroups];
-    final fresh = {for (final a in apps) if (isNewApp(a, prefs)) a.package};
+    final fresh = {
+      for (final a in apps)
+        if (isNewApp(a, prefs)) a.package,
+    };
     // The dots on their icons: set after this frame (other screens listen too).
     if (!setEquals(fresh, newApps.value)) WidgetsBinding.instance.addPostFrameCallback((_) => newApps.value = fresh);
     _folderIds = [for (final (f, _) in groups) f.id];
@@ -463,32 +466,35 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (showResults) {
       final sources = prefs.searchIn;
       if (sources.contains('shortcuts')) _loadShortcuts();
-      final Widget results = history
+      final Widget found = history
           ? RecentSearches(prefs: prefs, upward: upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent)
           : _SearchResults(
-        query: q,
-        apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
-        shortcuts: [
-          for (final sc in sources.contains('shortcuts') ? (_shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
-            if (matchesQuery(q, [sc.label, sc.app])) sc,
-        ].take(5).toList(),
-        settings: sources.contains('settings')
-            ? [
-                for (final st in systemSettings)
-                  if (matchesQuery(q, [st.title, st.keywords])) st,
-              ].take(4).toList()
-            : const [],
-        web: sources.contains('google'),
-        play: sources.contains('play'),
-        oneStream: sources.contains('onestream'),
-        upward: upward,
-        prefs: prefs,
-        google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
-        onTap: widget.onLaunch,
-        onLongPress: _longPress,
-        onWebSearch: widget.onWebSearch,
-        onRun: widget.onRun,
-      );
+              query: q,
+              apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
+              shortcuts: [
+                for (final sc in sources.contains('shortcuts') ? (_shortcuts ?? const <AppShortcut>[]) : const <AppShortcut>[])
+                  if (matchesQuery(q, [sc.label, sc.app])) sc,
+              ].take(5).toList(),
+              settings: sources.contains('settings')
+                  ? [
+                      for (final st in systemSettings)
+                        if (matchesQuery(q, [st.title, st.keywords])) st,
+                    ].take(4).toList()
+                  : const [],
+              web: sources.contains('google'),
+              play: sources.contains('play'),
+              oneStream: sources.contains('onestream'),
+              upward: upward,
+              prefs: prefs,
+              google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
+              onTap: widget.onLaunch,
+              onLongPress: _longPress,
+              onWebSearch: widget.onWebSearch,
+              onRun: widget.onRun,
+            );
+      // Enters rising out of the bar (or dropping from the top bar), fading in — once when the
+      // recent searches appear and once when typing turns them into results, not per keystroke.
+      final Widget results = SearchEnter(key: ValueKey(history ? 'history' : 'results'), upward: upward, child: found);
       content = [
         if (upward)
           // Their own scroll area, reversed: it starts at the bottom (best match just above the
@@ -1366,7 +1372,10 @@ class _SearchResults extends StatelessWidget {
           key: const ValueKey('oneStream'),
           query: query,
           header: _title('Movies & shows'),
-          wrap: (child) => OneCard(padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s12), child: child),
+          wrap: (child) => OneCard(
+            padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s12),
+            child: child,
+          ),
           gap: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
           onOpen: () => prefs.addSearch(query), // a poster opened: the search was used
         ),
@@ -1457,4 +1466,30 @@ class NewDot extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// Search's card arriving: a fade with a short rise from the search bar (bar at the bottom) or
+/// drop from it (bar at the top), settling from 97 %. Plays once per key.
+class SearchEnter extends StatelessWidget {
+  const SearchEnter({super.key, required this.child, this.upward = true});
+  final Widget child;
+  final bool upward;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Perf.lite.value) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Motion.snapDuration,
+      curve: Motion.settle,
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, (upward ? 28 : -16) * (1 - t)),
+          child: Transform.scale(scale: .97 + .03 * t, alignment: upward ? Alignment.bottomCenter : Alignment.topCenter, child: child),
+        ),
+      ),
+    );
+  }
 }
