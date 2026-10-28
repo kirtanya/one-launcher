@@ -77,11 +77,23 @@ class ChipLook {
     'large' => 48,
     _ => 40,
   };
+  /// Space above and below the chips in the Classic row; grows with the chip so bigger
+  /// chips don't feel cramped against the sheet and the page above.
+  double get rowPad => switch (size) {
+    'small' => 4,
+    'large' => 12,
+    _ => 8,
+  };
+  double get rowHeight => height + rowPad * 2;
+
   double get iconSize => switch (size) {
     'small' => 16,
     'large' => 22,
     _ => 18,
   };
+  /// Icon only: the glyph grows to fill the chip (no inner padding); app shortcut icons fill it whole.
+  double get iconOnlyGlyph => height * .62;
+
   double get fontSize => switch (size) {
     'small' => 13,
     'large' => 15,
@@ -111,8 +123,9 @@ class QuickChipsRow extends StatelessWidget {
   /// Long-press a chip to customise. Off on Tiles, where long-press picks the whole row up.
   final bool chipLongPress;
 
-  /// Height of the row, and the gap it keeps from the sheet's top edge.
-  static const height = 48.0, gap = DS.s8;
+  /// Height of the row (the chips plus their breathing room), and the gap it keeps from the sheet's top edge.
+  static double heightOf(Prefs prefs) => ChipLook.of(prefs).rowHeight;
+  static const gap = DS.s8;
   final Prefs prefs;
 
   Future<void> _run(BuildContext context, String id, String label) async {
@@ -129,13 +142,15 @@ class QuickChipsRow extends StatelessWidget {
     final look = ChipLook.of(prefs);
     final labels = prefs.quickLabels;
     final ids = prefs.quickChips.where((id) => builtInActions.containsKey(id) || labels.containsKey(id)).toList();
+    final iconOnly = look.content == 'icon';
+    final glyph = iconOnly ? look.iconOnlyGlyph : look.iconSize;
     void customise() {
       HapticFeedback.mediumImpact();
       showCustomiseChips(context, prefs: prefs);
     }
 
     return SizedBox(
-      height: height,
+      height: look.rowHeight,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: padding,
@@ -151,7 +166,7 @@ class QuickChipsRow extends StatelessWidget {
                             builder: (context, on, _) => QuickChip(
                               look: look,
                               label: builtInActions[id]!.$1,
-                              icon: Icon(on ? Icons.flashlight_on_rounded : builtInActions[id]!.$2, size: look.iconSize, color: on ? DS.heroInk : look.ink),
+                              icon: Icon(on ? Icons.flashlight_on_rounded : builtInActions[id]!.$2, size: glyph, color: on ? DS.heroInk : look.ink),
                               active: on,
                               onTap: () => _run(context, id, builtInActions[id]!.$1),
                               onLongPress: chipLongPress ? customise : null,
@@ -160,14 +175,16 @@ class QuickChipsRow extends StatelessWidget {
                         : QuickChip(
                             look: look,
                             label: builtInActions[id]!.$1,
-                            icon: Icon(builtInActions[id]!.$2, size: look.iconSize, color: look.ink),
+                            icon: Icon(builtInActions[id]!.$2, size: glyph, color: look.ink),
                             onTap: () => _run(context, id, builtInActions[id]!.$1),
                             onLongPress: chipLongPress ? customise : null,
                           ))
                   : QuickChip(
                       look: look,
                       label: labels[id]!.split('|').first,
-                      icon: ShortcutIcon(id: id, size: look.iconSize + 2, color: look.ink),
+                      icon: iconOnly
+                          ? ShortcutIcon(id: id, size: look.height, radius: look.radius, fallbackSize: glyph, color: look.ink)
+                          : ShortcutIcon(id: id, size: look.iconSize + 2, color: look.ink),
                       onTap: () => _run(context, id, labels[id]!.split('|').first),
                       onLongPress: chipLongPress ? customise : null,
                     ),
@@ -185,9 +202,9 @@ class QuickChipsRow extends StatelessWidget {
                   child: InkWell(
                     onTap: customise,
                     child: SizedBox(
-                      width: math.max(look.height, 40),
+                      width: iconOnly ? look.height : math.max(look.height, 40),
                       height: look.height,
-                      child: Icon(Icons.add_rounded, color: look.ink, size: look.iconSize + 2),
+                      child: Icon(Icons.add_rounded, color: look.ink, size: iconOnly ? glyph : look.iconSize + 2),
                     ),
                   ),
                 ),
@@ -235,7 +252,7 @@ class QuickChip extends StatelessWidget {
               onLongPress: onLongPress,
               child: SizedBox(
                 height: h,
-                width: iconOnly ? math.max(h, 40) : null,
+                width: iconOnly ? h : null, // icon only: a circle/square the icon fills
                 child: iconOnly
                     ? Center(child: icon)
                     : Padding(
@@ -262,9 +279,11 @@ class QuickChip extends StatelessWidget {
 
 /// An app shortcut's own icon (falls back to a generic one).
 class ShortcutIcon extends StatelessWidget {
-  const ShortcutIcon({super.key, required this.id, this.size = 20, this.color});
+  const ShortcutIcon({super.key, required this.id, this.size = 20, this.radius, this.fallbackSize, this.color});
   final String id;
   final double size;
+  final double? radius; // corner of the icon (default a quarter of its size)
+  final double? fallbackSize; // the generic icon's size (default almost the full size)
   final Color? color; // fallback icon colour
 
   @override
@@ -274,8 +293,8 @@ class ShortcutIcon extends StatelessWidget {
       child: FutureBuilder<Uint8List?>(
         future: Apps.instance.shortcutIcon(id),
         builder: (context, snap) => snap.data == null
-            ? Icon(Icons.bolt_rounded, size: size * .9, color: color ?? DS.ink)
-            : ClipRRect(borderRadius: BorderRadius.circular(size / 4), child: Image.memory(snap.data!, gaplessPlayback: true)),
+            ? Icon(Icons.bolt_rounded, size: fallbackSize ?? size * .9, color: color ?? DS.ink)
+            : ClipRRect(borderRadius: BorderRadius.circular(radius ?? size / 4), child: Image.memory(snap.data!, gaplessPlayback: true)),
       ),
     );
   }

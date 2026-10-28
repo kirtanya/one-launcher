@@ -578,6 +578,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                     child: RepaintBoundary(
                                       // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
                                       child: _TopArea(
+                                        chipsHeight: QuickChipsRow.heightOf(prefs),
                                         carousel: NotificationListener<ScrollNotification>(
                                           onNotification: _onCarouselScroll, // past its first page → the today panel
                                           child: TopCarousel(
@@ -629,8 +630,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                     return Positioned(
                                       left: 0,
                                       right: 0,
-                                      top: sheetTop - QuickChipsRow.height - QuickChipsRow.gap,
-                                      height: QuickChipsRow.height,
+                                      top: sheetTop - QuickChipsRow.heightOf(prefs) - QuickChipsRow.gap,
+                                      height: QuickChipsRow.heightOf(prefs),
                                       child: IgnorePointer(
                                         ignoring: e > .2,
                                         child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
@@ -695,6 +696,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
 class _TopArea extends StatelessWidget {
   const _TopArea({
+    required this.chipsHeight,
     required this.carousel,
     required this.blank,
     required this.padding,
@@ -703,6 +705,7 @@ class _TopArea extends StatelessWidget {
     required this.onCustomise,
   });
 
+  final double chipsHeight; // the quick chips row, which grows with Chip look → Size
   final Widget carousel;
   final ValueListenable<bool> blank;
   final double padding; // user-set breathing room (Settings → Top widgets padding)
@@ -730,7 +733,7 @@ class _TopArea extends StatelessWidget {
                 DS.s4 + padding * .5,
                 DS.s8 + padding,
                 // room for the sheet's rounded top + the quick chips row above it
-                DS.rSheet + QuickChipsRow.height + QuickChipsRow.gap + DS.s4 + padding * .5,
+                DS.rSheet + chipsHeight + QuickChipsRow.gap + DS.s4 + padding * .5,
               ),
               child: carousel,
             ),
