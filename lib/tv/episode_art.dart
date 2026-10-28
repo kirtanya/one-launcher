@@ -190,9 +190,29 @@ class EpisodeArt {
     );
   }
 
+  /// The TV fetches through Android's own network stack (TvApps.httpGet, like the search catalog:
+  /// Dart's client doesn't get through on the TV); tests and tools use Dart's. → (status, body);
+  /// status -1 when there's no connection.
+  static Future<(int, String)> Function(String url)? fetch;
+
   /// A JSON answer, or null. A busy or failed answer (Wikidata slows bursts down) is tried once
   /// more a moment later, so one hiccup doesn't leave a show without its picture.
   static Future<Object?> _json(Uri url) async {
+    if (fetch case final get?) {
+      for (var attempt = 0; attempt < 2; attempt++) {
+        if (attempt > 0) await Future<void>.delayed(const Duration(seconds: 2));
+        final (status, body) = await get(url.toString());
+        if (status == 404) return null;
+        if (status == 200) {
+          try {
+            return jsonDecode(body);
+          } catch (_) {
+            return null;
+          }
+        }
+      }
+      return null;
+    }
     for (var attempt = 0; attempt < 2; attempt++) {
       if (attempt > 0) await Future<void>.delayed(const Duration(seconds: 2));
       final client = HttpClient()..connectionTimeout = const Duration(seconds: 6);

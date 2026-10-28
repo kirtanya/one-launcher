@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../apps.dart';
 import '../one_stream.dart';
+import 'episode_art.dart';
 
 /// A TV app's artwork: its 16:9 banner when it has one, else its square icon.
 class TvArt {
@@ -52,6 +53,8 @@ class TvApps {
   void init() {
     if (demo) return;
     refreshShows();
+    // Episode pictures look shows up through Android's network stack, like search does.
+    EpisodeArt.fetch = (url) => httpGet(url, headers: const {'User-Agent': 'OneLauncherTV/1.0 (personal launcher)', 'Accept': 'application/json'});
     _ch.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'homePressed':
