@@ -16,6 +16,7 @@ class TvDS {
   static const rTile = 14.0;
   static const focusScale = 1.12;
   static const focusRing = 3.0;
+  static const focusGap = 3.0; // background between a focused card and its ring
 
   // ---- Rows ----
   static const headerH = 164.0; // clock + date + buttons

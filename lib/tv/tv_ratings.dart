@@ -100,12 +100,7 @@ class TvReviewCard extends StatelessWidget {
               boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
             ),
             // Focus: a white ring (Tiles: the Metro frame).
-            foregroundDecoration: TvMetro.on
-                ? TvMetro.frame(f, width: TvDS.focusRing)
-                : BoxDecoration(
-                    borderRadius: BorderRadius.circular(TvDS.rTile - 2),
-                    border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                  ),
+            foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -323,12 +318,7 @@ class TvEpisodeCard extends StatelessWidget {
                   duration: Motion.pressIn * 2,
                   width: w,
                   height: stillH,
-                  foregroundDecoration: TvMetro.on
-                      ? TvMetro.frame(f, width: TvDS.focusRing)
-                      : BoxDecoration(
-                          borderRadius: BorderRadius.circular(TvDS.rTile - 4),
-                          border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                        ),
+                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 4),
                   decoration: BoxDecoration(
                     borderRadius: TvMetro.corners(TvDS.rTile - 4),
                     boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),

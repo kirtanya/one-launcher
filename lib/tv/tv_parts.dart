@@ -53,12 +53,7 @@ class TvAppTile extends StatelessWidget {
                   height: TvDS.tileH,
                   // Ring + glow only on the focused tile (one blur on screen at a time). Tiles: the
                   // Metro frame and corners.
-                  foregroundDecoration: TvMetro.on
-                      ? TvMetro.frame(f, width: TvDS.focusRing)
-                      : BoxDecoration(
-                          borderRadius: BorderRadius.circular(TvDS.rTile),
-                          border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                        ),
+                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
                   decoration: BoxDecoration(
                     borderRadius: TvMetro.corners(TvDS.rTile),
                     boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null),
@@ -286,6 +281,37 @@ Future<void> showTvPanel(
       child: FadeTransition(opacity: a, child: child),
     ),
   );
+}
+
+/// The focus ring, drawn just outside the card with a small gap of background between them, so
+/// it stays visible on a white picture or a white app logo.
+class TvRing extends Decoration {
+  const TvRing({required this.on, required this.radius, this.width = TvDS.focusRing, this.gap = TvDS.focusGap});
+  final bool on;
+  final double radius, width, gap;
+
+  @override
+  BoxPainter createBoxPainter([VoidCallback? onChanged]) => _TvRingPainter(this);
+}
+
+class _TvRingPainter extends BoxPainter {
+  _TvRingPainter(this.ring);
+  final TvRing ring;
+
+  @override
+  void paint(Canvas canvas, Offset offset, ImageConfiguration configuration) {
+    if (!ring.on || configuration.size == null) return;
+    final out = ring.gap + ring.width / 2; // centre of the stroke, beyond the gap
+    final rect = (offset & configuration.size!).inflate(out);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, Radius.circular(ring.radius + out)),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ring.width
+        ..color = TvDS.surfaceFocused
+        ..isAntiAlias = true,
+    );
+  }
 }
 
 /// A calm colour from a name (same name → same colour): used where there's no artwork.

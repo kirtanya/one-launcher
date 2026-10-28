@@ -114,12 +114,7 @@ class TvPoster extends StatelessWidget {
                   width: w,
                   height: h,
                   // Tiles: the Metro frame and the tile corners.
-                  foregroundDecoration: TvMetro.on
-                      ? TvMetro.frame(f, width: TvDS.focusRing)
-                      : BoxDecoration(
-                          borderRadius: BorderRadius.circular(TvDS.rTile),
-                          border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                        ),
+                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
                   decoration: BoxDecoration(
                     borderRadius: TvMetro.corners(TvDS.rTile),
                     boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
@@ -528,7 +523,11 @@ class _TvTitlePageState extends State<TvTitlePage> {
               Text(t.title, style: TvMetro.on ? TvMetro.title(size: 44) : TvDS.heroTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: DS.s16),
               // The scores there are (IMDb from the catalog, the rest from OMDb), then the series' status.
-              RatingsRow(imdb: t.rating, ratings: _ratings, trailing: [if (d?.status != null) _Chip(label: TvMetro.cased(d!.status!))]),
+              RatingsRow(
+                imdb: t.rating,
+                ratings: _ratings,
+                trailing: [if (d?.status != null) _Chip(label: TvMetro.cased(d!.status!))],
+              ),
               if (t.overview != null) ...[
                 const SizedBox(height: DS.s16),
                 Text(t.overview!, style: TvDS.heroBody, maxLines: 3, overflow: TextOverflow.ellipsis),
@@ -561,9 +560,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
                     : SizedBox(width: 40, height: 22.5, child: TvAppArt(app: _installed(OneStream.package)!, width: 40)),
                 icon: Icons.play_arrow_rounded,
                 label: _stream?.hasProgress == true ? ['Resume in One Stream', ?_stream!.left].join(' · ') : 'Play in One Stream',
-                onSelect: () => OneStream.instance.open(
-                  _stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie'),
-                ),
+                onSelect: () => OneStream.instance.open(_stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie')),
               ),
             // …and its page here (episodes, sources, watchlist, download), when One Stream knows it.
             if (_stream?.tmdb != null)

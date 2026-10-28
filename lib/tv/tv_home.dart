@@ -1724,10 +1724,7 @@ class _Card extends StatelessWidget {
             width: width,
             height: height,
             // Ring + glow only on the focused card (one blur on screen at a time).
-            foregroundDecoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(TvDS.rTile),
-              border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-            ),
+            foregroundDecoration: TvRing(on: f, radius: TvDS.rTile),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(TvDS.rTile),
               boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
