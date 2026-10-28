@@ -269,7 +269,18 @@ class Prefs extends ChangeNotifier {
 
   /// Everything the user set, as a JSON file. App widgets are left out: Android ties them to
   /// the phone they were added on, so they can't be restored elsewhere.
-  static const _phoneOnly = {'widgetLabels', 'panelWidgets', 'todayTiles', 'installId', 'wallpaperPhoto', 'slowFrames', 'tvHost', 'tvName', 'tvBrightness', 'searchHistory'};
+  static const _phoneOnly = {
+    'widgetLabels',
+    'panelWidgets',
+    'todayTiles',
+    'installId',
+    'wallpaperPhoto',
+    'slowFrames',
+    'tvHost',
+    'tvName',
+    'tvBrightness',
+    'searchHistory',
+  };
 
   String exportBackup() {
     final out = <String, Object>{};
@@ -467,6 +478,28 @@ class Prefs extends ChangeNotifier {
 
   /// The phone remote's quick apps (ids from remoteAppCatalog, or `c:name|package` for one
   /// the user typed in), left to right.
+  /// The remote's groups, top to bottom (⋮ → Arrange remote). Groups added in a later version
+  /// appear at their default spot; hidden ones keep their place for when they're shown again.
+  static const remoteGroupsDefault = ['dpad', 'nav', 'media', 'volume', 'brightness', 'apps'];
+  List<String> get remoteGroups {
+    final saved = [
+      for (final g in _sp.getStringList('remoteGroups') ?? remoteGroupsDefault)
+        if (remoteGroupsDefault.contains(g)) g,
+    ];
+    for (final (i, g) in remoteGroupsDefault.indexed) {
+      if (!saved.contains(g)) saved.insert(i.clamp(0, saved.length), g);
+    }
+    return saved;
+  }
+
+  Future<void> setRemoteGroups(List<String> ids) => _setList('remoteGroups', ids);
+  Set<String> get remoteHidden => (_sp.getStringList('remoteHidden') ?? const []).toSet();
+  Future<void> setRemoteHidden(String id, bool hidden) {
+    final next = remoteHidden..remove(id);
+    if (hidden) next.add(id);
+    return _setList('remoteHidden', next.toList());
+  }
+
   static const remoteAppsDefault = ['youtube', 'netflix', 'prime', 'hotstar'];
   List<String> get remoteApps => _sp.getStringList('remoteApps') ?? remoteAppsDefault;
   Future<void> setRemoteApps(List<String> ids) => _setList('remoteApps', ids);
@@ -484,6 +517,7 @@ class Prefs extends ChangeNotifier {
     }
     return saved;
   }
+
   Future<void> setTvQuickActions(List<String> ids) => _setList('tvQuickActions', ids);
 
   /// TV: apps opened from the launcher, newest first ("Jump back in").
@@ -723,6 +757,7 @@ class Prefs extends ChangeNotifier {
   /// The today page's layout ('tiles' | 'list') and background ('wallpaper' | 'black').
   String get todayLayout => _sp.getString('todayLayout') ?? 'tiles';
   String get todayBg => _sp.getString('todayBg') ?? 'wallpaper';
+
   /// Cards/tiles layout: each row only as tall as its tallest widget, instead of the square grid.
   bool get todayHug => _sp.getBool('todayHug') ?? false;
   Future<void> setTodayLook({String? layout, String? bg, bool? hug}) async {

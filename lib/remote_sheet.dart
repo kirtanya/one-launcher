@@ -133,7 +133,12 @@ class _RemoteSheetState extends State<_RemoteSheet> {
   }
 
   Future<void> _forget() async {
-    if (!await confirmReset(context, title: 'Forget ${prefs.tvName}?', body: 'The remote stops working until you pair again with a code on the TV.', action: 'Forget')) {
+    if (!await confirmReset(
+      context,
+      title: 'Forget ${prefs.tvName}?',
+      body: 'The remote stops working until you pair again with a code on the TV.',
+      action: 'Forget',
+    )) {
       return;
     }
     final host = prefs.tvHost;
@@ -268,8 +273,16 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                     tooltip: 'More',
                     icon: Icon(Icons.more_vert_rounded, color: DS.ink),
                     color: DS.card,
-                    onSelected: (v) => v == 'forget' ? _forget() : tv.connect(prefs.tvHost!),
+                    onSelected: (v) => switch (v) {
+                      'forget' => _forget(),
+                      'arrange' => showRemoteArrange(context, prefs: prefs),
+                      _ => tv.connect(prefs.tvHost!),
+                    },
                     itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'arrange',
+                        child: Text('Arrange remote', style: DS.rowTitle),
+                      ),
                       PopupMenuItem(
                         value: 'reconnect',
                         child: Text('Reconnect', style: DS.rowTitle),
@@ -305,79 +318,26 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                           child: LayoutBuilder(
                             builder: (context, c) {
                               final pad = (c.maxWidth * .74).clamp(220.0, 300.0);
-                              return Column(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  _DPad(size: pad, onKey: _press, onHold: _hold),
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                    children: [
-                                      _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back), onHold: (d) => _hold(TvKey.back, d)),
-                                      _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home), onHold: (d) => _hold(TvKey.home, d)),
-                                      _Round(
-                                        icon: Icons.play_arrow_rounded,
-                                        tooltip: 'Play / pause',
-                                        onTap: () => _press(TvKey.playPause),
-                                        onHold: (d) => _hold(TvKey.playPause, d),
-                                      ),
-                                      _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input), onHold: (d) => _hold(TvKey.input, d)),
-                                      _Round(
-                                        icon: Icons.keyboard_rounded,
-                                        tooltip: 'Type on TV',
-                                        onTap: () {
-                                          HapticFeedback.selectionClick();
-                                          tv.ime.value ??= ('', '');
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                              final hidden = prefs.remoteHidden;
+                              // The groups in the user's order (⋮ → Arrange remote), spread out when
+                              // they fit; scrolling when they don't.
+                              return SingleChildScrollView(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(minHeight: c.maxHeight),
+                                  child: IntrinsicHeight(
                                     child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                       children: [
-                                        _Volume(onKey: _press, volume: tv.volume),
-                                        const SizedBox(height: DS.s8),
-                                        _Brightness(prefs: prefs),
+                                        for (final g in prefs.remoteGroups)
+                                          if (!hidden.contains(g))
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: DS.s8),
+                                              child: _group(g, pad),
+                                            ),
                                       ],
                                     ),
                                   ),
-                                  SizedBox(
-                                    height: 40,
-                                    // A handful of chips: built all at once (no lazy list).
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                                      child: Row(
-                                        children: [
-                                          // Quick apps: the user's own (Edit at the end).
-                                          for (final app in [for (final id in prefs.remoteApps) ?remoteAppFor(id)])
-                                            Padding(
-                                              padding: const EdgeInsets.only(right: DS.s8),
-                                              child: ActionChip(
-                                                label: Text(app.name, style: DS.rowTitle.copyWith(fontSize: 14)),
-                                                backgroundColor: DS.cardMuted,
-                                                side: BorderSide.none,
-                                                shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
-                                                onPressed: () {
-                                                  HapticFeedback.selectionClick();
-                                                  openRemoteApp(app);
-                                                },
-                                              ),
-                                            ),
-                                          ActionChip(
-                                            avatar: Icon(Icons.edit_outlined, size: 18, color: DS.ink),
-                                            label: Text('Edit', style: DS.rowTitle.copyWith(fontSize: 14)),
-                                            tooltip: 'Edit quick apps',
-                                            backgroundColor: Colors.transparent,
-                                            side: BorderSide(color: DS.hairline),
-                                            shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
-                                            onPressed: () => showRemoteAppsEditor(context, prefs: prefs),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                ),
                               );
                             },
                           ),
@@ -398,6 +358,85 @@ class _RemoteSheetState extends State<_RemoteSheet> {
       },
     );
   }
+
+  /// One of the remote's groups (Prefs.remoteGroupsDefault).
+  Widget _group(String id, double pad) => switch (id) {
+    'dpad' => _DPad(size: pad, onKey: _press, onHold: _hold),
+    'nav' => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _Round(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () => _press(TvKey.back), onHold: (d) => _hold(TvKey.back, d)),
+        _Round(icon: Icons.home_rounded, tooltip: 'Home', onTap: () => _press(TvKey.home), onHold: (d) => _hold(TvKey.home, d)),
+        _Round(icon: Icons.input_rounded, tooltip: 'Input', onTap: () => _press(TvKey.input), onHold: (d) => _hold(TvKey.input, d)),
+        _Round(icon: Icons.layers_outlined, tooltip: 'Recent apps', onTap: () => _press(TvKey.appSwitch)),
+        _Round(
+          icon: Icons.keyboard_rounded,
+          tooltip: 'Type on TV',
+          onTap: () {
+            HapticFeedback.selectionClick();
+            tv.ime.value ??= ('', '');
+          },
+        ),
+      ],
+    ),
+    // Rewind / fast-forward, captions and audio track: what they do is up to the app playing.
+    'media' => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _Round(icon: Icons.replay_10_rounded, tooltip: 'Rewind', onTap: () => _press(TvKey.rewind), onHold: (d) => _hold(TvKey.rewind, d)),
+        _Round(icon: Icons.play_arrow_rounded, tooltip: 'Play / pause', onTap: () => _press(TvKey.playPause), onHold: (d) => _hold(TvKey.playPause, d)),
+        _Round(icon: Icons.forward_10_rounded, tooltip: 'Fast-forward', onTap: () => _press(TvKey.fastForward), onHold: (d) => _hold(TvKey.fastForward, d)),
+        _Round(icon: Icons.closed_caption_outlined, tooltip: 'Captions', onTap: () => _press(TvKey.captions)),
+        _Round(icon: Icons.record_voice_over_outlined, tooltip: 'Audio track', onTap: () => _press(TvKey.audioTrack)),
+      ],
+    ),
+    'volume' => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+      child: _Volume(onKey: _press, volume: tv.volume),
+    ),
+    'brightness' => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+      child: _Brightness(prefs: prefs),
+    ),
+    _ => _quickApps(),
+  };
+
+  Widget _quickApps() => SizedBox(
+    height: 40,
+    // A handful of chips: built all at once (no lazy list).
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+      child: Row(
+        children: [
+          // Quick apps: the user's own (Edit at the end).
+          for (final app in [for (final id in prefs.remoteApps) ?remoteAppFor(id)])
+            Padding(
+              padding: const EdgeInsets.only(right: DS.s8),
+              child: ActionChip(
+                label: Text(app.name, style: DS.rowTitle.copyWith(fontSize: 14)),
+                backgroundColor: DS.cardMuted,
+                side: BorderSide.none,
+                shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  openRemoteApp(app);
+                },
+              ),
+            ),
+          ActionChip(
+            avatar: Icon(Icons.edit_outlined, size: 18, color: DS.ink),
+            label: Text('Edit', style: DS.rowTitle.copyWith(fontSize: 14)),
+            tooltip: 'Edit quick apps',
+            backgroundColor: Colors.transparent,
+            side: BorderSide(color: DS.hairline),
+            shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),
+            onPressed: () => showRemoteAppsEditor(context, prefs: prefs),
+          ),
+        ],
+      ),
+    ),
+  );
 
   void _press(int code, {bool strong = false}) {
     strong ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
@@ -915,6 +954,79 @@ class _TypingPanelState extends State<_TypingPanel> {
 
 /// The remote's quick apps: remove the ones on the row, add common TV apps, or any app by its
 /// package name (for apps not listed). Changes show on the remote at once.
+/// The remote's groups (⋮ → Arrange remote): move each up or down, show or hide it.
+const remoteGroupNames = {
+  'dpad': ('Direction pad', 'Up, down, left, right and OK'),
+  'nav': ('Navigate', 'Back · Home · Input · Recent apps · Type'),
+  'media': ('Playback', 'Rewind · Play / pause · Fast-forward · Captions · Audio'),
+  'volume': ('Volume', 'Mute, down, up and the level'),
+  'brightness': ('Brightness', 'The TV’s backlight'),
+  'apps': ('Quick apps', 'Your app buttons'),
+};
+
+Future<Object?> showRemoteArrange(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
+  context,
+  builder: (ctx) => ListenableBuilder(
+    listenable: prefs,
+    builder: (ctx, _) {
+      final ids = prefs.remoteGroups;
+      final hidden = prefs.remoteHidden;
+      void move(int i, int by) => prefs.setRemoteGroups(
+        [...ids]
+          ..removeAt(i)
+          ..insert(i + by, ids[i]),
+      );
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
+            child: SheetHeader(title: 'Arrange remote', subtitle: 'Top to bottom · hide what you don’t use'),
+          ),
+          for (final (i, id) in ids.indexed)
+            if (remoteGroupNames[id] case (final name, final sub))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s8, DS.s4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: DS.rowTitle.copyWith(color: hidden.contains(id) ? DS.inkMuted : DS.ink)),
+                          Text(sub, style: DS.rowSub.copyWith(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Move $name up',
+                      onPressed: i == 0 ? null : () => move(i, -1),
+                      icon: Icon(Icons.arrow_upward_rounded, color: i == 0 ? DS.inkFaint : DS.ink),
+                    ),
+                    IconButton(
+                      tooltip: 'Move $name down',
+                      onPressed: i == ids.length - 1 ? null : () => move(i, 1),
+                      icon: Icon(Icons.arrow_downward_rounded, color: i == ids.length - 1 ? DS.inkFaint : DS.ink),
+                    ),
+                    IconButton(
+                      tooltip: hidden.contains(id) ? 'Show $name' : 'Hide $name',
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        prefs.setRemoteHidden(id, !hidden.contains(id));
+                      },
+                      icon: Icon(hidden.contains(id) ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: DS.ink),
+                    ),
+                  ],
+                ),
+              ),
+          const SizedBox(height: DS.s16),
+        ],
+      );
+    },
+  ),
+);
+
 Future<Object?> showRemoteAppsEditor(BuildContext context, {required Prefs prefs}) => showOneSheetWith(
   context,
   builder: (ctx) => ListenableBuilder(

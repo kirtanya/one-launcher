@@ -12,6 +12,12 @@ abstract final class TvKey {
   static const next = 87, previous = 88, mute = 164, input = 178, settings = 176;
   static const enter = 66, delete = 67;
 
+  /// Playback extras: what each does is up to the streaming app (most seek back / forward).
+  static const rewind = 89, fastForward = 90, captions = 175, audioTrack = 222;
+
+  /// The TV's recent apps.
+  static const appSwitch = 187;
+
   /// Wakes the TV; unlike [power] it never turns it off.
   static const wakeup = 224;
 }
@@ -253,5 +259,4 @@ RemoteApp? remoteAppFor(String id) {
 
 /// Opens [app] on the TV: its web link when it has one (the app takes it), else through One
 /// Launcher TV (onelauncher://launch — needs it installed on the TV).
-Future<void> openRemoteApp(RemoteApp app) =>
-    TvRemote.instance.appLink(app.web ?? 'onelauncher://launch?package=${Uri.encodeQueryComponent(app.package)}');
+Future<void> openRemoteApp(RemoteApp app) => TvRemote.instance.appLink(app.web ?? 'onelauncher://launch?package=${Uri.encodeQueryComponent(app.package)}');
