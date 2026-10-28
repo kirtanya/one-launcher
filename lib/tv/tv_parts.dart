@@ -275,12 +275,13 @@ Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().to
 /// Darkens a full-bleed picture into the canvas: from the left (behind text) and the bottom,
 /// plus a light veil at the top.
 class TvScrims extends StatelessWidget {
-  const TvScrims({super.key, this.strength = 1});
+  const TvScrims({super.key, this.strength = 1, this.colour});
   final double strength; // Customise → Background darkness (×, clamped)
+  final Color? colour; // what the picture fades into (default the canvas)
 
   @override
   Widget build(BuildContext context) {
-    final c = TvDS.canvas;
+    final c = colour ?? TvDS.canvas;
     return IgnorePointer(
       child: Stack(
         fit: StackFit.expand,

@@ -371,6 +371,9 @@ class _TvHomeState extends State<TvHome> {
       if (_artLookups.containsKey(title)) return _artLookups[title];
       _artLookups[title] = null;
       EpisodeArt.instance.find(title).then((url) {
+        // None (or offline): asked again the next time the row is built; EpisodeArt remembers
+        // a real "not found" itself, so that costs nothing.
+        if (url == null) _artLookups.remove(title);
         if (url == null || !mounted) return;
         _artLookups[title] = url;
         _regroup();
@@ -1050,7 +1053,7 @@ class _TvHomeState extends State<TvHome> {
               ),
             )
           : Scaffold(
-              backgroundColor: TvDS.canvas,
+              backgroundColor: TvDS.scrim, // Classic: black under the picture and its fades
               body: LayoutBuilder(
                 builder: (context, c) {
                   TvLook.read(prefs);
@@ -1068,7 +1071,8 @@ class _TvHomeState extends State<TvHome> {
                             ? const SizedBox.expand()
                             : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
                       ),
-                      TvScrims(strength: TvLook.number('dim')),
+                      // Fades into pure black (the canvas grey looked washed out next to the picture).
+                      TvScrims(strength: TvLook.number('dim'), colour: TvDS.scrim),
 
                       // ---- Title block: what's focused ----
                       Positioned(
