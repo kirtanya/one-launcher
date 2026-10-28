@@ -51,6 +51,7 @@ class TvApps {
 
   void init() {
     if (demo) return;
+    refreshShows();
     _ch.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'homePressed':
@@ -62,11 +63,28 @@ class TvApps {
           OneStream.instance.refresh(); // One Stream installed / removed
         case 'resumed':
           onResumed?.call();
+          refreshShows(); // may have just been switched on in Accessibility settings
+        case 'showNamesChanged':
+          refreshShows();
         case 'mediaChanged':
           media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }
     });
   }
+
+  /// Read show names (ShowNameService.kt): which show an app's episode belongs to, read from its
+  /// player overlay. Empty until switched on in Accessibility settings.
+  final shows = ValueNotifier(const TvShowNames());
+
+  Future<void> refreshShows() async {
+    if (demo) return;
+    final m = await _ch.invokeMapMethod<String, Object?>('showNames');
+    if (m == null) return;
+    Map<String, String> strings(Object? x) => {for (final e in (x as Map? ?? const {}).entries) '${e.key}': '${e.value}'};
+    shows.value = TvShowNames(pairs: strings(m['pairs']), last: strings(m['last']), on: m['on'] == true);
+  }
+
+  Future<void> openAccessibility() => _call('openAccessibility');
 
   Future<List<AppEntry>> list() async {
     if (demo) return _demo;
@@ -221,6 +239,7 @@ class TvApps {
     }
     return _call('openAction', {'id': id});
   }
+
   Future<void> openSettings() => _call('openSettings');
   Future<void> openInputs() => _call('openInputs');
   Future<void> openHomeSettings() => _call('openHomeSettings');
@@ -317,4 +336,17 @@ class TvApps {
     AppEntry(package: 'com.android.chrome', label: 'Chrome'),
     AppEntry(package: 'com.estrongs.android.pop', label: 'File Manager', system: true),
   ];
+}
+
+/// Show names read from apps' screens: "package|episode title" → show, and each app's last show.
+class TvShowNames {
+  const TvShowNames({this.pairs = const {}, this.last = const {}, this.on = false});
+  final Map<String, String> pairs, last;
+  final bool on; // switched on in Accessibility settings
+
+  /// The show this exact episode was seen under.
+  String? showOf(String package, String title) => pairs['$package|$title'];
+
+  /// The app's latest show (an autoplayed next episode is usually the same one).
+  String? lastOf(String package) => last[package];
 }

@@ -357,13 +357,25 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
     context,
     title: name,
     // Search also follows the catalog (updating…, titles, last updated).
-    refresh: name == 'Search' ? Listenable.merge([prefs, Catalog.instance]) : prefs,
+    // Remote & behaviour: Read show names turns On once switched on in Accessibility settings.
+    refresh: name == 'Search'
+        ? Listenable.merge([prefs, Catalog.instance])
+        : (name == 'Remote & behaviour' ? Listenable.merge([prefs, TvApps.instance.shows]) : prefs),
     build: () {
       TvLook.read(prefs);
       return [
         TvAction(Icons.arrow_back_rounded, 'Back', back ?? () => showTvCustomise(context, prefs: prefs, extras: extras)),
         if (name == 'Search') ...catalogRows(context, prefs, reopen: () => _section(context, prefs, name, opts, extras)),
         for (final o in opts) _optionRow(prefs, o),
+        if (name == 'Remote & behaviour')
+          // JioHotstar & co. share only "S1 E5 Firewall": the show is read off their player (text
+          // only) so the episode gets its picture. Android asks for this in Accessibility.
+          TvAction(
+            Icons.subtitles_outlined,
+            'Read show names (for episode pictures)',
+            TvApps.instance.openAccessibility,
+            value: TvApps.instance.shows.value.on ? 'On' : 'Off · turn on in Accessibility',
+          ),
         if (name == 'Remote & behaviour')
           TvAction(
             Icons.delete_sweep_outlined,

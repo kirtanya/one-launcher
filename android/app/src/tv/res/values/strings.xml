@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="show_names_description">Lets One Launcher TV read the show\'s name from the screen of an app that is playing (for example JioHotstar\'s player shows "VisionQuest" above "S1 E5 Firewall"), so Continue watching can show that episode\'s picture. It reads text only — never pictures or the video — and only while an app is playing. Just the show name is kept, on this TV.</string>
+</resources>

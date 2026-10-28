@@ -77,8 +77,9 @@ class TvRow {
   // Customise → Card size scales every card; Row titles off removes their line.
   double get cardW => (wide ? TvDS.wideW : TvDS.tileW) * TvLook.number('cardScale');
   double get cardH => (wide ? TvDS.wideH : TvDS.tileH) * TvLook.number('cardScale');
-  double get height =>
-      chips ? TvDS.cardRowPad + 40 * TvLook.get<double>('quickSize') + TvDS.cardRowGap : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
+  double get height => chips
+      ? TvDS.cardRowPad + 40 * TvLook.get<double>('quickSize') + TvDS.cardRowGap
+      : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
 }
 
 /// The TV home screen, cinematic: the focused item's artwork fills the screen behind a
@@ -127,6 +128,7 @@ class _TvHomeState extends State<TvHome> {
       Catalog.instance.maybeUpdate(); // shows & films catalog: update in the background when due
     };
     tv.media.addListener(_regroup);
+    tv.shows.addListener(_regroup); // a show name read from an app's screen: its episode's picture
     prefs.addListener(_regroup);
     OneStream.instance.available.addListener(_loadContent); // installed / removed: its resume items
     _load();
@@ -136,6 +138,7 @@ class _TvHomeState extends State<TvHome> {
   @override
   void dispose() {
     tv.media.removeListener(_regroup);
+    tv.shows.removeListener(_regroup);
     prefs.removeListener(_regroup);
     OneStream.instance.available.removeListener(_loadContent);
     _backdropTimer?.cancel();
@@ -203,7 +206,7 @@ class _TvHomeState extends State<TvHome> {
           appName: m['app'] as String?,
           meta: _joinMeta([m['artist'] as String?, if (dur > 0) _left(dur - pos)]),
           art: art is Uint8List ? MemoryImage(art) : null,
-          image: art is Uint8List ? null : _lookupArt(m['title'] as String, m['artist'] as String?),
+          image: art is Uint8List ? null : _lookupArt(m['title'] as String, m['artist'] as String?, m['package'] as String? ?? ''),
           progress: dur > 0 ? (pos / dur).clamp(0, 1) : null,
           playing: m['playing'] == true,
         ),
@@ -250,7 +253,7 @@ class _TvHomeState extends State<TvHome> {
           appName: (h['app'] as String?) ?? appName(pkg),
           meta: _joinMeta([h['subtitle'] as String?, if (dur > 0 && pos > 0) _left(dur - pos), _ago((h['at'] as num?)?.toInt())]),
           art: artPath != null && !TvApps.demo ? FileImage(File(artPath)) : null,
-          image: artPath == null ? _lookupArt(title, h['subtitle'] as String?) : null,
+          image: artPath == null ? _lookupArt(title, h['subtitle'] as String?, pkg) : null,
           progress: dur > 0 && pos > 0 ? (pos / dur).clamp(0, 1) : null,
           historyKey: h['key'] as String?,
         ),
@@ -361,21 +364,31 @@ class _TvHomeState extends State<TvHome> {
   /// Apps that share no picture at all (JioHotstar): the show's artwork from the catalog, found
   /// by name. Only an exact name match counts, so a show never gets someone else's poster.
   final _artLookups = <String, String?>{};
-  String? _lookupArt(String title, String? show) {
+  String? _lookupArt(String title, String? show, String package) {
     if (TvApps.demo) return null;
     String fold(String x) => x.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     final episode = RegExp(r'^\s*S\d+\W*E\d+', caseSensitive: false);
     final hasShow = show?.trim().isNotEmpty ?? false;
     if (!hasShow && episode.hasMatch(title)) {
-      // Only "S4 E9 Greatness Achieved" (JioHotstar): find the show by the episode's name.
-      if (_artLookups.containsKey(title)) return _artLookups[title];
-      _artLookups[title] = null;
-      EpisodeArt.instance.find(title).then((url) {
+      // Only "S1 E5 Firewall" (JioHotstar). Its show: read from the app's screen for this very
+      // episode, else the app's last show (an autoplayed next episode, if it's in that show),
+      // else found by the episode's name.
+      final names = tv.shows.value;
+      final seen = names.showOf(package, title), last = names.lastOf(package);
+      final key = '$package|$title|${seen ?? ''}|${last ?? ''}'; // a newly read show: looked up again
+      if (_artLookups.containsKey(key)) return _artLookups[key];
+      _artLookups[key] = null;
+      () async {
+        final art = EpisodeArt.instance;
+        return (seen != null ? await art.inShow(seen, title) : null) ??
+            (last != null && last != seen ? await art.inShow(last, title, sure: false) : null) ??
+            await art.find(title);
+      }().then((url) {
         // None (or offline): asked again the next time the row is built; EpisodeArt remembers
         // a real "not found" itself, so that costs nothing.
-        if (url == null) _artLookups.remove(title);
+        if (url == null) _artLookups.remove(key);
         if (url == null || !mounted) return;
-        _artLookups[title] = url;
+        _artLookups[key] = url;
         _regroup();
       });
       return null;
@@ -1812,13 +1825,20 @@ class _QuickChip extends StatelessWidget {
                 if (item.app != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(width: 32 * k, height: 18 * k, child: TvAppArt(app: item.app!, width: 32 * k)),
+                    child: SizedBox(
+                      width: 32 * k,
+                      height: 18 * k,
+                      child: TvAppArt(app: item.app!, width: 32 * k),
+                    ),
                   )
                 else if (icon != null)
                   Icon(icon, size: 20 * k, color: f ? TvDS.onLight : TvDS.ink),
                 if (!edit && (labels == 'always' || (labels == 'focus' && f))) ...[
                   SizedBox(width: DS.s8 * k),
-                  Text(item.title, style: TvDS.hint.copyWith(fontSize: 14 * k, color: f ? TvDS.onLight : TvDS.ink)),
+                  Text(
+                    item.title,
+                    style: TvDS.hint.copyWith(fontSize: 14 * k, color: f ? TvDS.onLight : TvDS.ink),
+                  ),
                 ],
                 if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
               ],

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/tv/episode_art.dart';
+import 'package:one_launcher/tv/tv_apps.dart';
 
 void main() {
   test('reads season, episode and name from an app\'s title', () {
@@ -46,5 +47,13 @@ void main() {
     ];
     expect(EpisodeArt.stillFor(twice, 4, 24, 'Free'), isNull, reason: 'two episodes of that name, neither numbered so: no guess');
     expect(EpisodeArt.foldName('Free, Part 2'), 'free');
+  });
+
+  test('show names read from apps: this episode first, else the app\'s last show', () {
+    const names = TvShowNames(pairs: {'in.startv.hotstar|S1 E5 Firewall': 'VisionQuest'}, last: {'in.startv.hotstar': 'VisionQuest'}, on: true);
+    expect(names.showOf('in.startv.hotstar', 'S1 E5 Firewall'), 'VisionQuest');
+    expect(names.showOf('in.startv.hotstar', 'S1 E6 Deadlock'), isNull);
+    expect(names.lastOf('in.startv.hotstar'), 'VisionQuest', reason: 'the autoplayed next episode is tried in it');
+    expect(names.lastOf('com.netflix.ninja'), isNull);
   });
 }

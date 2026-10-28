@@ -169,6 +169,8 @@ class TvActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "getHistory" -> result.success(MediaHistory.read(this))
+                "showNames" -> result.success(ShowNameService.read(this))
+                "openAccessibility" -> result.success(open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) || open(Intent(Settings.ACTION_SETTINGS)))
                 "setHistoryEnabled" -> {
                     MediaHistory.setEnabled(this, call.argument<Boolean>("on") ?: true)
                     result.success(true)
@@ -192,6 +194,7 @@ class TvActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        ShowNameService.onChange = { if (::channel.isInitialized) channel.invokeMethod("showNamesChanged", null) }
         registerReceiver(packageReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)
@@ -217,6 +220,7 @@ class TvActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        ShowNameService.onChange = null
         unregisterReceiver(packageReceiver)
         super.onDestroy()
     }

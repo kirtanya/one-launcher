@@ -47,6 +47,20 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+        <!-- Read show names (Customise → Remote & behaviour): off until switched on in
+             Accessibility settings. See ShowNameService.kt. -->
+        <service
+            android:name=".ShowNameService"
+            android:exported="false"
+            android:label="One Launcher TV: read show names"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/show_names" />
+        </service>
         <!-- Invisible: the phone remote opens onelauncher://picture (the TV's picture panel),
              onelauncher://brightness?level=N or onelauncher://launch?package=P (its quick apps;
              see BrightnessActivity.kt). -->

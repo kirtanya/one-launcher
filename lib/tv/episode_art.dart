@@ -70,13 +70,7 @@ class EpisodeArt {
 
   /// The episode's picture link (or the show's backdrop), or null. Looked up once per title.
   /// When a lookup couldn't reach the internet, the next call tries again.
-  Future<String?> find(String title) => _found.putIfAbsent(
-    title,
-    () => _find(title).catchError((_) {
-      _found.remove(title);
-      return null;
-    }),
-  );
+  Future<String?> find(String title) => _found.putIfAbsent(title, () => _find(title).catchError((_) => _forget(title)));
 
   Future<String?> _find(String title) async {
     final p = parse(title);
@@ -109,27 +103,50 @@ class EpisodeArt {
     if (shows.length > 3) return null;
     final picks = <String, String>{}; // show → its picture
     for (final show in shows) {
-      final found = await _json(Uri.parse('https://v3-cinemeta.strem.io/catalog/series/top/search=${Uri.encodeComponent(show)}.json'));
-      final ids = [
-        for (final m in (found is Map ? found['metas'] as List? : null) ?? const [])
-          if (m is Map && fold('${m['name']}') == fold(show) && m['id'] is String) m['id'] as String,
-      ];
-      String? backdrop;
-      for (final id in ids.take(3)) {
-        final meta = await _json(Uri.parse('https://v3-cinemeta.strem.io/meta/series/$id.json'));
-        final videos = (meta is Map && meta['meta'] is Map ? meta['meta']['videos'] as List? : null) ?? const [];
-        if (stillFor(videos, p.season, p.episode, p.name) case final still?) {
-          picks[show] = still;
-          break;
-        }
-        // The episode is there but has no still (or the show is the only one): its backdrop.
-        final named = videos.any((v) => v is Map && foldName('${v['name'] ?? v['title']}') == foldName(p.name));
-        if (named || shows.length == 1) backdrop ??= 'https://images.metahub.space/background/medium/$id/img';
-      }
-      if (!picks.containsKey(show) && backdrop != null) picks[show] = backdrop;
+      if (await _pictureIn(show, p, backdrop: shows.length == 1) case final pic?) picks[show] = pic;
     }
     // Two shows both fit: can't tell which one is playing.
     return picks.length == 1 ? picks.values.single : null;
+  }
+
+  /// The still of [title]'s episode in [show], a show read from the app's own screen. [sure]: the
+  /// app showed this very episode under that show, so a missing episode still gets the show's
+  /// backdrop; otherwise (the app's last show, for an autoplayed next episode) the episode has to
+  /// be there by name.
+  Future<String?> inShow(String show, String title, {bool sure = true}) {
+    final key = '$show|$title|$sure';
+    return _found.putIfAbsent(key, () => _inShow(show, title, sure).catchError((_) => _forget(key)));
+  }
+
+  Future<String?> _inShow(String show, String title, bool sure) async {
+    final p = parse(title);
+    return p == null ? null : await _pictureIn(show, p, backdrop: sure);
+  }
+
+  /// A lookup that couldn't reach the internet: asked again next time.
+  String? _forget(String key) {
+    _found.remove(key);
+    return null;
+  }
+
+  /// [p]'s still in [show]'s catalog listing, else (with [backdrop], or when the episode is
+  /// listed without a still) the show's backdrop. Null if the catalog doesn't have the show.
+  Future<String?> _pictureIn(String show, ({int season, int episode, String name}) p, {required bool backdrop}) async {
+    final found = await _json(Uri.parse('https://v3-cinemeta.strem.io/catalog/series/top/search=${Uri.encodeComponent(show)}.json'));
+    if (found is! Map) throw const SocketException('catalog unavailable');
+    final ids = [
+      for (final m in found['metas'] as List? ?? const [])
+        if (m is Map && fold('${m['name']}') == fold(show) && m['id'] is String) m['id'] as String,
+    ];
+    String? fallback;
+    for (final id in ids.take(3)) {
+      final meta = await _json(Uri.parse('https://v3-cinemeta.strem.io/meta/series/$id.json'));
+      final videos = (meta is Map && meta['meta'] is Map ? meta['meta']['videos'] as List? : null) ?? const [];
+      if (stillFor(videos, p.season, p.episode, p.name) case final still?) return still;
+      final named = videos.any((v) => v is Map && foldName('${v['name'] ?? v['title']}') == foldName(p.name));
+      if (named || backdrop) fallback ??= 'https://images.metahub.space/background/medium/$id/img';
+    }
+    return fallback;
   }
 
   /// Shows with a TV episode called exactly [name], from a search of TV episodes only (Wikidata
