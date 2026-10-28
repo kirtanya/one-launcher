@@ -89,6 +89,11 @@ class TvApps {
 
   Future<void> openAccessibility() => _call('openAccessibility');
 
+  /// A line in the TV's log (tag OneShow): Dart's own prints don't reach it in release builds.
+  void log(String message) {
+    if (!demo) _ch.invokeMethod('log', {'message': message});
+  }
+
   Future<List<AppEntry>> list() async {
     if (demo) return _demo;
     final raw = await _ch.invokeListMethod<Map>('getApps') ?? [];

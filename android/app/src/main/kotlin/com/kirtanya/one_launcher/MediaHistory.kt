@@ -89,7 +89,7 @@ class MediaHistory(private val context: Context) {
 
         val items = load(context)
         val all = (0 until items.length()).map { items.getJSONObject(it) }
-        val prevArt = all.firstOrNull { it.optString("key") == key }?.optString("art")?.takeIf { it.isNotEmpty() }
+        val prevArt = all.firstOrNull { it.optString("key") == key }?.let(::artOf)
         val old = all.filter { it.optString("key") != key }
         val item = JSONObject()
             .put("key", key)
@@ -163,8 +163,11 @@ class MediaHistory(private val context: Context) {
             var changed = false
             val out = (0 until a.length()).map { i ->
                 val o = a.getJSONObject(i)
-                val art = o.optString("art").takeIf { it.isNotEmpty() && it != "null" }
-                if (art != null && !usable(art)) {
+                val art = artOf(o)
+                if (art == null && !o.isNull("art")) {
+                    o.put("art", JSONObject.NULL) // an older build saved "null" as text: the title is looked up again
+                    changed = true
+                } else if (art != null && !usable(art)) {
                     android.util.Log.i("OneArt", "history: dropping unusable picture for ${o.optString("title")}")
                     File(art).delete()
                     o.put("art", JSONObject.NULL)
@@ -175,6 +178,9 @@ class MediaHistory(private val context: Context) {
             if (changed) prefs(c).edit().putString(KEY, a.toString()).apply()
             return out
         }
+
+        /** An item's picture file, or null (optString turns a JSON null into the text "null"). */
+        private fun artOf(o: JSONObject): String? = if (o.isNull("art")) null else o.optString("art").takeIf { it.isNotEmpty() && it != "null" }
 
         private val checked = mutableSetOf<String>() // files already found fine (read runs often)
 

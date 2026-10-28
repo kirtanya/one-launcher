@@ -261,7 +261,10 @@ class _TvHomeState extends State<TvHome> {
       }
       final dur = (h['duration'] as num?)?.toDouble() ?? 0;
       final pos = (h['position'] as num?)?.toDouble() ?? 0;
-      final artPath = h['art'] as String?;
+      final artPath = switch (h['art']) {
+        final String p when p.isNotEmpty && p != 'null' => p, // older builds saved "null" as text
+        _ => null,
+      };
       cont.add(
         TvItem(
           key: 'h:${h['key']}',
@@ -402,7 +405,6 @@ class _TvHomeState extends State<TvHome> {
             (last != null && last != seen ? await art.inShow(last, title, sure: false) : null) ??
             await art.find(title);
       }().then((url) {
-        debugPrint('OneShow art: $title (show ${seen ?? '-'}, last ${last ?? '-'}) → ${url ?? 'none'}');
         // None (or offline): asked again the next time the row is built; EpisodeArt remembers
         // a real "not found" itself, so that costs nothing.
         if (url == null) _artLookups.remove(key);

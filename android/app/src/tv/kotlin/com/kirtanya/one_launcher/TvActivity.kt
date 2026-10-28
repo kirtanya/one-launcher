@@ -170,6 +170,10 @@ class TvActivity : FlutterActivity() {
                 }
                 "getHistory" -> result.success(MediaHistory.read(this))
                 "showNames" -> result.success(ShowNameService.read(this))
+                "log" -> {
+                    android.util.Log.i("OneShow", call.argument<String>("message") ?: "")
+                    result.success(null)
+                }
                 "openAccessibility" -> result.success(open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) || open(Intent(Settings.ACTION_SETTINGS)))
                 "setHistoryEnabled" -> {
                     MediaHistory.setEnabled(this, call.argument<Boolean>("on") ?: true)
