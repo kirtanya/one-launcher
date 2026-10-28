@@ -14,7 +14,8 @@ import java.net.Socket
 import java.util.concurrent.Executors
 
 /**
- * The phone remote's Now playing card: what's playing on this TV, over the home Wi-Fi.
+ * The phone remote's Now playing card: what's playing on this TV, over the home Wi-Fi. TV only:
+ * started by MediaListener (always running on the TV) and TvActivity.
  *
  * The phone first gives this TV a secret through the remote protocol's own (paired, encrypted)
  * link: `onelauncher://phone?token=…` (see BrightnessActivity → [remember]). Then it asks

@@ -29,6 +29,9 @@ class MediaListener : NotificationListenerService() {
         super.onListenerConnected()
         instance = this
         if (packageName.endsWith(".tv")) history = MediaHistory(this).also { it.start() }
+        // The phone remote's Now playing card: this service runs whenever the TV is on (the home
+        // screen may not have been opened since an update), so the TV answers from here too.
+        if (packageName.endsWith(".tv")) NowPlayingServer.start(this)
         publish()
     }
 
