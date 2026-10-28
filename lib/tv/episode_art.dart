@@ -70,7 +70,23 @@ class EpisodeArt {
 
   /// The episode's picture link (or the show's backdrop), or null. Looked up once per title.
   /// When a lookup couldn't reach the internet, the next call tries again.
-  Future<String?> find(String title) => _found.putIfAbsent(title, () => _find(title).catchError((_) => _forget(title)));
+  /// Lookups run one at a time (a row of 20 episodes at once makes Wikidata refuse them all), and
+  /// a title whose lookup failed waits a minute before it's tried again.
+  Future<String?> find(String title) {
+    final failed = _failedAt[title];
+    if (failed != null && DateTime.now().difference(failed) < const Duration(minutes: 1)) return Future.value(null);
+    return _found.putIfAbsent(title, () {
+      final run = _queue.then((_) => _find(title)).catchError((_) {
+        _failedAt[title] = DateTime.now();
+        return _forget(title);
+      });
+      _queue = run.then((_) => Future<void>.delayed(const Duration(milliseconds: 400)));
+      return run;
+    });
+  }
+
+  Future<void> _queue = Future.value();
+  final _failedAt = <String, DateTime>{};
 
   Future<String?> _find(String title) async {
     final p = parse(title);
@@ -195,6 +211,9 @@ class EpisodeArt {
   /// status -1 when there's no connection.
   static Future<(int, String)> Function(String url)? fetch;
 
+  /// Where refused / failed requests are noted (the TV's log).
+  static void Function(String message)? log;
+
   /// A JSON answer, or null. A busy or failed answer (Wikidata slows bursts down) is tried once
   /// more a moment later, so one hiccup doesn't leave a show without its picture.
   static Future<Object?> _json(Uri url) async {
@@ -202,6 +221,7 @@ class EpisodeArt {
       for (var attempt = 0; attempt < 2; attempt++) {
         if (attempt > 0) await Future<void>.delayed(const Duration(seconds: 2));
         final (status, body) = await get(url.toString());
+        if (status != 200) log?.call('episode art: $status from ${url.host}${status < 0 ? ' ($body)' : ''}');
         if (status == 404) return null;
         if (status == 200) {
           try {

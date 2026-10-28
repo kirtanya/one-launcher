@@ -54,6 +54,7 @@ class TvApps {
     if (demo) return;
     refreshShows();
     // Episode pictures look shows up through Android's network stack, like search does.
+    EpisodeArt.log = log;
     EpisodeArt.fetch = (url) => httpGet(url, headers: const {'User-Agent': 'OneLauncherTV/1.0 (personal launcher)', 'Accept': 'application/json'});
     _ch.setMethodCallHandler((call) async {
       switch (call.method) {
