@@ -15,29 +15,62 @@ import 'ui/motion.dart';
 /// The user's look for the quick-action chips (Quick actions → Chip look). Defaults are the
 /// original dark frosted pill.
 class ChipLook {
-  const ChipLook({this.tone = 'dark', this.opacity = .4, this.shape = 'pill', this.size = 'regular', this.content = 'both', this.outline = true});
+  const ChipLook({
+    this.tone = 'dark',
+    this.opacity = .4,
+    this.shape = 'pill',
+    this.height = 40,
+    this.content = 'both',
+    this.outline = true,
+    this.gap = 8,
+    this.padding,
+    this.space,
+  });
 
   factory ChipLook.of(Prefs prefs) {
     final m = prefs.chipLook;
     const d = ChipLook();
+    double? num_(String k, double lo, double hi) => (m[k] as num?)?.toDouble().clamp(lo, hi);
     return ChipLook(
       tone: m['tone'] as String? ?? d.tone,
-      opacity: (m['opacity'] as num?)?.toDouble().clamp(.1, 1.0) ?? d.opacity,
+      opacity: num_('opacity', .1, 1) ?? d.opacity,
       shape: m['shape'] as String? ?? d.shape,
-      size: m['size'] as String? ?? d.size,
+      // Older looks saved a size name (Small / Regular / Large) instead of a height.
+      height: num_('height', minHeight, maxHeight) ?? heights[m['size']] ?? d.height,
       content: m['content'] as String? ?? d.content,
       outline: m['outline'] as bool? ?? d.outline,
+      gap: num_('gap', 0, maxGap) ?? d.gap,
+      padding: num_('padding', 0, maxPadding),
+      space: num_('space', 0, maxSpace),
     );
   }
 
-  final String tone, shape, size, content;
+  final String tone, shape, content;
   final double opacity;
   final bool outline;
+
+  /// Chip height (Size slider).
+  final double height;
+
+  /// Space between two chips.
+  final double gap;
+
+  /// Space inside a chip, at the label's end (its start is ¾ of it); null = follows the size.
+  final double? padding;
+
+  /// Space above and below the row; null = follows the size.
+  final double? space;
+
+  static const minHeight = 28.0, maxHeight = 60.0, maxGap = 24.0, maxPadding = 32.0, maxSpace = 32.0;
 
   static const tones = {'dark': 'Dark', 'light': 'Light', 'accent': 'Accent', 'card': 'Card'};
   static const shapes = {'pill': 'Pill', 'rounded': 'Rounded', 'square': 'Square'};
   static const sizes = {'small': 'Small', 'regular': 'Regular', 'large': 'Large'};
+  static const heights = {'small': 32.0, 'regular': 40.0, 'large': 48.0};
   static const contents = {'both': 'Icon + label', 'icon': 'Icon only', 'text': 'Label only'};
+
+  /// The nearest size name (Tiles still picks from Small / Regular / Large).
+  String get size => height < 36 ? 'small' : (height > 44 ? 'large' : 'regular');
 
   /// Opacity a colour starts at when picked (glass tones see-through, solid ones full).
   static double defaultOpacity(String tone) => switch (tone) {
@@ -46,15 +79,45 @@ class ChipLook {
     _ => 1,
   };
 
-  Map<String, Object> toJson() => {'tone': tone, 'opacity': opacity, 'shape': shape, 'size': size, 'content': content, 'outline': outline};
-  ChipLook copyWith({String? tone, double? opacity, String? shape, String? size, String? content, bool? outline}) => ChipLook(
+  Map<String, Object> toJson() => {
+    'tone': tone,
+    'opacity': opacity,
+    'shape': shape,
+    'height': height,
+    'content': content,
+    'outline': outline,
+    'gap': gap,
+    'padding': ?padding,
+    'space': ?space,
+  };
+
+  /// [size] picks a preset height (Tiles' Small / Regular / Large).
+  ChipLook copyWith({
+    String? tone,
+    double? opacity,
+    String? shape,
+    String? size,
+    double? height,
+    String? content,
+    bool? outline,
+    double? gap,
+    double? padding,
+    double? space,
+  }) => ChipLook(
     tone: tone ?? this.tone,
     opacity: opacity ?? this.opacity,
     shape: shape ?? this.shape,
-    size: size ?? this.size,
+    height: height ?? heights[size] ?? this.height,
     content: content ?? this.content,
     outline: outline ?? this.outline,
+    gap: gap ?? this.gap,
+    padding: padding ?? this.padding,
+    space: space ?? this.space,
   );
+
+  /// Values that follow the height pass through the old Small / Regular / Large ones (32 / 40 / 48).
+  double _bySize(double small, double regular, double large) =>
+      height <= 40 ? regular + (height - 40) / 8 * (regular - small) : regular + (height - 40) / 8 * (large - regular);
 
   Color get fill => switch (tone) {
     'light' => const Color(0xFFFFFFFF),
@@ -72,33 +135,21 @@ class ChipLook {
   };
 
   Color get line => tone == 'light' && opacity >= .5 ? const Color(0x1F000000) : DS.glassLine;
-  double get height => switch (size) {
-    'small' => 32,
-    'large' => 48,
-    _ => 40,
-  };
-  /// Space above and below the chips in the Classic row; grows with the chip so bigger
-  /// chips don't feel cramped against the sheet and the page above.
-  double get rowPad => switch (size) {
-    'small' => 4,
-    'large' => 12,
-    _ => 8,
-  };
+
+  /// Space above and below the chips in the Classic row; unless set, grows with the chip so
+  /// bigger chips don't feel cramped against the sheet and the page above.
+  double get rowPad => space ?? _bySize(4, 8, 12).clamp(0, maxSpace);
   double get rowHeight => height + rowPad * 2;
 
-  double get iconSize => switch (size) {
-    'small' => 16,
-    'large' => 22,
-    _ => 18,
-  };
+  /// Space inside a label chip at its end.
+  double get padEnd => padding ?? height * .4;
+
+  double get iconSize => _bySize(16, 18, 22);
+
   /// Icon only: the glyph grows to fill the chip (no inner padding); app shortcut icons fill it whole.
   double get iconOnlyGlyph => height * .62;
 
-  double get fontSize => switch (size) {
-    'small' => 13,
-    'large' => 15,
-    _ => 14,
-  };
+  double get fontSize => _bySize(13, 14, 15);
   double get radius => switch (shape) {
     'rounded' => 12,
     'square' => 6,
@@ -157,7 +208,7 @@ class QuickChipsRow extends StatelessWidget {
         children: [
           for (final id in ids)
             Padding(
-              padding: const EdgeInsets.only(right: DS.s8),
+              padding: EdgeInsets.only(right: look.gap),
               child: builtInActions.containsKey(id)
                   ? (id == 'b:torch'
                         // Flashlight lights up while it's on (even if switched on elsewhere).
@@ -256,7 +307,7 @@ class QuickChip extends StatelessWidget {
                 child: iconOnly
                     ? Center(child: icon)
                     : Padding(
-                        padding: EdgeInsets.fromLTRB(textOnly ? h * .4 : h * .3, 0, h * .4, 0),
+                        padding: EdgeInsets.fromLTRB(textOnly ? look.padEnd : look.padEnd * .75, 0, look.padEnd, 0),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

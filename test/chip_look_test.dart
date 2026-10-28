@@ -40,28 +40,56 @@ void main() {
     await tester.pumpAndSettle();
     // An editor: the home screen (with its chips) live above the controls.
     final preview = find.byWidgetPredicate((w) => w is HomeScreen && w.preview);
-    expect(find.descendant(of: preview, matching: find.byType(QuickChip)), findsWidgets, reason: 'chips in the live preview');
+    expect(
+      find.descendant(of: preview, matching: find.byType(QuickChip)),
+      findsWidgets,
+      reason: 'chips in the live preview',
+    );
 
     await tester.tap(find.text('Light'));
     await tester.pumpAndSettle();
     expect(chipMaterial().color, const Color(0xFFFFFFFF).withValues(alpha: .3), reason: 'light glass at its starting opacity');
-    await tester.drag(find.byType(Slider), const Offset(600, 0)); // opacity → solid
+    await tester.drag(find.byType(Slider).first, const Offset(600, 0)); // opacity → solid
     await tester.pumpAndSettle();
     expect(find.text('Solid'), findsOneWidget);
     expect(chipMaterial().color, const Color(0xFFFFFFFF));
-    for (final option in ['Square', 'Large']) {
-      await tester.ensureVisible(find.text(option)); // the controls panel scrolls
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(option));
-      await tester.pumpAndSettle();
-    }
+    await tester.ensureVisible(find.text('Square')); // the controls panel scrolls
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Square'));
+    await tester.pumpAndSettle();
+    // Size, padding, gap and the space around the row are sliders.
+    Slider sliderFor(String title) => tester.widget<Slider>(
+      find.descendant(
+        of: find.ancestor(of: find.text(title), matching: find.byType(Column)).first,
+        matching: find.byType(Slider),
+      ),
+    );
+    sliderFor('Size').onChanged!(48);
+    await tester.pumpAndSettle();
+    sliderFor('Padding inside').onChanged!(20);
+    await tester.pumpAndSettle();
+    Finder surface(Finder chip) => find.descendant(of: chip, matching: find.byType(Material)).first;
+    expect(tester.getSize(surface(find.byType(QuickChip).first)).height, 48);
     await tester.ensureVisible(find.text('Icon only'));
     await tester.tap(find.text('Icon only'));
     await tester.pumpAndSettle();
+    expect(find.text('Padding inside'), findsNothing, reason: 'icon-only chips have no inner padding');
+    sliderFor('Gap between chips').onChanged!(16);
+    sliderFor('Space above & below').onChanged!(20);
+    await tester.pumpAndSettle();
+    final chips = find.descendant(of: find.byWidgetPredicate((w) => w is HomeScreen && w.preview), matching: find.byType(QuickChip));
+    // The live preview is drawn scaled down: measure the gap against a 48 tall chip.
+    final scale = (tester.getBottomLeft(surface(chips.first)).dy - tester.getTopLeft(surface(chips.first)).dy) / 48;
+    expect((tester.getTopLeft(surface(chips.at(1))).dx - tester.getTopRight(surface(chips.first)).dx) / scale, closeTo(16, .01), reason: 'gap between chips');
+    expect(tester.getSize(find.byType(QuickChipsRow).first).height, 48 + 20 * 2, reason: 'space above & below');
     final shape = chipMaterial().shape as RoundedRectangleBorder;
     expect(shape.borderRadius, BorderRadius.circular(6));
     expect(tester.getSize(find.byType(QuickChip).first).height, greaterThanOrEqualTo(48));
-    expect(find.descendant(of: find.byType(QuickChip).first, matching: find.byType(Text)), findsNothing, reason: 'icon only');
+    expect(
+      find.descendant(of: find.byType(QuickChip).first, matching: find.byType(Text)),
+      findsNothing,
+      reason: 'icon only',
+    );
     await tester.ensureVisible(find.text('Outline'));
     await tester.tap(find.text('Outline'));
     await tester.pumpAndSettle();
@@ -71,7 +99,17 @@ void main() {
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/15_chip_look.png'));
 
     // Saved (and so in backups), and the back arrow returns to Quick actions.
-    expect(ChipLook.of(prefs).toJson(), {'tone': 'light', 'opacity': 1.0, 'shape': 'square', 'size': 'large', 'content': 'icon', 'outline': false});
+    expect(ChipLook.of(prefs).toJson(), {
+      'tone': 'light',
+      'opacity': 1.0,
+      'shape': 'square',
+      'height': 48.0,
+      'content': 'icon',
+      'outline': false,
+      'gap': 16.0,
+      'padding': 20.0,
+      'space': 20.0,
+    });
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.text('Quick actions'), findsOneWidget);
@@ -86,5 +124,13 @@ void main() {
     await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Reset')));
     await tester.pumpAndSettle();
     expect(chipMaterial().color, const Color(0xFF141414).withValues(alpha: .4));
+    expect(ChipLook.of(prefs).toJson().containsKey('space'), isFalse, reason: 'spacing follows the size again');
+  });
+
+  test('older looks saved a size name; Tiles still reads one', () {
+    expect(const ChipLook().copyWith(size: 'large').height, 48);
+    expect(const ChipLook(height: 33).size, 'small');
+    expect(const ChipLook(height: 52).size, 'large');
+    expect(const ChipLook(height: 40).rowHeight, 56, reason: 'regular: 8 above and below');
   });
 }

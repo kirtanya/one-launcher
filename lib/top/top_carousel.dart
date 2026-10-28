@@ -47,58 +47,61 @@ class _TopCarouselState extends State<TopCarousel> {
   Widget build(BuildContext context) {
     final ids = widget.prefs.topPages;
     final index = _index.clamp(0, ids.length - 1);
-    return Column(
-      children: [
-        Expanded(
-          child: HeaderFontScope(
-            style: clockStyleOf(widget.prefs),
-            child: PageView.builder(
-              controller: _pages,
-              itemCount: ids.length,
-              onPageChanged: (i) {
-                HapticFeedback.selectionClick();
-                setState(() => _index = i);
-                widget.onBlank?.call(ids[i] == 'blank');
-              },
-              itemBuilder: (context, i) => AnimatedBuilder(
-                animation: _pages,
-                child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
-                builder: (context, child) {
-                  final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
-                  final d = Perf.lite.value ? 0.0 : (page - i).abs().clamp(0.0, 1.0); // lighter effects: no page fade
-                  return Opacity(
-                    opacity: 1 - d * .6,
-                    child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
-                  );
+    // A tight top area (small split, big padding, tall quick chips row) gives the pages all of it.
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        children: [
+          Expanded(
+            child: HeaderFontScope(
+              style: clockStyleOf(widget.prefs),
+              child: PageView.builder(
+                controller: _pages,
+                itemCount: ids.length,
+                onPageChanged: (i) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _index = i);
+                  widget.onBlank?.call(ids[i] == 'blank');
                 },
+                itemBuilder: (context, i) => AnimatedBuilder(
+                  animation: _pages,
+                  child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
+                  builder: (context, child) {
+                    final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
+                    final d = Perf.lite.value ? 0.0 : (page - i).abs().clamp(0.0, 1.0); // lighter effects: no page fade
+                    return Opacity(
+                      opacity: 1 - d * .6,
+                      child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
+                    );
+                  },
+                ),
               ),
             ),
           ),
-        ),
-        // Page dots (only when there's more than one page); hidden on the wallpaper-only page.
-        if (ids.length > 1)
-          AnimatedOpacity(
-            duration: Motion.snapDuration,
-            opacity: ids[index] == 'blank' ? 0 : 1,
-            child: Padding(
-              padding: const EdgeInsets.only(top: DS.s4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  for (var i = 0; i < ids.length; i++)
-                    AnimatedContainer(
-                      duration: Motion.snapDuration,
-                      curve: Motion.settle,
-                      width: i == index ? 18 : 6,
-                      height: 6,
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(color: i == index ? DS.onWallpaper : DS.glassLine, borderRadius: BorderRadius.circular(3)),
-                    ),
-                ],
+          // Page dots (only when there's more than one page); hidden on the wallpaper-only page.
+          if (ids.length > 1 && box.maxHeight >= 48)
+            AnimatedOpacity(
+              duration: Motion.snapDuration,
+              opacity: ids[index] == 'blank' ? 0 : 1,
+              child: Padding(
+                padding: const EdgeInsets.only(top: DS.s4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < ids.length; i++)
+                      AnimatedContainer(
+                        duration: Motion.snapDuration,
+                        curve: Motion.settle,
+                        width: i == index ? 18 : 6,
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(color: i == index ? DS.onWallpaper : DS.glassLine, borderRadius: BorderRadius.circular(3)),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

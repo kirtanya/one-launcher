@@ -795,7 +795,7 @@ Future<Object?> showCustomiseChips(BuildContext context, {required Prefs prefs, 
   return r;
 }
 
-/// Quick actions → Chip look: colour, opacity, shape, size, what to show, outline. Short and
+/// Quick actions → Chip look: colour, opacity, shape, what to show, size, padding, gaps, outline. Short and
 /// lightly shaded so the chips above it — on the home screen — show every change live.
 Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => showEditor(
   context,
@@ -829,6 +829,44 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
           ],
         ),
       );
+      // A labelled slider in whole steps, with its value on the right.
+      Widget slider(String title, double value, double min, double max, void Function(double) changed) {
+        final v = value.clamp(min, max).toDouble();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                  ),
+                  Text('${v.round()}', style: DS.rowSub),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+              child: Slider(
+                value: v,
+                min: min,
+                max: max,
+                divisions: (max - min).round(), // 1 dp steps
+                label: '${v.round()}',
+                activeColor: DS.ink,
+                inactiveColor: DS.cardMuted,
+                thumbColor: DS.ink,
+                onChanged: (x) {
+                  if (x.round() != v.round()) HapticFeedback.selectionClick();
+                  changed(x.roundToDouble());
+                },
+              ),
+            ),
+          ],
+        );
+      }
+
       final pct = (look.opacity * 100).round();
       return Column(
         mainAxisSize: MainAxisSize.min,
@@ -891,10 +929,14 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
             ),
             label('Shape'),
             choices(ChipLook.shapes, look.shape, (v) => set((l) => l.copyWith(shape: v))),
-            label('Size'),
-            choices(ChipLook.sizes, look.size, (v) => set((l) => l.copyWith(size: v))),
             label('Show'),
             choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
+            slider('Size', look.height, ChipLook.minHeight, ChipLook.maxHeight, (x) => set((l) => l.copyWith(height: x))),
+            // Icon-only chips have no inner padding: the icon fills them.
+            if (look.content != 'icon') slider('Padding inside', look.padEnd, 0, ChipLook.maxPadding, (x) => set((l) => l.copyWith(padding: x))),
+            slider('Gap between chips', look.gap, 0, ChipLook.maxGap, (x) => set((l) => l.copyWith(gap: x))),
+            slider('Space above & below', look.rowPad, 0, ChipLook.maxSpace, (x) => set((l) => l.copyWith(space: x))),
+            const SizedBox(height: DS.s8),
             _Group(null, [
               _SwitchRow(Icons.crop_square_rounded, 'Outline', 'Thin edge around each chip', look.outline, (v) => set((l) => l.copyWith(outline: v))),
               _NavRow(Icons.restart_alt_rounded, 'Reset look', 'Dark see-through pills', () async {
