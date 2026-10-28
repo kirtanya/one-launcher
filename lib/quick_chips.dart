@@ -24,6 +24,7 @@ class ChipLook {
     this.outline = true,
     this.gap = 8,
     this.padding,
+    this.iconPadding = 0,
     this.space,
   });
 
@@ -41,6 +42,7 @@ class ChipLook {
       outline: m['outline'] as bool? ?? d.outline,
       gap: num_('gap', 0, maxGap) ?? d.gap,
       padding: num_('padding', 0, maxPadding),
+      iconPadding: num_('iconPadding', 0, maxIconPadding) ?? d.iconPadding,
       space: num_('space', 0, maxSpace),
     );
   }
@@ -58,10 +60,13 @@ class ChipLook {
   /// Space inside a chip, at the label's end (its start is ¾ of it); null = follows the size.
   final double? padding;
 
+  /// Icon only: space between the chip's edge and its icon (0 = the icon fills the chip).
+  final double iconPadding;
+
   /// Space above and below the row; null = follows the size.
   final double? space;
 
-  static const minHeight = 28.0, maxHeight = 60.0, maxGap = 24.0, maxPadding = 32.0, maxSpace = 32.0;
+  static const minHeight = 28.0, maxHeight = 60.0, maxGap = 24.0, maxPadding = 32.0, maxIconPadding = 16.0, maxSpace = 32.0;
 
   static const tones = {'dark': 'Dark', 'light': 'Light', 'accent': 'Accent', 'card': 'Card'};
   static const shapes = {'pill': 'Pill', 'rounded': 'Rounded', 'square': 'Square'};
@@ -88,6 +93,7 @@ class ChipLook {
     'outline': outline,
     'gap': gap,
     'padding': ?padding,
+    'iconPadding': iconPadding,
     'space': ?space,
   };
 
@@ -102,6 +108,7 @@ class ChipLook {
     bool? outline,
     double? gap,
     double? padding,
+    double? iconPadding,
     double? space,
   }) => ChipLook(
     tone: tone ?? this.tone,
@@ -112,6 +119,7 @@ class ChipLook {
     outline: outline ?? this.outline,
     gap: gap ?? this.gap,
     padding: padding ?? this.padding,
+    iconPadding: iconPadding ?? this.iconPadding,
     space: space ?? this.space,
   );
 
@@ -146,8 +154,13 @@ class ChipLook {
 
   double get iconSize => _bySize(16, 18, 22);
 
-  /// Icon only: the glyph grows to fill the chip (no inner padding); app shortcut icons fill it whole.
-  double get iconOnlyGlyph => height * .62;
+  /// Icon only: the box an app shortcut's icon fills (the chip less its icon padding); the
+  /// glyph of a built-in action grows with it.
+  double get iconOnlyBox => (height - iconPadding * 2).clamp(12, height);
+  double get iconOnlyGlyph => iconOnlyBox * .62;
+
+  /// Icon only: an app icon's corners follow the chip's, inset by the padding.
+  double get iconOnlyRadius => (radius - iconPadding).clamp(2, iconOnlyBox / 2);
 
   double get fontSize => _bySize(13, 14, 15);
   double get radius => switch (shape) {
@@ -234,7 +247,7 @@ class QuickChipsRow extends StatelessWidget {
                       look: look,
                       label: labels[id]!.split('|').first,
                       icon: iconOnly
-                          ? ShortcutIcon(id: id, size: look.height, radius: look.radius, fallbackSize: glyph, color: look.ink)
+                          ? ShortcutIcon(id: id, size: look.iconOnlyBox, radius: look.iconOnlyRadius, fallbackSize: glyph, color: look.ink)
                           : ShortcutIcon(id: id, size: look.iconSize + 2, color: look.ink),
                       onTap: () => _run(context, id, labels[id]!.split('|').first),
                       onLongPress: chipLongPress ? customise : null,
@@ -303,7 +316,7 @@ class QuickChip extends StatelessWidget {
               onLongPress: onLongPress,
               child: SizedBox(
                 height: h,
-                width: iconOnly ? h : null, // icon only: a circle/square the icon fills
+                width: iconOnly ? h : null, // icon only: a circle/square around the icon
                 child: iconOnly
                     ? Center(child: icon)
                     : Padding(

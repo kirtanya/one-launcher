@@ -932,8 +932,10 @@ Future<Object?> _showChipLook(BuildContext context, {required Prefs prefs}) => s
             label('Show'),
             choices(ChipLook.contents, look.content, (v) => set((l) => l.copyWith(content: v))),
             slider('Size', look.height, ChipLook.minHeight, ChipLook.maxHeight, (x) => set((l) => l.copyWith(height: x))),
-            // Icon-only chips have no inner padding: the icon fills them.
-            if (look.content != 'icon') slider('Padding inside', look.padEnd, 0, ChipLook.maxPadding, (x) => set((l) => l.copyWith(padding: x))),
+            // Icon only: the space around the icon (0 = it fills the chip); otherwise around the label.
+            look.content == 'icon'
+                ? slider('Padding inside', look.iconPadding, 0, ChipLook.maxIconPadding, (x) => set((l) => l.copyWith(iconPadding: x)))
+                : slider('Padding inside', look.padEnd, 0, ChipLook.maxPadding, (x) => set((l) => l.copyWith(padding: x))),
             slider('Gap between chips', look.gap, 0, ChipLook.maxGap, (x) => set((l) => l.copyWith(gap: x))),
             slider('Space above & below', look.rowPad, 0, ChipLook.maxSpace, (x) => set((l) => l.copyWith(space: x))),
             const SizedBox(height: DS.s8),

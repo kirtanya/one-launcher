@@ -73,7 +73,13 @@ void main() {
     await tester.ensureVisible(find.text('Icon only'));
     await tester.tap(find.text('Icon only'));
     await tester.pumpAndSettle();
-    expect(find.text('Padding inside'), findsNothing, reason: 'icon-only chips have no inner padding');
+    // Icon only: its own padding — 0 lets the icon fill the chip.
+    double glyph() => tester.widget<Icon>(find.descendant(of: find.byType(QuickChip).first, matching: find.byType(Icon))).size!;
+    expect(glyph(), closeTo(48 * .62, .01), reason: 'icon fills the chip');
+    sliderFor('Padding inside').onChanged!(8);
+    await tester.pumpAndSettle();
+    expect(glyph(), closeTo((48 - 16) * .62, .01), reason: '8 around the icon');
+    expect(ChipLook.of(prefs).padding, 20, reason: 'the label padding stays as it was');
     sliderFor('Gap between chips').onChanged!(16);
     sliderFor('Space above & below').onChanged!(20);
     await tester.pumpAndSettle();
@@ -108,6 +114,7 @@ void main() {
       'outline': false,
       'gap': 16.0,
       'padding': 20.0,
+      'iconPadding': 8.0,
       'space': 20.0,
     });
     await tester.tap(find.byTooltip('Back'));
