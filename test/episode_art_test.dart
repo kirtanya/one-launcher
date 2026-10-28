@@ -39,7 +39,11 @@ void main() {
       {'season': 0, 'episode': 2, 'name': 'Free (2)', 'thumbnail': still(0, 2)},
     ];
     expect(EpisodeArt.stillFor(videos, 4, 22, 'Killing Your Number'), still(4, 22));
-    expect(EpisodeArt.stillFor(videos, 4, 24, 'Free'), still(0, 2), reason: 'JioHotstar S4 E24 = Cinemeta special "Free (2)"');
+    expect(EpisodeArt.stillFor(videos, 4, 24, 'Free'), isNull, reason: 'JioHotstar S4 E24 = Cinemeta special "Free (2)": promo art, so the backdrop instead');
+    final renumbered = [
+      {'season': 2, 'episode': 1, 'name': 'Manhunt', 'thumbnail': still(2, 1)},
+    ];
+    expect(EpisodeArt.stillFor(renumbered, 1, 23, 'Manhunt'), still(2, 1), reason: 'another season, not a special: its still');
     expect(EpisodeArt.stillFor(videos, 4, 23, 'Pilot'), isNull);
     final twice = [
       ...videos,

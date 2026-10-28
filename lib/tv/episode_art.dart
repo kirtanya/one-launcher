@@ -65,7 +65,9 @@ class EpisodeArt {
     for (final v in named) {
       if (v['season'] == season && v['episode'] == episode) return still(v);
     }
-    return named.length == 1 ? still(named.single) : null;
+    // The name alone, in another season. Not a special (season 0): its "still" is usually promo
+    // art ("The Making of …"), so the show's backdrop is the better picture.
+    return named.length == 1 && named.single['season'] != 0 ? still(named.single) : null;
   }
 
   final _found = <String, Future<String?>>{};
@@ -115,6 +117,8 @@ class EpisodeArt {
       _sp = await SharedPreferences.getInstance();
       final raw = _sp!.getString(_storeKey);
       _kept = raw == null ? {} : Map<String, String>.from(jsonDecode(raw) as Map);
+      // Answers from before specials were skipped (a special's promo art): looked up again.
+      _kept!.removeWhere((_, url) => RegExp(r'/0/\d+/w\d+\.jpg$').hasMatch(url));
     } catch (_) {
       _kept = {}; // no device storage (tools, tests): this session only
     }
