@@ -36,6 +36,20 @@ object ArtFetch {
             ?: getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON) ?: description?.iconBitmap
     }
 
+    /** A picture that's all (or almost all) black: an app's placeholder, not artwork. */
+    fun isBlank(bmp: Bitmap): Boolean {
+        val w = bmp.width
+        val h = bmp.height
+        if (w <= 0 || h <= 0) return true
+        for (y in 0 until 8) for (x in 0 until 8) {
+            val p = bmp.getPixel(x * (w - 1) / 7, y * (h - 1) / 7)
+            val a = p ushr 24
+            val lum = ((p shr 16 and 0xFF) * 3 + (p shr 8 and 0xFF) * 6 + (p and 0xFF)) / 10
+            if (a > 16 && lum > 24) return false
+        }
+        return true
+    }
+
     /** The link a media session gives instead of a picture, if any. */
     fun uriOf(meta: MediaMetadata?): String? = meta?.run {
         listOf(MediaMetadata.METADATA_KEY_ART_URI, MediaMetadata.METADATA_KEY_ALBUM_ART_URI, MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI)

@@ -402,6 +402,7 @@ class _TvHomeState extends State<TvHome> {
             (last != null && last != seen ? await art.inShow(last, title, sure: false) : null) ??
             await art.find(title);
       }().then((url) {
+        debugPrint('OneShow art: $title (show ${seen ?? '-'}, last ${last ?? '-'}) → ${url ?? 'none'}');
         // None (or offline): asked again the next time the row is built; EpisodeArt remembers
         // a real "not found" itself, so that costs nothing.
         if (url == null) _artLookups.remove(key);
@@ -1333,7 +1334,9 @@ class _Backdrop extends StatelessWidget {
       builder: (context, s, child) => Transform.scale(scale: s, alignment: Alignment.topRight, child: child),
       child: child,
     );
-    if (it.art != null) return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true));
+    if (it.art != null) {
+      return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true, errorBuilder: (_, _, _) => _wash(it)));
+    }
     if (it.image != null) {
       final ready = TvApps.instance.imageNow(it.image!, width: 960);
       return FutureBuilder<MemoryImage?>(
@@ -1747,7 +1750,8 @@ class _ProgramArt extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget picture;
     if (item.art != null) {
-      picture = Image(image: item.art!, fit: BoxFit.cover, gaplessPlayback: true);
+      // A saved picture that won't open: the title card, never a black box.
+      picture = Image(image: item.art!, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => _titleCard());
     } else if (item.image != null) {
       final ready = TvApps.instance.imageNow(item.image!);
       picture = FutureBuilder<MemoryImage?>(

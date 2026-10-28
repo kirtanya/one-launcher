@@ -116,14 +116,14 @@ class MediaHistory(private val context: Context) {
     private fun saveArt(key: String, meta: MediaMetadata): String? {
         val file = File(File(context.filesDir, "history").apply { mkdirs() }, "${key.hashCode().toUInt()}.jpg")
         if (file.exists()) return file.path
-        ArtFetch.bitmapOf(meta)?.let { return write(file, it) }
+        ArtFetch.bitmapOf(meta)?.takeUnless(ArtFetch::isBlank)?.let { return write(file, it) }
         val uri = ArtFetch.uriOf(meta) ?: return null.also {
             // What the app does share (to match its titles better). Stays on the TV.
             android.util.Log.i("OneArt", "no picture from $key: " + meta.keySet().joinToString { k -> "$k=${meta.getString(k)?.take(60)}" })
         }
         if (!fetching.add(key)) return null
         ArtFetch.async {
-            val path = ArtFetch.load(context, uri, 960)?.let { write(file, it) }
+            val path = ArtFetch.load(context, uri, 960)?.takeUnless(ArtFetch::isBlank)?.let { write(file, it) }
             main.post {
                 fetching.remove(key)
                 if (path != null) setArt(key, path)
@@ -156,13 +156,34 @@ class MediaHistory(private val context: Context) {
         private fun prefs(c: Context) = c.getSharedPreferences("one_watch_history", Context.MODE_PRIVATE)
         private fun load(c: Context) = try { JSONArray(prefs(c).getString(KEY, "[]")) } catch (e: Exception) { JSONArray() }
 
-        /** Newest first, as maps for Flutter. */
+        /** Newest first, as maps for Flutter. A picture file that's gone, empty or all black is
+         *  dropped (and deleted), so the launcher looks the title up instead of showing a black card. */
         fun read(c: Context): List<Map<String, Any?>> {
             val a = load(c)
-            return (0 until a.length()).map { i ->
+            var changed = false
+            val out = (0 until a.length()).map { i ->
                 val o = a.getJSONObject(i)
+                val art = o.optString("art").takeIf { it.isNotEmpty() && it != "null" }
+                if (art != null && !usable(art)) {
+                    android.util.Log.i("OneArt", "history: dropping unusable picture for ${o.optString("title")}")
+                    File(art).delete()
+                    o.put("art", JSONObject.NULL)
+                    changed = true
+                }
                 o.keys().asSequence().associateWith { k -> o.get(k).takeUnless { it == JSONObject.NULL } }
             }
+            if (changed) prefs(c).edit().putString(KEY, a.toString()).apply()
+            return out
+        }
+
+        private val checked = mutableSetOf<String>() // files already found fine (read runs often)
+
+        private fun usable(path: String): Boolean {
+            if (path in checked) return File(path).exists()
+            val f = File(path)
+            if (!f.exists() || f.length() == 0L) return false
+            val bmp = android.graphics.BitmapFactory.decodeFile(path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 8 }) ?: return false
+            return (!ArtFetch.isBlank(bmp)).also { if (it) checked += path }
         }
 
         fun enabled(c: Context) = prefs(c).getBoolean("enabled", true)
