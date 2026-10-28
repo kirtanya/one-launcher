@@ -264,6 +264,26 @@ class TvRemote {
   /// One Launcher TV's search with [query].
   Future<String?> searchOnTv(String query) => appLink('onelauncher://search?q=${Uri.encodeQueryComponent(query)}');
 
+  // ---- Outside the remote screen ----
+
+  /// The phone's volume buttons go to the TV (while the remote is open).
+  Future<void> setVolumeKeys(bool on) async {
+    try {
+      await _ch.invokeMethod('tvVolumeKeys', {'on': on});
+    } catch (_) {}
+  }
+
+  String? _notified;
+
+  /// The remote in the notification shade, for [name]; null name = removed. Only changes are sent.
+  Future<void> setNotification(String? name) async {
+    if (name == _notified) return;
+    try {
+      final shown = await _ch.invokeMethod<bool>('tvNotify', {'on': name != null, 'name': name ?? ''});
+      _notified = shown == false ? null : name; // permission asked first: try again next time
+    } catch (_) {}
+  }
+
   /// Opens [link] on the TV. Returns an error message, or null when it was sent.
   Future<String?> appLink(String link) async {
     try {

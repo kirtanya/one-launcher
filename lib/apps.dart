@@ -56,6 +56,12 @@ class Apps {
   final _ready = <String, MemoryImage>{};
   MemoryImage? iconNow(String package) => _ready[package];
   VoidCallback? onHomePressed;
+
+  /// The Quick Settings tile / remote notification opened the launcher: open the TV remote.
+  VoidCallback? onOpenRemote;
+
+  /// Whether the launcher was started that way before Flutter listened.
+  Future<bool> takeOpenRemote() async => isDemo ? false : await _ch.invokeMethod<bool>('takeOpenRemote') ?? false;
   VoidCallback? onAppsChanged;
   VoidCallback? onPermissionsChanged;
 
@@ -108,6 +114,8 @@ class Apps {
       switch (call.method) {
         case 'homePressed':
           onHomePressed?.call();
+        case 'openRemote':
+          onOpenRemote?.call();
         case 'appsChanged':
           // Keep the icons on screen; the reload that follows refreshes only the ones that
           // changed (wiping them all flashed every icon to a letter).

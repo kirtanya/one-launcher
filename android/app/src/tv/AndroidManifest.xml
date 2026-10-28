@@ -21,6 +21,8 @@
         tools:replace="android:label">
         <!-- Phone-only parts (MediaListener stays: "Continue watching" reads the playing show) -->
         <activity android:name=".MainActivity" tools:node="remove"/>
+        <service android:name=".RemoteTileService" tools:node="remove"/>
+        <receiver android:name=".RemoteActionReceiver" tools:node="remove"/>
 
         <activity
             android:name=".TvActivity"

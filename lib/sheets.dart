@@ -1683,6 +1683,15 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
             ),
             _Setting(
               'TV remote',
+              Icons.notifications_none_rounded,
+              'In notifications',
+              prefs.remoteNotification ? 'While the TV is connected' : 'Off',
+              keywords: 'tv remote notification shade play pause volume',
+              value: prefs.remoteNotification,
+              onChanged: prefs.setRemoteNotification,
+            ),
+            _Setting(
+              'TV remote',
               Icons.tv_rounded,
               'Your TV',
               prefs.tvHost == null ? 'Not set up yet' : '${prefs.tvName} · ${prefs.tvHost}',
@@ -2297,7 +2306,16 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
           padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
           child: SheetHeader(title: 'TV remote', subtitle: 'Control your Google TV from the dock'),
         ),
-        _Group(null, [_SwitchRow(Icons.settings_remote_rounded, 'Remote tab', 'In the bottom bar, between Search and Settings', prefs.remoteButton, prefs.setRemoteButton)]),
+        _Group(null, [
+          _SwitchRow(Icons.settings_remote_rounded, 'Remote tab', 'In the bottom bar, between Search and Settings', prefs.remoteButton, prefs.setRemoteButton),
+          _SwitchRow(
+            Icons.notifications_none_rounded,
+            'In notifications',
+            'Play / pause and volume while the TV is connected',
+            prefs.remoteNotification,
+            prefs.setRemoteNotification,
+          ),
+        ]),
         _Group('Your TV', [
           if (prefs.tvHost == null)
             _NavRow(Icons.add_link_rounded, 'Set up a TV', 'Pair once with the code on your TV', () {

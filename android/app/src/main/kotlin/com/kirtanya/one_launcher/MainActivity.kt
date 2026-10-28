@@ -106,6 +106,8 @@ class MainActivity : FlutterActivity() {
             if (quick.handle(call, result)) return@setMethodCallHandler
             if (oneStream.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
+                // The remote opened from the Quick Settings tile / notification before Flutter listened.
+                "takeOpenRemote" -> result.success(openRemotePending.also { openRemotePending = false })
                 "getApps" -> worker.execute {
                     val apps = loadApps()
                     main.post { result.success(apps) }
@@ -236,8 +238,28 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Opened by the Quick Settings tile / remote notification: open the TV remote. */
+    private var openRemotePending = false
+
+    private fun takeOpenRemote(intent: Intent?) {
+        if (intent?.getBooleanExtra(RemoteNotification.EXTRA_OPEN_REMOTE, false) != true) return
+        intent.removeExtra(RemoteNotification.EXTRA_OPEN_REMOTE)
+        if (::channel.isInitialized) channel.invokeMethod("openRemote", null) else openRemotePending = true
+    }
+
+    /** While the remote is open, the phone's volume buttons go to the TV (TvRemote.volumeKeys). */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val code = event.keyCode
+        if (tv.volumeKeys && (code == android.view.KeyEvent.KEYCODE_VOLUME_UP || code == android.view.KeyEvent.KEYCODE_VOLUME_DOWN)) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) tv.hardwareKey(code)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        takeOpenRemote(intent)
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
             addAction(Intent.ACTION_PACKAGE_REMOVED)
@@ -290,6 +312,7 @@ class MainActivity : FlutterActivity() {
         if (intent.hasCategory(Intent.CATEGORY_HOME) && ::channel.isInitialized) {
             channel.invokeMethod("homePressed", null)
         }
+        takeOpenRemote(intent)
     }
 
     /**

@@ -48,6 +48,8 @@ import javax.security.auth.x500.X500Principal
  */
 class TvRemote(private val context: Context, private val events: () -> MethodChannel?) {
     companion object {
+        /** The live remote (notification buttons, the tile, volume keys reach the TV through it). */
+        @Volatile var current: TvRemote? = null
         private const val ALIAS = "one_launcher_tv_remote"
         private const val PAIR_PORT = 6467
         private const val REMOTE_PORT = 6466
@@ -86,6 +88,11 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
             "tvText" -> io.execute { reply(result) { text(call.argument<String>("text") ?: "") } }
             "tvDisconnect" -> io.execute { reply(result) { disconnect(); true } }
             "tvVoice" -> listen(result)
+            "tvVolumeKeys" -> {
+                volumeKeys = call.argument<Boolean>("on") == true
+                result.success(null)
+            }
+            "tvNotify" -> result.success(RemoteNotification.update(context, call.argument<Boolean>("on") == true, call.argument<String>("name") ?: "TV"))
             "tvForget" -> io.execute { reply(result) { disconnect(); prefs.edit().remove("pin:" + (call.argument<String>("host") ?: "")).apply(); true } }
             else -> return false
         }
@@ -379,6 +386,28 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         write(Pb().msg(21, Pb().int(1, imeCounter).int(2, fieldCounter).msg(3, edit)))
         return true
     }
+
+    init {
+        current = this
+    }
+
+    /** The phone's volume buttons go to the TV while the remote is open (MainActivity.dispatchKeyEvent). */
+    @Volatile var volumeKeys = false
+
+    /**
+     * A key from outside the remote screen (notification, volume buttons): connects first when the
+     * connection dropped while the launcher was in the background.
+     */
+    fun hardwareKey(code: Int) = io.execute {
+        try {
+            if (socket == null) connect(host ?: flutterPrefs().getString("flutter.tvHost", null) ?: return@execute)
+            key(code, 3)
+        } catch (e: Exception) {
+            Log.w("TvRemote", "key $code not sent: ${e.message}")
+        }
+    }
+
+    private fun flutterPrefs() = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
 
     private fun key(code: Int, direction: Int): Boolean {
         write(Pb().msg(10, Pb().int(1, code.toLong()).int(2, direction.toLong())))

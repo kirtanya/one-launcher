@@ -73,10 +73,12 @@ class _RemoteSheetState extends State<_RemoteSheet> {
     } else {
       _discover();
     }
+    tv.setVolumeKeys(true); // the phone's volume buttons change the TV's while this is open
   }
 
   @override
   void dispose() {
+    tv.setVolumeKeys(false);
     _ip.dispose();
     _code.dispose();
     super.dispose();

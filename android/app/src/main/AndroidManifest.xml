@@ -10,6 +10,8 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
     <!-- TV remote only: talks to the user's own TV on the local Wi-Fi (Android needs this for any socket). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- TV remote in the notification shade (Settings → TV remote → In notifications) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="One Launcher"
         android:name="${applicationName}"
@@ -74,6 +76,19 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- TV remote outside the launcher: notification buttons and the Quick Settings tile
+             (RemoteNotification.kt). -->
+        <receiver android:name=".RemoteActionReceiver" android:exported="false"/>
+        <service
+            android:name=".RemoteTileService"
+            android:exported="true"
+            android:icon="@android:drawable/ic_media_play"
+            android:label="TV remote"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

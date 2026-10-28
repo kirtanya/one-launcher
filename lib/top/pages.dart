@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../prefs.dart';
+import '../remote_sheet.dart';
+import '../tv_remote.dart';
 import '../ui/motion.dart';
 import '../ui/ds.dart';
 import '../widgets.dart';
@@ -735,6 +738,104 @@ class _Control extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Top page "TV remote" (off until switched on in the top pages): what's on the TV and play /
+/// pause, volume and mute, without opening the remote. Connects on the first tap if needed.
+class TvRemotePage extends StatefulWidget {
+  const TvRemotePage({super.key, required this.prefs});
+  final Prefs prefs;
+
+  @override
+  State<TvRemotePage> createState() => _TvRemotePageState();
+}
+
+class _TvRemotePageState extends State<TvRemotePage> {
+  final tv = TvRemote.instance;
+  String? _title;
+  ForegroundTimer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+    _tick = ForegroundTimer(const Duration(seconds: 4), _poll);
+  }
+
+  @override
+  void dispose() {
+    _tick?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _poll() async {
+    final host = widget.prefs.tvHost;
+    if (host == null || tv.status.value != TvStatus.connected) return;
+    final now = await tv.nowPlaying(host, widget.prefs.tvPhoneToken);
+    if (mounted) setState(() => _title = now?['active'] == true ? '${now!['title']} · ${now['app']}' : null);
+  }
+
+  Future<void> _key(int code) async {
+    HapticFeedback.selectionClick();
+    final host = widget.prefs.tvHost;
+    if (host == null) return;
+    if (tv.status.value != TvStatus.connected) await tv.connect(host);
+    await tv.key(code);
+    Future.delayed(const Duration(milliseconds: 600), _poll);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = DS.wallpaperDate;
+    final sub = DS.wallpaperDate.copyWith(fontSize: 14, color: DS.clockInk, fontWeight: FontWeight.w400);
+    final paired = widget.prefs.tvHost != null;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 24,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(paired ? 'TV · ${widget.prefs.tvName}' : 'TV remote', style: label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          const Spacer(),
+          ValueListenableBuilder<TvStatus>(
+            valueListenable: tv.status,
+            builder: (context, status, _) => Text(
+              !paired ? 'Set up your TV to control it from here.' : (status != TvStatus.connected ? 'Tap a button to connect' : (_title ?? 'Nothing playing')),
+              style: sub,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(height: DS.s8),
+          if (!paired)
+            GlassPill(
+              onTap: () => showTvRemote(context, prefs: widget.prefs),
+              child: Text('Set up a TV', style: DS.wallpaperDate.copyWith(fontSize: 14, shadows: const [])),
+            )
+          else
+            Row(
+              children: [
+                _Control(icon: Icons.volume_down_rounded, label: 'Volume down', onTap: () => _key(TvKey.volumeDown)),
+                _Control(icon: Icons.volume_off_rounded, label: 'Mute', onTap: () => _key(TvKey.mute)),
+                _Control(icon: Icons.play_arrow_rounded, label: 'Play / pause', primary: true, onTap: () => _key(TvKey.playPause)),
+                _Control(icon: Icons.volume_up_rounded, label: 'Volume up', onTap: () => _key(TvKey.volumeUp)),
+                _Control(
+                  icon: Icons.settings_remote_rounded,
+                  label: 'Open remote',
+                  onTap: () => showTvRemote(context, prefs: widget.prefs),
+                ),
+              ],
+            ),
+          const Spacer(),
+        ],
       ),
     );
   }

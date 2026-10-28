@@ -12,6 +12,7 @@ import 'prefs.dart';
 import 'quick_actions.dart';
 import 'quick_chips.dart';
 import 'remote_sheet.dart';
+import 'tv_remote.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'top/top_carousel.dart';
@@ -216,6 +217,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onHome: inline ? null : _navHome,
   );
 
+  void _openRemote() {
+    if (prefs.tvHost == null && !prefs.remoteButton) return;
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    _openTab('remote', () => showTvRemote(context, prefs: prefs));
+  }
+
+  /// The remote in the notification shade while the TV is connected and on (Settings → TV remote).
+  void _syncTvNotification() {
+    final tv = TvRemote.instance;
+    final on = prefs.remoteNotification && prefs.tvHost != null && tv.status.value == TvStatus.connected && tv.power.value != false;
+    tv.setNotification(on ? prefs.tvName : null);
+  }
+
   /// A nav tab whose page opens over home: its tab lights up while open, then Home again.
   Future<void> _openTab(String tab, Future<void> Function() open) async {
     setState(() => _tab = tab);
@@ -241,6 +255,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       WidgetsBinding.instance.addObserver(this);
       Apps.instance.onAppsChanged = _loadApps;
       Apps.instance.onHomePressed = _goHome;
+      // The Quick Settings tile / remote notification: straight into the TV remote.
+      Apps.instance.onOpenRemote = _openRemote;
+      Apps.instance.takeOpenRemote().then((open) {
+        if (open && mounted) _openRemote();
+      });
+      TvRemote.instance.status.addListener(_syncTvNotification);
+      TvRemote.instance.power.addListener(_syncTvNotification);
       Apps.instance.onPermissionsChanged = () => _refresh.value++;
     }
     _sheet.addListener(() {
@@ -290,6 +311,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_rebuild);
+    TvRemote.instance.status.removeListener(_syncTvNotification);
+    TvRemote.instance.power.removeListener(_syncTvNotification);
     openToday.removeListener(_openToday);
     _panel.dispose();
     _sheet.dispose();
@@ -324,6 +347,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   void _rebuild() {
+    _syncTvNotification(); // Settings → TV remote → In notifications may have changed
     // Panel switched off while it shows: back home.
     if (!_sidePanel && _panel.hasClients && (_panel.page ?? 1) != 1) _panel.jumpToPage(1);
     setState(() {});
@@ -399,7 +423,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// A recent search: typed into the bar (cursor at the end), its results show. Never opens the
   /// only match by itself — tapping a recent search means "show me these results".
   void _setQuery(String q) {
-    _query.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
+    _query.value = TextEditingValue(
+      text: q,
+      selection: TextSelection.collapsed(offset: q.length),
+    );
     _focus.requestFocus();
     setState(() {});
   }

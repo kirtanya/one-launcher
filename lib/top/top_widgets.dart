@@ -17,5 +17,6 @@ const topWidgets = <String, TopWidget>{
   'battery': TopWidget('battery', 'Battery', 'Charge level and time to full', Icons.battery_charging_full_rounded),
   'up_next': TopWidget('up_next', 'Up next', 'Your next calendar event', Icons.event_rounded),
   'now_playing': TopWidget('now_playing', 'Now playing', 'Music controls for what’s playing', Icons.music_note_rounded),
+  'tv_remote': TopWidget('tv_remote', 'TV remote', 'Play / pause, volume and what’s on your TV', Icons.settings_remote_rounded),
   'blank': TopWidget('blank', 'Just wallpaper', 'Nothing on top, only your wallpaper', Icons.wallpaper_rounded),
 };

@@ -101,7 +101,7 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Top carousel pages, in order, and which are switched on.
-  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'blank'];
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'tv_remote', 'blank'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
     bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));
@@ -633,6 +633,13 @@ class Prefs extends ChangeNotifier {
   /// Last TV brightness set from the remote (0–100 %); TVs don't report it, so we remember it.
   int get tvBrightness => _sp.getInt('tvBrightness') ?? 40;
   Future<void> setTvBrightness(int v) => _sp.setInt('tvBrightness', v.clamp(0, 100));
+
+  /// The TV remote in the notification shade while the TV is connected (play / pause, volume, mute).
+  bool get remoteNotification => _sp.getBool('remoteNotification') ?? true;
+  Future<void> setRemoteNotification(bool v) async {
+    await _sp.setBool('remoteNotification', v);
+    notifyListeners();
+  }
 
   bool get remoteButton => _sp.getBool('remoteButton') ?? true;
   Future<void> setRemoteButton(bool v) async {
