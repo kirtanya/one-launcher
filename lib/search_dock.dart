@@ -309,9 +309,9 @@ class _NavTab {
   final VoidCallback? onLongPress;
 }
 
-/// The floating bottom nav: a glass bar that hugs its icon tabs, centred. Each tab is a rounded
-/// square; an accent square sits behind the selected one and slides to the tab tapped, and the
-/// icons crossfade between ink and accent ink.
+/// The floating bottom nav: a glass pill that hugs its icon tabs, centred. Each tab is a circle; an
+/// accent circle sits behind the selected one and slides to the tab tapped, and the icons crossfade
+/// between ink and accent ink.
 class _NavBar extends StatelessWidget {
   const _NavBar({super.key, required this.tabs, required this.selected});
   final List<_NavTab> tabs;
@@ -320,7 +320,7 @@ class _NavBar extends StatelessWidget {
   static const _inset = 4.0; // bar around the tabs: 4 + 48 + 4 = the dock's 56
   static const _tab = SearchDock.height - _inset * 2; // 48: a full touch target
   static const _gap = 4.0;
-  static const _radius = 14.0; // a tab's corners; the bar's are this + the inset, so they nest
+  static const _radius = _tab / 2; // round tabs; the bar's corners are this + the inset, so they nest (a pill)
 
   @override
   Widget build(BuildContext context) {
