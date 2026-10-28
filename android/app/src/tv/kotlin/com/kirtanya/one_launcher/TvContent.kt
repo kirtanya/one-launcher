@@ -79,7 +79,8 @@ class TvContent(private val activity: Activity) {
 
     /** Artwork from a program (https, content:// or android.resource://), at most [maxWidth] wide, as JPEG. */
     fun image(uri: String, maxWidth: Int): ByteArray? = ArtFetch.load(activity, uri, maxWidth)?.let { bmp ->
-        ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }.toByteArray()
+        // Full-screen pictures (Customise → Picture quality) show their JPEG edges at 88; 92 doesn't.
+        ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
     }
 
     private fun <T> query(uri: Uri, map: (Cursor) -> T?): List<T> = try {

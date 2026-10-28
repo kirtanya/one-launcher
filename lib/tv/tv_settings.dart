@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../prefs.dart';
 import '../tiles/landing.dart' show landingStyles;
 import '../top/header_fonts.dart' show clockPresets;
+import 'art_quality.dart';
 import 'catalog.dart';
 import 'tv_apps.dart';
 import 'tv_catalog_settings.dart';
@@ -34,6 +35,8 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('hero', 'Title & details', [(true, 'On'), (false, 'Off')], true),
       TvOption('backdrop', 'Background picture', [('art', 'Artwork'), ('glow', 'Soft glow'), ('off', 'Off')], 'art'),
       TvOption('dim', 'Background darkness', [(.7, 'Light'), (1.0, 'Medium'), (1.25, 'Strong')], 1.0),
+      // How sharp the full-screen picture is (art_quality.dart): sharper = heavier to fetch and decode.
+      TvOption('artQuality', 'Picture quality', ArtQuality.levels, 'high'),
       TvOption('rowsAt', 'Rows start', [(.45, 'Higher'), (.55, 'Middle'), (.65, 'Lower')], .55),
       TvOption('clock', 'Clock', [(true, 'On'), (false, 'Off')], true),
       TvOption('clock24', 'Clock format', [('auto', 'Like the TV'), ('12', '12-hour'), ('24', '24-hour')], 'auto'),

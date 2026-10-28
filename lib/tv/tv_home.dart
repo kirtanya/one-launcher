@@ -16,6 +16,7 @@ import '../ui/motion.dart';
 import '../ui/perf.dart';
 import 'catalog.dart';
 import 'app_trending.dart';
+import 'art_quality.dart';
 import 'episode_art.dart';
 import 'tv_actions.dart';
 import 'tv_all_apps.dart';
@@ -1365,9 +1366,11 @@ class _Backdrop extends StatelessWidget {
       return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true, errorBuilder: (_, _, _) => _wash(it)));
     }
     if (it.image != null) {
-      final ready = TvApps.instance.imageNow(it.image!, width: 960);
+      // Customise → Picture quality: the size asked of the host, and how wide it's kept.
+      final src = ArtQuality.url(it.image!), w = ArtQuality.width;
+      final ready = TvApps.instance.imageNow(src, width: w);
       return FutureBuilder<MemoryImage?>(
-        future: ready != null ? Future.value(ready) : TvApps.instance.image(it.image!, width: 960),
+        future: ready != null ? Future.value(ready) : TvApps.instance.image(src, width: w),
         builder: (context, s) => s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true)),
       );
     }
@@ -1437,9 +1440,9 @@ class _TrendingShowState extends State<_TrendingShow> {
   void _next() {
     if (_titles.isEmpty || !mounted) return;
     final n = (_i + 1) % _titles.length;
-    final img = TvApps.instance.imageNow(_titles[n].image, width: 960);
+    final img = TvApps.instance.imageNow(_src(n), width: ArtQuality.width);
     if (img == null) {
-      TvApps.instance.image(_titles[n].image, width: 960); // ready by the next tick
+      TvApps.instance.image(_src(n), width: ArtQuality.width); // ready by the next tick
       return;
     }
     setState(() {
@@ -1447,8 +1450,11 @@ class _TrendingShowState extends State<_TrendingShow> {
       _shown = img;
     });
     AppTrending.instance.showing.value = (package: widget.package, title: _titles[n].title);
-    TvApps.instance.image(_titles[(n + 1) % _titles.length].image, width: 960);
+    TvApps.instance.image(_src((n + 1) % _titles.length), width: ArtQuality.width);
   }
+
+  /// Title [i]'s picture at Customise → Picture quality's size.
+  String _src(int i) => ArtQuality.url(_titles[i].image);
 
   @override
   void dispose() {

@@ -123,7 +123,7 @@ class MediaHistory(private val context: Context) {
         }
         if (!fetching.add(key)) return null
         ArtFetch.async {
-            val path = ArtFetch.load(context, uri, 960)?.takeUnless(ArtFetch::isBlank)?.let { write(file, it) }
+            val path = ArtFetch.load(context, uri, ART_WIDTH)?.takeUnless(ArtFetch::isBlank)?.let { write(file, it) }
             main.post {
                 fetching.remove(key)
                 if (path != null) setArt(key, path)
@@ -133,7 +133,7 @@ class MediaHistory(private val context: Context) {
     }
 
     private fun write(file: File, bmp: Bitmap): String? = try {
-        file.outputStream().use { ArtFetch.fit(bmp, 960).compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        file.outputStream().use { ArtFetch.fit(bmp, ART_WIDTH).compress(Bitmap.CompressFormat.JPEG, 90, it) }
         file.path
     } catch (e: Exception) {
         null
@@ -152,6 +152,8 @@ class MediaHistory(private val context: Context) {
     companion object {
         private const val KEY = "items"
         private const val MAX = 20
+        /** Saved pictures fill the TV's 1920-wide screen: 1280 keeps them sharp without big files. */
+        private const val ART_WIDTH = 1280
 
         private fun prefs(c: Context) = c.getSharedPreferences("one_watch_history", Context.MODE_PRIVATE)
         private fun load(c: Context) = try { JSONArray(prefs(c).getString(KEY, "[]")) } catch (e: Exception) { JSONArray() }
