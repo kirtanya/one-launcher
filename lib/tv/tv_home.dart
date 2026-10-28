@@ -1528,7 +1528,11 @@ class _HeroInfo extends StatelessWidget {
           ValueListenableBuilder(
             valueListenable: AppTrending.instance.showing,
             builder: (context, now, _) => AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
+              // The old name fades out, then the new one in (crossfading text jumbles).
+              duration: const Duration(milliseconds: 500),
+              switchInCurve: const Interval(.5, 1),
+              switchOutCurve: const Interval(.5, 1),
+              layoutBuilder: (current, previous) => Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
               child: now?.package != it.package
                   ? const SizedBox.shrink()
                   : Padding(
