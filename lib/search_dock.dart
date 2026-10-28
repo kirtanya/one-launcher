@@ -309,53 +309,62 @@ class _NavTab {
   final VoidCallback? onLongPress;
 }
 
-/// The floating bottom nav: one glass pill of icon tabs, equal widths. An accent capsule sits behind
-/// the selected icon and slides to the tab tapped; the icons crossfade between ink and accent ink.
+/// The floating bottom nav: a glass bar that hugs its icon tabs, centred. Each tab is a rounded
+/// square; an accent square sits behind the selected one and slides to the tab tapped, and the
+/// icons crossfade between ink and accent ink.
 class _NavBar extends StatelessWidget {
   const _NavBar({super.key, required this.tabs, required this.selected});
   final List<_NavTab> tabs;
   final String selected;
 
-  static const _inset = 4.0; // capsule inside the pill: 56 - 2 × 4 = 48 tall, a full touch target
+  static const _inset = 4.0; // bar around the tabs: 4 + 48 + 4 = the dock's 56
+  static const _tab = SearchDock.height - _inset * 2; // 48: a full touch target
+  static const _gap = 4.0;
+  static const _radius = 14.0; // a tab's corners; the bar's are this + the inset, so they nest
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(99), boxShadow: Perf.lite.value ? null : SearchDock.shadow),
-      child: glassOr(
-        colour: DS.card,
-        shape: const StadiumBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(_inset),
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final w = c.maxWidth / tabs.length;
-              final on = tabs.indexWhere((t) => t.id == selected);
-              return Stack(
-                children: [
-                  if (on >= 0)
-                    AnimatedPositioned(
-                      duration: Motion.snapDuration,
-                      curve: Motion.settle,
-                      left: on * w,
-                      top: 0,
-                      bottom: 0,
-                      width: w,
-                      child: DecoratedBox(
-                        decoration: ShapeDecoration(color: DS.hero, shape: const StadiumBorder()),
+    final on = tabs.indexWhere((t) => t.id == selected);
+    final bar = RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius + _inset));
+    return Center(
+      child: DecoratedBox(
+        decoration: ShapeDecoration(shape: bar, shadows: Perf.lite.value ? null : SearchDock.shadow),
+        child: glassOr(
+          colour: DS.card,
+          shape: bar,
+          child: Padding(
+            padding: const EdgeInsets.all(_inset),
+            child: Stack(
+              children: [
+                if (on >= 0)
+                  AnimatedPositioned(
+                    duration: Motion.snapDuration,
+                    curve: Motion.settle,
+                    left: on * (_tab + _gap),
+                    top: 0,
+                    width: _tab,
+                    height: _tab,
+                    child: DecoratedBox(
+                      decoration: ShapeDecoration(
+                        color: DS.hero,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
                       ),
                     ),
-                  Row(
-                    children: [
-                      for (final (i, t) in tabs.indexed)
-                        Expanded(
-                          child: _NavButton(tab: t, selected: i == on),
-                        ),
-                    ],
                   ),
-                ],
-              );
-            },
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final (i, t) in tabs.indexed) ...[
+                      if (i > 0) const SizedBox(width: _gap),
+                      SizedBox.square(
+                        dimension: _tab,
+                        child: _NavButton(tab: t, selected: i == on),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -380,12 +389,12 @@ class _NavButton extends StatelessWidget {
         triggerMode: tab.onLongPress != null ? TooltipTriggerMode.manual : TooltipTriggerMode.longPress,
         child: Pressable(
           scale: .9,
-          child: SizedBox(
-            height: SearchDock.height - _NavBar._inset * 2,
+          child: SizedBox.square(
+            dimension: _NavBar._tab,
             child: Material(
               type: MaterialType.transparency,
               child: InkWell(
-                customBorder: const StadiumBorder(),
+                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_NavBar._radius)),
                 onTap: () {
                   HapticFeedback.selectionClick();
                   tab.onTap();
