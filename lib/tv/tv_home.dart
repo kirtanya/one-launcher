@@ -76,9 +76,12 @@ class TvRow {
   final bool wide;
   final bool chips; // the quick action chips above the rows (no title, short)
 
+  /// Customise → App cards → Circle: an app row shows round app icons, not banners.
+  bool get round => !wide && !chips && TvLook.str('appCards') == 'round';
+
   // Customise → Card size scales every card; Row titles off removes their line.
-  double get cardW => (wide ? TvDS.wideW : TvDS.tileW) * TvLook.number('cardScale');
-  double get cardH => (wide ? TvDS.wideH : TvDS.tileH) * TvLook.number('cardScale');
+  double get cardW => (round ? TvDS.appCircle : (wide ? TvDS.wideW : TvDS.tileW)) * TvLook.number('cardScale');
+  double get cardH => (round ? TvDS.appCircle : (wide ? TvDS.wideH : TvDS.tileH)) * TvLook.number('cardScale');
   double get height => chips
       ? TvDS.cardRowPad + 40 * TvLook.get<double>('quickSize') + TvDS.cardRowGap
       : (TvLook.on('rowTitles') ? TvDS.cardRowTitleH : 0) + TvDS.cardRowPad + cardH + TvDS.cardRowGap;
@@ -1272,6 +1275,7 @@ class _TvHomeState extends State<TvHome> {
                       _AllAppsTile(
                         key: ValueKey(_key(r, i)),
                         count: item.meta ?? '',
+                        round: row.round,
                         width: row.cardW,
                         height: row.cardH,
                         focusNode: _node(r, i),
@@ -1283,6 +1287,7 @@ class _TvHomeState extends State<TvHome> {
                       _Card(
                         key: ValueKey(_key(r, i)),
                         item: item,
+                        round: row.round,
                         width: row.cardW,
                         height: row.cardH,
                         focusNode: _node(r, i),
@@ -1805,14 +1810,18 @@ class _Card extends StatelessWidget {
     this.onMove,
     this.onFocus,
     this.moving = false,
+    this.round = false,
   });
   final bool moving; // being reordered: shows ‹ › and lifts a little higher
+  final bool round; // an app as a circle (its icon), not a banner
   final TvItem item;
   final double width, height;
   final FocusNode focusNode;
   final VoidCallback onSelect, onOptions;
   final bool Function(AxisDirection)? onMove;
   final VoidCallback? onFocus;
+
+  double get radius => round ? width / 2 : TvDS.rTile;
 
   @override
   Widget build(BuildContext context) {
@@ -1835,17 +1844,19 @@ class _Card extends StatelessWidget {
             width: width,
             height: height,
             // Ring + glow only on the focused card (one blur on screen at a time).
-            foregroundDecoration: TvRing(on: f, radius: TvDS.rTile),
+            foregroundDecoration: TvRing(on: f, radius: radius),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(TvDS.rTile),
+              borderRadius: BorderRadius.circular(radius),
               boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(TvDS.rTile),
+              borderRadius: BorderRadius.circular(radius),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  item.app != null ? TvAppArt(app: item.app!, width: width) : _ProgramArt(item: item, width: width, height: height),
+                  item.app != null
+                      ? (round ? TvAppIcon(app: item.app!, size: width) : TvAppArt(app: item.app!, width: width))
+                      : _ProgramArt(item: item, width: width, height: height),
                   // Moving: arrows on both sides say "← → to slide me".
                   if (moving)
                     const ColoredBox(
@@ -2130,6 +2141,7 @@ class _AllAppsTile extends StatelessWidget {
   const _AllAppsTile({
     super.key,
     required this.count,
+    this.round = false,
     required this.width,
     required this.height,
     required this.focusNode,
@@ -2138,6 +2150,7 @@ class _AllAppsTile extends StatelessWidget {
     this.onFocus,
   });
   final String count;
+  final bool round; // in a row of round app icons: a circle with the grid icon
   final double width, height;
   final FocusNode focusNode;
   final VoidCallback onSelect;
@@ -2164,17 +2177,19 @@ class _AllAppsTile extends StatelessWidget {
             height: height,
             decoration: BoxDecoration(
               color: f ? TvDS.surfaceFocused : TvDS.surface,
-              borderRadius: BorderRadius.circular(TvDS.rTile),
+              borderRadius: BorderRadius.circular(round ? width / 2 : TvDS.rTile),
               border: Border.all(color: f ? Colors.transparent : TvDS.line),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.apps_rounded, size: 32, color: f ? TvDS.onLight : TvDS.ink),
-                const SizedBox(height: DS.s8),
-                Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink)),
-              ],
-            ),
+            child: round
+                ? Icon(Icons.apps_rounded, size: width * .4, color: f ? TvDS.onLight : TvDS.ink) // the title block says "All apps"
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.apps_rounded, size: 32, color: f ? TvDS.onLight : TvDS.ink),
+                      const SizedBox(height: DS.s8),
+                      Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink)),
+                    ],
+                  ),
           ),
         ),
       ),

@@ -13,6 +13,7 @@ class TvDS {
 
   // ---- Tiles ----
   static const tileW = 176.0, tileH = 99.0; // 16:9, like TV app banners
+  static const appCircle = 80.0; // Customise → App cards → Circle: its diameter (under half a banner)
   static const rTile = 14.0;
   static const focusScale = 1.12;
   static const focusRing = 3.0;

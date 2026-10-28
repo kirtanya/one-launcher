@@ -80,6 +80,34 @@ class TvAppTile extends StatelessWidget {
 }
 
 /// The app's banner, or (no banner) its icon + name on a soft tile.
+/// An app as a circle (Customise → App cards → Circle): its own icon on a quiet disc, or its
+/// initial until the icon arrives. The round clip comes from the card.
+class TvAppIcon extends StatelessWidget {
+  const TvAppIcon({super.key, required this.app, required this.size});
+  final AppEntry app;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = TvApps.instance.iconNow(app.package);
+    Widget view(ImageProvider? icon) => ColoredBox(
+      color: TvDS.surface,
+      child: Center(
+        child: icon != null
+            ? SizedBox.square(
+                dimension: size * .74,
+                child: Image(image: icon, fit: BoxFit.contain, gaplessPlayback: true, filterQuality: FilterQuality.medium),
+              )
+            : Text(app.label.isEmpty ? '?' : app.label[0].toUpperCase(), style: TvDS.tileName.copyWith(fontSize: size * .36)),
+      ),
+    );
+    return SizedBox.square(
+      dimension: size,
+      child: ready != null ? view(ready) : FutureBuilder<MemoryImage?>(future: TvApps.instance.icon(app.package), builder: (context, s) => view(s.data)),
+    );
+  }
+}
+
 class TvAppArt extends StatelessWidget {
   const TvAppArt({super.key, required this.app, required this.width});
   final AppEntry app;

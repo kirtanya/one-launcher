@@ -45,6 +45,8 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     Icons.view_carousel_outlined,
     [
       TvOption('cardScale', 'Card size', [(.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
+      // Circles keep apps apart from shows and films at a glance.
+      TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
       TvOption('focus', 'Focused card', [('glow', 'Grow + glow'), ('grow', 'Grow'), ('outline', 'Outline only')], 'glow'),
       TvOption('motion', 'Animations', [('full', 'Full'), ('reduced', 'Reduced')], 'full'),
       TvOption('rowTitles', 'Row titles', [(true, 'On'), (false, 'Off')], true),
