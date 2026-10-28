@@ -53,10 +53,27 @@ class TvDS {
   static const label = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: ink);
   static const hint = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
   static const tileName = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
-  static const heroEyebrow = TextStyle(fontFamily: DS.font, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.4, color: inkMuted);
-  static const heroTitle = TextStyle(fontFamily: DS.font, fontSize: 40, fontWeight: FontWeight.w600, height: 1.05, letterSpacing: -.8, color: ink);
-  static const heroMeta = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xD9FFFFFF));
-  static const heroBody = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: inkMuted);
+  // Hero text sits on full-screen pictures: a soft shadow keeps it readable on bright frames.
+  static const heroShadow = [Shadow(color: Color(0x99000000), blurRadius: 18)];
+  static const heroEyebrow = TextStyle(
+    fontFamily: DS.font,
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.4,
+    color: inkMuted,
+    shadows: heroShadow,
+  );
+  static const heroTitle = TextStyle(
+    fontFamily: DS.font,
+    fontSize: 40,
+    fontWeight: FontWeight.w600,
+    height: 1.05,
+    letterSpacing: -.8,
+    color: ink,
+    shadows: heroShadow,
+  );
+  static const heroMeta = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xD9FFFFFF), shadows: heroShadow);
+  static const heroBody = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: inkMuted, shadows: heroShadow);
   static const keycap = TextStyle(fontFamily: DS.font, fontSize: 12, fontWeight: FontWeight.w600, color: ink);
   static const topClock = TextStyle(fontFamily: DS.font, fontSize: 20, fontWeight: FontWeight.w500, color: ink);
   static const panel = Color(0xFF1C1C1C);

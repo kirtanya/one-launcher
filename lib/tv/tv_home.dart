@@ -13,6 +13,7 @@ import '../ui/ds.dart';
 import '../ui/palette.dart';
 import '../ui/theme.dart';
 import '../ui/motion.dart';
+import '../ui/perf.dart';
 import 'catalog.dart';
 import 'episode_art.dart';
 import 'tv_actions.dart';
@@ -1105,18 +1106,14 @@ class _TvHomeState extends State<TvHome> {
                   return Stack(
                     fit: StackFit.expand,
                     children: [
-                      // ---- The big picture, fading into the canvas on the left and bottom ----
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        width: c.maxWidth * .74,
-                        height: c.maxHeight * .8,
+                      // ---- The picture, full screen; shaded behind the text and the rows ----
+                      Positioned.fill(
                         child: TvLook.str('backdrop') == 'off'
                             ? const SizedBox.expand()
                             : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
                       ),
                       // Fades into pure black (the canvas grey looked washed out next to the picture).
-                      TvScrims(strength: TvLook.number('dim'), colour: TvDS.scrim),
+                      TvScrims(strength: TvLook.number('dim'), colour: TvDS.scrim, cinema: true),
 
                       // ---- Title block: what's focused ----
                       Positioned(
@@ -1327,24 +1324,45 @@ class _Backdrop extends StatelessWidget {
     );
   }
 
+  /// Where a full-screen picture is anchored: right of centre and high, so faces sit clear of
+  /// the title on the left and the rows below.
+  static const _focusPoint = Alignment(.5, -.4);
+
   Widget _picture(TvItem it) {
     if (glowOnly) return _wash(it);
-    Widget settle(Widget child) => TweenAnimationBuilder<double>(
-      tween: Tween(begin: TvLook.str('motion') == 'reduced' ? 1.0 : 1.06, end: 1),
-      duration: const Duration(milliseconds: 1800),
-      curve: Curves.easeOutCubic,
-      builder: (context, s, child) => Transform.scale(scale: s, alignment: Alignment.topRight, child: child),
-      child: child,
+    // Settles in from a slight zoom (1.8 s), then drifts slowly closer (4% over ~25 s) and stops —
+    // a Ken Burns move. Reduced motion / lighter effects: still.
+    final still = TvLook.str('motion') == 'reduced';
+    final drift = !still && !Perf.lite.value;
+    Widget settle(Widget child) => RepaintBoundary(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: drift ? 26000 : 1800),
+        builder: (context, t, child) {
+          const settleEnd = 1800 / 26000;
+          final double scale;
+          if (still) {
+            scale = 1;
+          } else if (!drift) {
+            scale = 1.06 - .06 * Curves.easeOutCubic.transform(t);
+          } else if (t < settleEnd) {
+            scale = 1.06 - .06 * Curves.easeOutCubic.transform(t / settleEnd);
+          } else {
+            scale = 1 + .04 * Curves.easeInOutSine.transform((t - settleEnd) / (1 - settleEnd));
+          }
+          return Transform.scale(scale: scale, alignment: _focusPoint, child: child);
+        },
+        child: child,
+      ),
     );
     if (it.art != null) {
-      return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true, errorBuilder: (_, _, _) => _wash(it)));
+      return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true, errorBuilder: (_, _, _) => _wash(it)));
     }
     if (it.image != null) {
       final ready = TvApps.instance.imageNow(it.image!, width: 960);
       return FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(it.image!, width: 960),
-        builder: (context, s) =>
-            s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: Alignment.topCenter, gaplessPlayback: true)),
+        builder: (context, s) => s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true)),
       );
     }
     // Apps: their banner, pre-blurred on the TV into a soft wash.

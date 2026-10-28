@@ -294,13 +294,70 @@ Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().to
 /// Darkens a full-bleed picture into the canvas: from the left (behind text) and the bottom,
 /// plus a light veil at the top.
 class TvScrims extends StatelessWidget {
-  const TvScrims({super.key, this.strength = 1, this.colour});
+  const TvScrims({super.key, this.strength = 1, this.colour, this.cinema = false});
   final double strength; // Customise → Background darkness (×, clamped)
   final Color? colour; // what the picture fades into (default the canvas)
+
+  /// The home's full-screen picture: a dark fade behind the title on the left, a deep one under
+  /// the rows, a light veil for the top bar and a soft vignette at the edges, like a cinema screen.
+  final bool cinema;
 
   @override
   Widget build(BuildContext context) {
     final c = colour ?? TvDS.canvas;
+    double a(double x) => (x * strength).clamp(0, 1).toDouble();
+    if (cinema) {
+      return IgnorePointer(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    c.withValues(alpha: a(.88)),
+                    c.withValues(alpha: a(.66)),
+                    c.withValues(alpha: a(.24)),
+                    c.withValues(alpha: 0),
+                  ],
+                  stops: const [0, .26, .5, .7],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    c.withValues(alpha: a(.5)),
+                    c.withValues(alpha: 0),
+                    c.withValues(alpha: 0),
+                    c.withValues(alpha: a(.72)),
+                    c.withValues(alpha: a(.94)),
+                  ],
+                  stops: const [0, .22, .36, .6, .82],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(.3, -.3),
+                  radius: 1.25,
+                  colors: [
+                    c.withValues(alpha: 0),
+                    c.withValues(alpha: 0),
+                    c.withValues(alpha: a(.45)),
+                  ],
+                  stops: const [0, .55, 1],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return IgnorePointer(
       child: Stack(
         fit: StackFit.expand,
