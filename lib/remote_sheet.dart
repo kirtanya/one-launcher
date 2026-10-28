@@ -280,12 +280,17 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                     onSelected: (v) => switch (v) {
                       'forget' => _forget(),
                       'arrange' => showRemoteArrange(context, prefs: prefs),
+                      'wake' => showWakeSetup(context, prefs: prefs),
                       _ => tv.connect(prefs.tvHost!),
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(
                         value: 'arrange',
                         child: Text('Arrange remote', style: DS.rowTitle),
+                      ),
+                      PopupMenuItem(
+                        value: 'wake',
+                        child: Text('Turn on from phone', style: DS.rowTitle),
                       ),
                       PopupMenuItem(
                         value: 'reconnect',
@@ -355,7 +360,8 @@ class _RemoteSheetState extends State<_RemoteSheet> {
             if (!live && status != TvStatus.connecting)
               Padding(
                 padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
-                child: _Primary(label: 'Reconnect', onTap: () => tv.connect(prefs.tvHost!)),
+                // With its address known, Wake-on-LAN may bring a sleeping TV back too.
+                child: _Primary(label: prefs.tvMac != null ? 'Turn on TV' : 'Reconnect', onTap: _turnOn),
               ),
           ],
         );
@@ -445,6 +451,17 @@ class _RemoteSheetState extends State<_RemoteSheet> {
       ),
     ),
   );
+
+  /// Reconnect — and with the TV's address set, wake it first (it may be asleep).
+  Future<void> _turnOn() async {
+    HapticFeedback.mediumImpact();
+    final host = prefs.tvHost!;
+    if (prefs.tvMac == null) {
+      await tv.connect(host);
+      return;
+    }
+    await tv.wake(host, mac: prefs.tvMac);
+  }
 
   /// Voice search: the phone's speech dialog, then One Launcher TV's search with the words.
   Future<void> _voice() async {
@@ -1337,4 +1354,73 @@ class _NowPlayingState extends State<_NowPlaying> {
       ),
     );
   }
+}
+
+/// ⋮ → Turn on from phone: the TV's network address for Wake-on-LAN, and where to find it.
+Future<Object?> showWakeSetup(BuildContext context, {required Prefs prefs}) {
+  final field = TextEditingController(text: prefs.tvMac ?? '');
+  return showOneSheetWith(
+    context,
+    keyboard: true,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) {
+        final valid = TvRemote.macBytes(field.text) != null;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SheetHeader(title: 'Turn on from phone', subtitle: 'Wakes your TV when it’s asleep'),
+              const SizedBox(height: DS.s8),
+              Text(
+                'Enter your TV’s network (MAC) address. On the TV: Settings → Network & Internet → your network → MAC address. '
+                'Also turn on “Network standby” or “Wake on LAN” in the TV’s settings if it has it.',
+                style: DS.rowSub,
+              ),
+              const SizedBox(height: DS.s16),
+              TextField(
+                controller: field,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                onChanged: (_) => setState(() {}),
+                style: DS.rowTitle,
+                decoration: InputDecoration(
+                  hintText: 'c8:7e:a1:88:15:c2',
+                  filled: true,
+                  fillColor: DS.cardMuted,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.rMedia), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: DS.s16),
+              Row(
+                children: [
+                  if (prefs.tvMac != null)
+                    TextButton(
+                      onPressed: () {
+                        prefs.setTvMac(null);
+                        Navigator.of(ctx).pop();
+                      },
+                      child: Text('Remove', style: DS.rowTitle.copyWith(color: DS.alert)),
+                    ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: valid
+                        ? () {
+                            HapticFeedback.selectionClick();
+                            prefs.setTvMac(field.text.trim().toLowerCase());
+                            Navigator.of(ctx).pop();
+                          }
+                        : null,
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
 }

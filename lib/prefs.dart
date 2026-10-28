@@ -610,6 +610,13 @@ class Prefs extends ChangeNotifier {
   String? get tvHost => _sp.getString('tvHost');
   String get tvName => _sp.getString('tvName') ?? 'TV';
 
+  /// The TV's network (MAC) address for Wake-on-LAN (⋮ → Turn on from phone); null = not set.
+  String? get tvMac => _sp.getString('tvMac');
+  Future<void> setTvMac(String? mac) async {
+    mac == null || mac.isEmpty ? await _sp.remove('tvMac') : await _sp.setString('tvMac', mac);
+    notifyListeners();
+  }
+
   /// The secret One Launcher TV answers Now playing to (made once per phone).
   String get tvPhoneToken {
     final t = _sp.getString('tvPhoneToken');

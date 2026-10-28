@@ -264,6 +264,49 @@ class TvRemote {
   /// One Launcher TV's search with [query].
   Future<String?> searchOnTv(String query) => appLink('onelauncher://search?q=${Uri.encodeQueryComponent(query)}');
 
+  // ---- Turning the TV on ----
+
+  /// "aa:bb:cc:dd:ee:ff" (any of : - . or none between) → 6 bytes, or null.
+  static List<int>? macBytes(String mac) {
+    final hex = mac.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    if (hex.length != 12) return null;
+    return [for (var i = 0; i < 12; i += 2) int.parse(hex.substring(i, i + 2), radix: 16)];
+  }
+
+  /// Wake-on-LAN "magic packet": six 0xFF, then the address 16 times.
+  static List<int> magicPacket(List<int> mac) => [...List.filled(6, 0xFF), for (var i = 0; i < 16; i++) ...mac];
+
+  /// Wakes a TV that's asleep: a Wake-on-LAN packet to [mac] (if known) on the home network, then
+  /// keeps trying the remote connection for up to 15 s and sends "wake" once it answers. Works when
+  /// the TV keeps its network on while asleep (often "Network standby" / "Wake on LAN" in its
+  /// settings). True = the TV answered.
+  Future<bool> wake(String host, {String? mac}) async {
+    final bytes = mac == null ? null : macBytes(mac);
+    if (bytes != null) {
+      try {
+        final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+        socket.broadcastEnabled = true;
+        final packet = magicPacket(bytes);
+        final subnet = host.contains('.') ? '${host.substring(0, host.lastIndexOf('.'))}.255' : null;
+        for (final to in ['255.255.255.255', ?subnet]) {
+          for (final port in [9, 7]) {
+            socket.send(packet, InternetAddress(to), port);
+          }
+        }
+        socket.close();
+      } catch (_) {}
+    }
+    for (var i = 0; i < 6; i++) {
+      if (status.value != TvStatus.connected) await connect(host);
+      if (status.value == TvStatus.connected) {
+        await key(TvKey.wakeup);
+        return true;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+    }
+    return false;
+  }
+
   // ---- Outside the remote screen ----
 
   /// The phone's volume buttons go to the TV (while the remote is open).
