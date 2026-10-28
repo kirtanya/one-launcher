@@ -112,7 +112,25 @@ class _TvHomeState extends State<TvHome> {
   TvItem? _backdrop; // what the big picture shows (settles after a beat, so fast moves don't flicker)
   Timer? _backdropTimer;
 
-  static const _header = ['search', 'voice', 'customise']; // Inputs, Settings… are quick action chips now
+  // Inputs, Settings… are quick action chips now; "N permissions needed" while something is off.
+  List<String> get _header => ['search', 'voice', 'customise', if (_missing.isNotEmpty) 'perms'];
+
+  /// Permissions the launcher needs that are still off: (icon, name, what it's for, open its settings).
+  List<(IconData, String, String, VoidCallback)> get _missing => [
+    if (tv.media.value?['granted'] == false)
+      (Icons.play_circle_outline_rounded, 'Notification access', 'Continue watching, what’s playing', tv.openNotificationAccess),
+    if (!TvApps.demo && !tv.shows.value.on)
+      (Icons.subtitles_outlined, 'Accessibility: read show names', 'Episode pictures for apps like JioHotstar', tv.openAccessibility),
+  ];
+
+  String get _missingLabel => _missing.length == 1 ? '1 permission needed' : '${_missing.length} permissions needed';
+
+  /// The header's "N permissions needed": each one, opening its page in Android settings.
+  void _permissions() => showTvPanel(
+    context,
+    title: _missingLabel,
+    actions: [for (final (icon, name, why, open) in _missing) TvAction(icon, name, open, value: why)],
+  );
 
   Prefs get prefs => widget.prefs;
   TvApps get tv => TvApps.instance;
@@ -492,12 +510,14 @@ class _TvHomeState extends State<TvHome> {
 
   /// Customise → Tiles → Add a tile: clock, resume, all apps, any quick action. (Apps: All apps →
   /// Hold OK → Pin to Start.)
-  void _addTile() {
+  /// [back]: where the remote's Back goes (Customise, when opened from there).
+  void _addTile({VoidCallback? back}) {
     final have = tvTiles(prefs, _apps).map((t) => t.id).toSet();
     void add(String id, String size) => saveTvTiles(prefs, [...tvTiles(prefs, _apps), TileSpec(id, size)]);
     showTvPanel(
       context,
       title: 'Add a tile',
+      onBack: back,
       actions: [
         if (!have.contains('clock')) TvAction(Icons.schedule_rounded, 'Clock', () => add('clock', 'm')),
         if (!have.contains('resume')) TvAction(Icons.play_circle_outline_rounded, 'Resume', () => add('resume', 'w')),
@@ -521,9 +541,14 @@ class _TvHomeState extends State<TvHome> {
           icon: switch (id) {
             'search' => Icons.search_rounded,
             'voice' => Icons.mic_none_rounded,
+            'perms' => Icons.warning_amber_rounded,
             _ => Icons.tune_rounded,
           },
-          label: id == 'search' ? 'search' : null,
+          label: switch (id) {
+            'search' => 'search',
+            'perms' => _missingLabel.toLowerCase(),
+            _ => null,
+          },
           focusNode: _node(-1, i),
           onSelect: () => _headerAction(id),
           // ↓ into the tiles; ← → along the buttons.
@@ -875,6 +900,7 @@ class _TvHomeState extends State<TvHome> {
       ),
     ),
     'voice' => tv.openAction('t:assistant'), // Google TV voice search
+    'perms' => _permissions(),
     _ => _customise(),
   };
 
@@ -896,10 +922,11 @@ class _TvHomeState extends State<TvHome> {
     ]);
   }
 
-  void _editQuick() {
+  void _editQuick({VoidCallback? back}) {
     showTvPanel(
       context,
       title: 'Quick actions',
+      onBack: back,
       refresh: prefs,
       build: () {
         final on = prefs.tvQuickActions;
@@ -928,12 +955,13 @@ class _TvHomeState extends State<TvHome> {
 
   /// The phone's colour themes on the TV: the accent (Resume, progress, glows) and the canvas
   /// tint follow the choice. Changes show live behind the panel.
-  void _colours() {
+  void _colours({VoidCallback? back}) {
     final theme = widget.theme!;
     const names = ['Blue', 'Teal', 'Green', 'Yellow', 'Orange', 'Red', 'Pink', 'Purple'];
     showTvPanel(
       context,
       title: 'Colours',
+      onBack: back,
       refresh: prefs,
       build: () {
         final source = prefs.themeSource == 'system' && !theme.hasSystem ? 'original' : prefs.themeSource;
@@ -987,7 +1015,7 @@ class _TvHomeState extends State<TvHome> {
   /// live here (quick actions, colours, apps).
   void _customise() {
     tilesExtras = [
-      TvAction(Icons.add_box_outlined, 'Add a tile', _addTile),
+      TvAction(Icons.add_box_outlined, 'Add a tile', () => _addTile(back: _customise)),
       TvAction(
         Icons.restart_alt_rounded,
         'Reset Start',
@@ -1005,8 +1033,8 @@ class _TvHomeState extends State<TvHome> {
       prefs: prefs,
       extras: [
         TvAction(Icons.apps_rounded, 'All apps', _allApps),
-        TvAction(Icons.bolt_rounded, 'Edit quick actions', _editQuick),
-        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', _colours),
+        TvAction(Icons.bolt_rounded, 'Edit quick actions', () => _editQuick(back: _customise)),
+        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', () => _colours(back: _customise)),
         if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
         for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
         TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
@@ -1135,6 +1163,7 @@ class _TvHomeState extends State<TvHome> {
                             for (final (i, id) in _header.indexed)
                               _TopButton(
                                 id: id,
+                                text: id == 'perms' ? _missingLabel : null,
                                 focusNode: _node(-1, i),
                                 onSelect: () => _headerAction(id),
                                 onMove: (d) => _move(-1, i, d),
@@ -1492,8 +1521,9 @@ class _TopBar extends StatelessWidget {
 /// Search is a pill with a label (the thing people use most); the rest are icons that say
 /// what they are when focused.
 class _TopButton extends StatelessWidget {
-  const _TopButton({required this.id, required this.focusNode, required this.onSelect, this.onMove, this.onFocus});
+  const _TopButton({required this.id, required this.focusNode, required this.onSelect, this.onMove, this.onFocus, this.text});
   final String id;
+  final String? text; // "2 permissions needed"
   final FocusNode focusNode;
   final VoidCallback onSelect;
   final bool Function(AxisDirection)? onMove;
@@ -1504,9 +1534,11 @@ class _TopButton extends StatelessWidget {
     final (icon, label) = switch (id) {
       'search' => (Icons.search_rounded, 'Search'),
       'voice' => (Icons.mic_none_rounded, 'Voice search'),
+      'perms' => (Icons.warning_amber_rounded, text ?? 'Permissions needed'),
       _ => (Icons.tune_rounded, 'Customise'),
     };
-    final pill = id == 'search';
+    final pill = id == 'search' || id == 'perms';
+    final warn = id == 'perms'; // the alert colour until focused
     return Semantics(
       button: true,
       label: label,
@@ -1527,12 +1559,16 @@ class _TopButton extends StatelessWidget {
                 height: 40,
                 width: pill ? null : 40,
                 padding: pill ? const EdgeInsets.symmetric(horizontal: DS.s16) : EdgeInsets.zero,
-                decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: f ? TvDS.surfaceFocused : (warn ? DS.alert.withValues(alpha: .22) : TvDS.surface),
+                  border: warn && !f ? Border.all(color: DS.alert.withValues(alpha: .7)) : null,
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                    Icon(icon, size: 22, color: f ? (warn ? DS.alert : TvDS.onLight) : TvDS.ink),
                     if (pill) ...[const SizedBox(width: DS.s8), Text(label, style: TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink))],
                   ],
                 ),

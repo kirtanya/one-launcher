@@ -38,10 +38,14 @@ class ShowNameService : AccessibilityService() {
         val titles = playing(pkg)
         if (titles.isEmpty()) return // not a media app right now: read nothing
         lastLook[pkg] = now
-        val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return
-        if (root.packageName?.toString() != pkg) return
-        val show = showBeside(root, titles) ?: return
-        save(this, pkg, show.first, show.second)
+        val root = try { rootInActiveWindow } catch (e: Exception) { null }
+        if (root == null || root.packageName?.toString() != pkg) {
+            android.util.Log.i("OneShow", "$pkg playing $titles; screen not readable (${root?.packageName})")
+            return
+        }
+        val show = showBeside(root, titles)
+        android.util.Log.i("OneShow", "$pkg playing $titles → ${show?.second ?: "no show beside it on screen"}")
+        if (show != null) save(this, pkg, show.first, show.second)
     }
 
     /** Titles the app's media sessions are playing / paused on (needs Notification access). */
