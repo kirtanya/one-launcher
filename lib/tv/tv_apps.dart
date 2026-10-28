@@ -70,6 +70,8 @@ class TvApps {
           refreshShows(); // may have just been switched on in Accessibility settings
         case 'showNamesChanged':
           refreshShows();
+        case 'searchFor':
+          onSearchFor?.call(call.arguments as String);
         case 'mediaChanged':
           media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
       }
@@ -89,6 +91,12 @@ class TvApps {
   }
 
   Future<void> openAccessibility() => _call('openAccessibility');
+
+  /// The phone remote's voice search: words to search on the TV.
+  void Function(String query)? onSearchFor;
+
+  /// Words that arrived before the home screen was listening (the TV launcher was starting).
+  Future<String?> takeSearch() async => demo ? null : await _ch.invokeMethod<String>('takeSearch');
 
   /// A line in the TV's log (tag OneShow): Dart's own prints don't reach it in release builds.
   void log(String message) {

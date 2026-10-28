@@ -268,7 +268,9 @@ class MainActivity : FlutterActivity() {
 
     @Deprecated("Needed for the widget bind/configure screens")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (!widgets.onActivityResult(requestCode, resultCode) && !backups.onActivityResult(requestCode, resultCode, data)) {
+        if (!widgets.onActivityResult(requestCode, resultCode) && !backups.onActivityResult(requestCode, resultCode, data) &&
+            !tv.onActivityResult(requestCode, resultCode, data)
+        ) {
             @Suppress("DEPRECATION")
             super.onActivityResult(requestCode, resultCode, data)
         }

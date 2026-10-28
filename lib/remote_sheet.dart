@@ -262,6 +262,8 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                       },
                     ),
                   ),
+                  _Round(icon: Icons.mic_none_rounded, tooltip: 'Voice search', onTap: live ? _voice : null),
+                  const SizedBox(width: DS.s8),
                   _Round(
                     icon: Icons.power_settings_new_rounded,
                     tooltip: 'Power',
@@ -361,6 +363,10 @@ class _RemoteSheetState extends State<_RemoteSheet> {
 
   /// One of the remote's groups (Prefs.remoteGroupsDefault).
   Widget _group(String id, double pad) => switch (id) {
+    'now' => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+      child: _NowPlaying(prefs: prefs, onKey: _press),
+    ),
     'dpad' => _DPad(size: pad, onKey: _press, onHold: _hold),
     'nav' => Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -437,6 +443,15 @@ class _RemoteSheetState extends State<_RemoteSheet> {
       ),
     ),
   );
+
+  /// Voice search: the phone's speech dialog, then One Launcher TV's search with the words.
+  Future<void> _voice() async {
+    HapticFeedback.selectionClick();
+    final words = (await tv.listen())?.trim();
+    if (words == null || words.isEmpty || !mounted) return;
+    HapticFeedback.lightImpact();
+    await tv.searchOnTv(words);
+  }
 
   void _press(int code, {bool strong = false}) {
     strong ? HapticFeedback.mediumImpact() : HapticFeedback.selectionClick();
@@ -956,6 +971,7 @@ class _TypingPanelState extends State<_TypingPanel> {
 /// package name (for apps not listed). Changes show on the remote at once.
 /// The remote's groups (⋮ → Arrange remote): move each up or down, show or hide it.
 const remoteGroupNames = {
+  'now': ('Now playing', 'What’s on the TV, with previous · play / pause · next'),
   'dpad': ('Direction pad', 'Up, down, left, right and OK'),
   'nav': ('Navigate', 'Back · Home · Input · Recent apps · Type'),
   'media': ('Playback', 'Rewind · Play / pause · Fast-forward · Captions · Audio'),
@@ -1172,5 +1188,151 @@ Future<void> _addOtherApp(BuildContext context, Prefs prefs) async {
   final p = pkg.text.trim(), n = name.text.trim().replaceAll('|', ' ');
   if (ok == true && RegExp(r'^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$').hasMatch(p)) {
     await prefs.setRemoteApps([...prefs.remoteApps, 'c:$n|$p']);
+  }
+}
+
+/// What's playing on the TV (One Launcher TV's NowPlayingServer): picture, app, title, progress,
+/// and previous · play / pause · next. Asks every 2 s while the remote is open; nothing playing
+/// (or no answer) folds it away.
+class _NowPlaying extends StatefulWidget {
+  const _NowPlaying({required this.prefs, required this.onKey});
+  final Prefs prefs;
+  final void Function(int code, {bool strong}) onKey;
+
+  @override
+  State<_NowPlaying> createState() => _NowPlayingState();
+}
+
+class _NowPlayingState extends State<_NowPlaying> {
+  Map<String, Object?>? _now;
+  MemoryImage? _art;
+  String _artId = '';
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _poll();
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _poll() async {
+    final host = widget.prefs.tvHost;
+    if (host == null || TvRemote.instance.status.value != TvStatus.connected) return;
+    final token = widget.prefs.tvPhoneToken;
+    final now = await TvRemote.instance.nowPlaying(host, token);
+    if (!mounted) return;
+    final id = (now?['artId'] as String?) ?? '';
+    if (id != _artId) {
+      _artId = id;
+      final bytes = id.isEmpty ? null : await TvRemote.instance.nowPlayingArt(host, token);
+      if (!mounted) return;
+      _art = bytes == null ? null : MemoryImage(bytes);
+    }
+    setState(() => _now = now?['active'] == true ? now : null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = _now;
+    return AnimatedSize(
+      duration: Motion.snapDuration,
+      curve: Motion.settle,
+      child: n == null ? const SizedBox(width: double.infinity) : _card(n),
+    );
+  }
+
+  Widget _card(Map<String, Object?> n) {
+    final title = n['title'] as String? ?? '';
+    final sub = n['subtitle'] as String? ?? '';
+    final app = n['app'] as String? ?? '';
+    final pos = (n['position'] as num?)?.toDouble() ?? 0, dur = (n['duration'] as num?)?.toDouble() ?? 0;
+    final playing = n['playing'] == true;
+    return Container(
+      padding: const EdgeInsets.all(DS.s12),
+      decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 24)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 14),
+                child: SizedBox.square(
+                  dimension: 56,
+                  child: _art != null
+                      ? Image(image: _art!, fit: BoxFit.cover, gaplessPlayback: true)
+                      : ColoredBox(
+                          color: DS.hero,
+                          child: Center(
+                            child: Text(app.isEmpty ? '▶' : app[0].toUpperCase(), style: DS.rowTitle.copyWith(color: DS.heroInk, fontSize: 20)),
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: DS.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      DS.cased('Now playing · $app'),
+                      style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      title,
+                      style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (sub.isNotEmpty) Text(sub, style: DS.rowSub.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (dur > 0) ...[
+            const SizedBox(height: DS.s12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(value: (pos / dur).clamp(0, 1), minHeight: 4, color: DS.ink, backgroundColor: DS.hairline),
+            ),
+          ],
+          const SizedBox(height: DS.s4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                tooltip: 'Previous',
+                icon: Icon(Icons.skip_previous_rounded, color: DS.ink),
+                onPressed: () => widget.onKey(TvKey.previous),
+              ),
+              IconButton(
+                tooltip: playing ? 'Pause' : 'Play',
+                iconSize: 32,
+                icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: DS.ink),
+                onPressed: () {
+                  widget.onKey(TvKey.playPause);
+                  setState(() => _now = {...n, 'playing': !playing}); // at once; the next answer confirms
+                },
+              ),
+              IconButton(
+                tooltip: 'Next',
+                icon: Icon(Icons.skip_next_rounded, color: DS.ink),
+                onPressed: () => widget.onKey(TvKey.next),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }

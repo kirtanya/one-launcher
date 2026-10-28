@@ -53,6 +53,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         private const val REMOTE_PORT = 6466
         private const val SERVICE = "_androidtvremote2._tcp."
         private const val FEATURES = 622 // ping, key, IME, power, volume, app links
+        private const val VOICE_REQUEST = 7301
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -84,6 +85,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
             "tvAppLink" -> io.execute { reply(result) { appLink(call.argument<String>("link")!!) } }
             "tvText" -> io.execute { reply(result) { text(call.argument<String>("text") ?: "") } }
             "tvDisconnect" -> io.execute { reply(result) { disconnect(); true } }
+            "tvVoice" -> listen(result)
             "tvForget" -> io.execute { reply(result) { disconnect(); prefs.edit().remove("pin:" + (call.argument<String>("host") ?: "")).apply(); true } }
             else -> return false
         }
@@ -380,6 +382,36 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
 
     private fun key(code: Int, direction: Int): Boolean {
         write(Pb().msg(10, Pb().int(1, code.toLong()).int(2, direction.toLong())))
+        return true
+    }
+
+    // ---- Voice search: the phone's own speech dialog (Google's), so no microphone permission ----
+
+    private var voiceResult: MethodChannel.Result? = null
+
+    private fun listen(result: MethodChannel.Result) {
+        val activity = context as? android.app.Activity ?: return result.success(null)
+        voiceResult?.success(null)
+        voiceResult = result
+        try {
+            activity.startActivityForResult(
+                android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
+                    .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search on your TV"),
+                VOICE_REQUEST,
+            )
+        } catch (e: Exception) {
+            voiceResult = null
+            result.success(null) // no speech service on this phone
+        }
+    }
+
+    /** MainActivity hands results on; true = it was the voice dialog's. */
+    fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?): Boolean {
+        if (requestCode != VOICE_REQUEST) return false
+        val words = if (resultCode == android.app.Activity.RESULT_OK) data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() else null
+        voiceResult?.success(words)
+        voiceResult = null
         return true
     }
 

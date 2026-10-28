@@ -19,8 +19,11 @@ import 'tv_title.dart';
 /// rating, cast and where to watch. Before typing: what's popular. Matching apps and "search
 /// everywhere / in an app" come after. ↓ from the field moves into the results.
 class TvSearch extends StatefulWidget {
-  const TvSearch({super.key, required this.apps, required this.onLaunch});
+  const TvSearch({super.key, required this.apps, required this.onLaunch, this.query});
   final List<AppEntry> apps;
+
+  /// Words to search for at once (the phone remote's voice search).
+  final String? query;
   final void Function(AppEntry) onLaunch;
 
   @override
@@ -59,6 +62,10 @@ class _TvSearchState extends State<TvSearch> {
     // No catalog yet (first run): make it now rather than at the next automatic check.
     _catalog.load().then((_) {
       if (_catalog.count == 0) _catalog.maybeUpdate();
+      if (widget.query case final q? when mounted) {
+        _q.text = q;
+        _onType(q);
+      }
     });
   }
 

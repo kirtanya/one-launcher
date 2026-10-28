@@ -28,6 +28,10 @@ import java.util.concurrent.Executors
 private const val REQUEST_CLEAR_CACHE = 7101
 
 class TvActivity : FlutterActivity() {
+    companion object {
+        const val EXTRA_SEARCH = "com.kirtanya.one_launcher.SEARCH"
+    }
+
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
     private val images = Executors.newFixedThreadPool(3) // artwork downloads in parallel
@@ -170,6 +174,7 @@ class TvActivity : FlutterActivity() {
                 }
                 "getHistory" -> result.success(MediaHistory.read(this))
                 "showNames" -> result.success(ShowNameService.read(this))
+                "takeSearch" -> result.success(pendingSearch.also { pendingSearch = null })
                 "log" -> {
                     android.util.Log.i("OneShow", call.argument<String>("message") ?: "")
                     result.success(null)
@@ -196,8 +201,19 @@ class TvActivity : FlutterActivity() {
         }
     }
 
+    /** Words from the phone's voice search (BrightnessActivity), until the TV home takes them. */
+    private var pendingSearch: String? = null
+
+    private fun takeSearch(intent: Intent?) {
+        val q = intent?.getStringExtra(EXTRA_SEARCH) ?: return
+        intent.removeExtra(EXTRA_SEARCH)
+        if (::channel.isInitialized) channel.invokeMethod("searchFor", q) else pendingSearch = q
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        NowPlayingServer.start(this) // the phone remote's Now playing card
+        takeSearch(intent)
         ShowNameService.onChange = { if (::channel.isInitialized) channel.invokeMethod("showNamesChanged", null) }
         registerReceiver(packageReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -233,6 +249,7 @@ class TvActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME) && ::channel.isInitialized) channel.invokeMethod("homePressed", null)
+        takeSearch(intent)
     }
 
     private fun loadApps(): List<Map<String, Any>> {

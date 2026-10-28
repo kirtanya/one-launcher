@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -193,6 +197,72 @@ class TvRemote {
 
   /// Opens the TV's own picture settings (backlight lives there), via One Launcher TV on the TV.
   Future<void> openPicture() => appLink('onelauncher://picture');
+
+  // ---- Now playing (One Launcher TV's NowPlayingServer, over the home Wi-Fi) ----
+
+  static const _nowPort = 6470;
+  bool _tokenSent = false;
+
+  /// What's playing on the TV: {active, title, subtitle, app, package, playing, position, duration,
+  /// artId}; null = no answer (One Launcher TV missing or older, or another network). The TV only
+  /// answers this phone's secret, which goes over the paired remote link the first time it's asked.
+  Future<Map<String, Object?>?> nowPlaying(String host, String token) async {
+    final r = await _get(host, '/now', token);
+    if (r == null) return null;
+    if (r.$1 == 403) {
+      if (!_tokenSent) {
+        _tokenSent = true;
+        await appLink('onelauncher://phone?token=$token');
+      }
+      return null;
+    }
+    if (r.$1 != 200) return null;
+    try {
+      return Map<String, Object?>.from(jsonDecode(utf8.decode(r.$2)) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The playing item's picture (JPEG), or null.
+  Future<Uint8List?> nowPlayingArt(String host, String token) async {
+    final r = await _get(host, '/art', token);
+    return r != null && r.$1 == 200 ? r.$2 : null;
+  }
+
+  Future<(int, Uint8List)?> _get(String host, String path, String token) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+    try {
+      final req = await client.get(host, _nowPort, '$path?t=$token');
+      final res = await req.close().timeout(const Duration(seconds: 4));
+      final bytes = await res.fold<List<int>>(<int>[], (b, d) => b..addAll(d)).timeout(const Duration(seconds: 4));
+      return (res.statusCode, Uint8List.fromList(bytes));
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
+  /// A new random secret for [nowPlaying] (kept in Prefs).
+  static String newToken() {
+    final r = Random.secure();
+    return List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  // ---- Voice search ----
+
+  /// Words from the phone's own speech dialog (no microphone permission here), or null.
+  Future<String?> listen() async {
+    try {
+      return await _ch.invokeMethod<String>('tvVoice');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// One Launcher TV's search with [query].
+  Future<String?> searchOnTv(String query) => appLink('onelauncher://search?q=${Uri.encodeQueryComponent(query)}');
 
   /// Opens [link] on the TV. Returns an error message, or null when it was sent.
   Future<String?> appLink(String link) async {

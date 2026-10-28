@@ -13,6 +13,9 @@ import android.provider.Settings
  *  - `onelauncher://brightness?level=0…255` → Android's screen brightness (only TVs whose
  *    backlight follows it; needs "Modify system settings")
  *  - `onelauncher://launch?package=P` → opens that app (the remote's quick apps)
+ *  - `onelauncher://phone?token=T` → remembers the phone's secret for its Now playing card
+ *    (NowPlayingServer; this link only arrives over the paired remote connection)
+ *  - `onelauncher://search?q=Q` → One Launcher TV's search with the words (the phone's voice search)
  * Invisible: does its job and closes at once.
  */
 class BrightnessActivity : Activity() {
@@ -25,6 +28,14 @@ class BrightnessActivity : Activity() {
                 "launch" -> uri.getQueryParameter("package")?.let { pkg ->
                     (packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg))
                         ?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
+                "phone" -> uri.getQueryParameter("token")?.let { NowPlayingServer.remember(this, it) }
+                "search" -> uri.getQueryParameter("q")?.takeIf { it.isNotBlank() }?.let { q ->
+                    startActivity(
+                        Intent(this, TvActivity::class.java)
+                            .putExtra(TvActivity.EXTRA_SEARCH, q)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    )
                 }
                 "brightness" -> {
                     val level = uri.getQueryParameter("level")?.toIntOrNull()

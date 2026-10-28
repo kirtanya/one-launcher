@@ -78,6 +78,8 @@
                 <data android:scheme="onelauncher" android:host="brightness"/>
                 <data android:scheme="onelauncher" android:host="picture"/>
                 <data android:scheme="onelauncher" android:host="launch"/>
+                <data android:scheme="onelauncher" android:host="phone"/>
+                <data android:scheme="onelauncher" android:host="search"/>
             </intent-filter>
         </activity>
     </application>

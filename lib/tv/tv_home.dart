@@ -146,6 +146,10 @@ class _TvHomeState extends State<TvHome> {
     super.initState();
     tv.onAppsChanged = _load;
     tv.onHomePressed = _home;
+    tv.onSearchFor = _searchFor;
+    tv.takeSearch().then((q) {
+      if (q != null && mounted) _searchFor(q);
+    });
     tv.onResumed = () {
       _loadContent();
       if (_tilesView) _tilesKey.currentState?.land(); // back from an app: tiles fly in again
@@ -893,6 +897,23 @@ class _TvHomeState extends State<TvHome> {
         TvAction(Icons.info_outline_rounded, 'App info', () => tv.appInfo(a.package)),
         if (!a.system) TvAction(Icons.delete_outline_rounded, 'Uninstall', () => tv.uninstall(a.package), danger: true),
       ],
+    );
+  }
+
+  /// The phone remote's voice search: Search, with the words already in.
+  void _searchFor(String q) {
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    Navigator.of(context).push(
+      tvFade(
+        TvSearch(
+          query: q,
+          apps: [
+            for (final a in _apps)
+              if (!prefs.hidden.contains(a.package)) a,
+          ],
+          onLaunch: (a) => _open(TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a)),
+        ),
+      ),
     );
   }
 

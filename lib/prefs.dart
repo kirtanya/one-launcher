@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'folders.dart';
+import 'tv_remote.dart';
 
 /// Everything the user customises, saved on the phone.
 class Prefs extends ChangeNotifier {
@@ -480,7 +481,7 @@ class Prefs extends ChangeNotifier {
   /// the user typed in), left to right.
   /// The remote's groups, top to bottom (⋮ → Arrange remote). Groups added in a later version
   /// appear at their default spot; hidden ones keep their place for when they're shown again.
-  static const remoteGroupsDefault = ['dpad', 'nav', 'media', 'volume', 'brightness', 'apps'];
+  static const remoteGroupsDefault = ['now', 'dpad', 'nav', 'media', 'volume', 'brightness', 'apps'];
   List<String> get remoteGroups {
     final saved = [
       for (final g in _sp.getStringList('remoteGroups') ?? remoteGroupsDefault)
@@ -608,6 +609,16 @@ class Prefs extends ChangeNotifier {
   /// TV remote: the paired TV (address + name) and whether the dock shows the remote button.
   String? get tvHost => _sp.getString('tvHost');
   String get tvName => _sp.getString('tvName') ?? 'TV';
+
+  /// The secret One Launcher TV answers Now playing to (made once per phone).
+  String get tvPhoneToken {
+    final t = _sp.getString('tvPhoneToken');
+    if (t != null) return t;
+    final made = TvRemote.newToken();
+    _sp.setString('tvPhoneToken', made);
+    return made;
+  }
+
   Future<void> setTv(String? host, {String? name}) async {
     if (host == null) {
       await _sp.remove('tvHost');
