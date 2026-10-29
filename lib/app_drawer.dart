@@ -640,7 +640,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
 double pullOffset(double p) => 140 * (1 - math.exp(-p / 140));
 
 /// Pull this far (px of finger travel) and let go to open search.
-const pullToOpen = 110.0;
+const pullToOpen = 200.0; // long enough that the nav → search morph visibly scrubs under the finger
 
 /// The pill that grows in the gap while pulling the drawer down: "Pull to search", then
 /// "Release to search" (filled) once far enough.
