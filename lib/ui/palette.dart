@@ -71,7 +71,8 @@ class OnePalette {
   );
 
   /// Maps a Material 3 scheme onto One's roles, keeping One's structure: a dark tinted sheet,
-  /// tinted cards (light, or dark with [darkCards]) and the primary container as the hero card.
+  /// tinted cards (light, or dark with [darkCards]) and a primary tint as the hero card (the
+  /// primary container on dark cards; 20 % primary over white on light ones).
   factory OnePalette.fromSchemes(ColorScheme light, ColorScheme dark, {bool darkCards = false}) {
     Color mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
     if (darkCards) {
@@ -90,15 +91,18 @@ class OnePalette {
         hairline: dark.outlineVariant,
       );
     }
+    // Light cards: the hero is the primary at 20 % over the card white (solid, so glass and
+    // shadows stay clean) — the primary container read too bright against the light cards.
+    final hero = mix(light.surfaceContainerLowest, light.primary, .2);
     return OnePalette(
       canvas: dark.surfaceContainerLow,
       card: light.surfaceContainerLowest,
       cardMuted: light.surfaceContainer,
-      hero: light.primaryContainer,
-      heroSoft: mix(light.primaryContainer, light.surfaceContainerLowest, .45),
+      hero: hero,
+      heroSoft: mix(hero, light.surfaceContainerLowest, .45),
       heroInk: light.onPrimaryContainer,
-      heroMuted: mix(light.onPrimaryContainer, light.primaryContainer, .45),
-      heroDivider: mix(light.onPrimaryContainer, light.primaryContainer, .78),
+      heroMuted: mix(light.onPrimaryContainer, hero, .45),
+      heroDivider: mix(light.onPrimaryContainer, hero, .78),
       ink: light.onSurface,
       inkMuted: light.onSurfaceVariant,
       inkFaint: light.outline,
