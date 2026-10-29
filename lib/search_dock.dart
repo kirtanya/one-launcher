@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -32,7 +33,14 @@ class SearchDock extends StatelessWidget {
     this.onRemoteLongPress,
     this.tab = 'home',
     this.onHome,
+    this.pull,
+    this.pullFull = 1,
   });
+
+  /// Pull-to-search: how far the list is pulled down (px), and the pull that opens search. The nav
+  /// morphs toward the search bar as far as the finger has pulled.
+  final ValueListenable<double>? pull;
+  final double pullFull;
 
   /// The bottom nav's selected tab at rest: 'home', 'search', 'remote' or 'settings'.
   final String tab;
@@ -113,6 +121,8 @@ class SearchDock extends StatelessWidget {
                   onChanged: onChanged,
                   onSubmitted: onSubmitted,
                   onClose: onClose,
+                  pull: pull,
+                  pullFull: pullFull,
                 )
               : _searchLayout(),
         ),
@@ -437,8 +447,12 @@ class _NavSearch extends StatefulWidget {
     required this.onChanged,
     required this.onSubmitted,
     required this.onClose,
+    this.pull,
+    this.pullFull = 1,
   });
   final bool active;
+  final ValueListenable<double>? pull;
+  final double pullFull;
   final String selected;
   final List<_NavTab> tabs;
   final TextEditingController controller;
@@ -455,13 +469,31 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
   late final _t = AnimationController(vsync: this, duration: Motion.snapDuration, value: widget.active ? 1 : 0);
 
   @override
+  void initState() {
+    super.initState();
+    widget.pull?.addListener(_follow);
+  }
+
+  /// Pulling the list down: the morph is wherever the finger is (until search opens, when the
+  /// animation carries on from there; a pull let go short of it eases back with the pull).
+  void _follow() {
+    if (widget.active || _t.isAnimating) return;
+    _t.value = (widget.pull!.value / widget.pullFull).clamp(0.0, 1.0);
+  }
+
+  @override
   void didUpdateWidget(_NavSearch old) {
     super.didUpdateWidget(old);
+    if (old.pull != widget.pull) {
+      old.pull?.removeListener(_follow);
+      widget.pull?.addListener(_follow);
+    }
     if (widget.active != old.active) widget.active ? _t.forward() : _t.reverse();
   }
 
   @override
   void dispose() {
+    widget.pull?.removeListener(_follow);
     _t.dispose();
     super.dispose();
   }
@@ -509,8 +541,11 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                         children: [
                           // The nav: tabs fading where they are, centred in the widening pill (Search's own
                           // icon hidden while its copy glides to the bar's start).
+                          // Keys keep each layer itself as others come and go: the field must never be
+                          // rebuilt mid-search (a new field loses focus and the keyboard drops).
                           if (fade < 1)
                             Positioned(
+                              key: const ValueKey('tabs'),
                               left: (pillW - navW) / 2,
                               top: 0,
                               width: navW,
@@ -525,11 +560,13 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                             ),
                           if (searching) ...[
                             Positioned(
+                              key: const ValueKey('icon'),
                               left: iconX - 12,
                               top: (h - 24) / 2,
                               child: Icon(Icons.search_rounded, color: DS.ink, size: 24),
                             ),
                             Positioned(
+                              key: const ValueKey('field'),
                               left: 48,
                               right: DS.s16,
                               top: 0,

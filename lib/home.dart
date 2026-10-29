@@ -215,6 +215,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // At the bottom the dock is the nav (Home · Search · Remote · Settings); in the drawer, just search.
     tab: _tab,
     onHome: inline ? null : _navHome,
+    pull: _pull, // pull-to-search drives the nav → search morph
+    pullFull: pullToOpen,
   );
 
   void _openRemote() {
