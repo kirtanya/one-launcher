@@ -150,6 +150,18 @@ class TvApps {
     if (m != null) media.value = {...m, 'at': DateTime.now().millisecondsSinceEpoch};
   }
 
+  /// The Real view's click sounds, played by the TV (tick: focus moves; clunk: a press;
+  /// thunk: back). Fire and forget; ticks throttled so a held arrow doesn't buzz.
+  void sound(String name) {
+    if (demo) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (name == 'tick' && now - _lastTick < 40) return;
+    if (name == 'tick') _lastTick = now;
+    _ch.invokeMethod('sound', {'name': name});
+  }
+
+  int _lastTick = 0;
+
   Future<void> mediaOpen() => _call('mediaOpen');
   Future<void> mediaResume() => _call('mediaResume');
   Future<void> mediaPlayPause() => _call('mediaPlayPause');

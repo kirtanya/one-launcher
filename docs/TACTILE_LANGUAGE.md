@@ -155,6 +155,15 @@ no sounds, single haptic, simpler shadows).
 | TV remote | Graphite finish: dial d-pad, transport tray, knobs for volume/brightness, power key, LEDs for connection |
 | Notifications | Plates like printed slips; LED for unread; calls on an LCD with Answer (green cap) / Decline (red cap) |
 
+## 8b. On the TV: an old television set
+
+The TV launcher in Real is seen through a CRT: scanlines, a vignette falling off to the tube's
+rounded corners, a faint phosphor bloom (one overlay over everything). The set's controls:
+buttons and chips are keys (lit by the indicator when focused), the focus ring is phosphor
+light, panels are graphite plates with printed legends, the clock is a channel-style dot-matrix
+display. The speaker clicks: a detent tick as focus moves, a key clunk on OK, a heavier thunk on
+Back (played by the TV, since TVs keep system sounds off).
+
 ## 9. Building it (Flutter)
 
 - `lib/third/tactile/`: tokens (`TactileFinish`, depth recipes, signal colours, type), and the

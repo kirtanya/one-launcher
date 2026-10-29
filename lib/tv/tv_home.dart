@@ -3,6 +3,9 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'tv_real.dart';
+import '../third/tactile/tactile.dart';
+import '../third/tactile/parts.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
@@ -1725,17 +1728,31 @@ class _TopButton extends StatelessWidget {
                 height: 40,
                 width: pill ? null : 40,
                 padding: pill ? const EdgeInsets.symmetric(horizontal: DS.s16) : EdgeInsets.zero,
-                decoration: BoxDecoration(
-                  color: f ? TvDS.surfaceFocused : (warn ? DS.alert.withValues(alpha: .22) : TvDS.surface),
-                  border: warn && !f ? Border.all(color: DS.alert.withValues(alpha: .7)) : null,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: DS.third
+                    // Real: a key on the set (lit when focused; the warning one has a red cap).
+                    ? BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: Tactile.capFace(warn ? const Color(0xFFB03A36) : null),
+                        border: Border.all(color: f ? Tactile.light : Tactile.rim, width: f ? 1.4 : .6),
+                        boxShadow: [...Tactile.raised(pressed: f), if (f) BoxShadow(color: Tactile.light.withValues(alpha: .4), blurRadius: 16)],
+                      )
+                    : BoxDecoration(
+                        color: f ? TvDS.surfaceFocused : (warn ? DS.alert.withValues(alpha: .22) : TvDS.surface),
+                        border: warn && !f ? Border.all(color: DS.alert.withValues(alpha: .7)) : null,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, size: 22, color: f ? (warn ? DS.alert : TvDS.onLight) : TvDS.ink),
-                    if (pill) ...[const SizedBox(width: DS.s8), Text(label, style: TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink))],
+                    Icon(icon, size: 22, color: DS.third ? (warn ? Colors.white : Tactile.ink) : (f ? (warn ? DS.alert : TvDS.onLight) : TvDS.ink)),
+                    if (pill) ...[
+                      const SizedBox(width: DS.s8),
+                      Text(
+                        DS.third ? label.toUpperCase() : label,
+                        style: DS.third ? TvReal.legend(13, color: warn ? Colors.white : Tactile.ink) : TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -1808,6 +1825,11 @@ class _ClockState extends State<_Clock> {
     };
     final h = h24 ? _now.hour : (_now.hour % 12 == 0 ? 12 : _now.hour % 12);
     final time = '${h.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}';
+    // Real: the set's channel display — date and time as a lit dot-matrix readout.
+    if (DS.third) {
+      final read = [if (TvLook.on('date')) '${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', if (TvLook.on('clock')) time].join('  ');
+      return TLcd(radius: 10, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), child: DotMatrix(read, dot: 2.6, color: TLcd.text));
+    }
     return ListenableBuilder(
       listenable: widget.prefs,
       builder: (context, _) => Row(

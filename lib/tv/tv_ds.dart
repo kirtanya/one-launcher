@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../third/tactile/tactile.dart';
 import '../ui/ds.dart';
 
 /// TV design tokens (10-foot UI). Built on the phone DS (fonts, colours, motion) but sized
 /// for a screen across the room: bigger type, 16:9 banner tiles, overscan-safe margins.
 /// Sizes are logical pixels on a 960×540 (1080p) TV screen.
 class TvDS {
+  /// Real prints its text into the set (its face, an emboss); other views as they are.
+  static TextStyle _f(TextStyle s) => DS.third ? s.copyWith(shadows: [...?s.shadows, ...Tactile.emboss]) : s;
+
   // ---- Space ----
   /// Overscan-safe margins: some TVs crop the outer ~5% of the picture.
   static const safe = EdgeInsets.fromLTRB(48, 27, 48, 27);
@@ -40,46 +44,48 @@ class TvDS {
   static const ink = DS.onCanvas;
   static const inkMuted = DS.onCanvasMuted;
   static const line = DS.onCanvasLine;
-  static const surface = Color(0x14FFFFFF); // icon-only tiles, buttons (8% white)
-  static const surfaceFocused = Color(0xFFFFFFFF);
-  // Text / icons on a focused (white) surface: fixed dark, whatever the theme (Tiles' ink is white).
-  static const onLight = Color(0xFF161616);
-  static const onLightMuted = Color(0xFF5F5F5F);
+  // Surfaces by role (Real: the set's keys — plastic at rest, lit by the indicator when focused,
+  // legends printed on them; others: 8% white, white when focused, dark text on it).
+  static Color get surface => DS.third ? Tactile.capBottom : const Color(0x14FFFFFF); // icon-only tiles, buttons
+  static Color get surfaceFocused => DS.third ? Color.lerp(Tactile.capTop, Tactile.light, .22)! : const Color(0xFFFFFFFF);
+  // Text / icons on a focused surface: fixed dark, whatever the theme (Tiles' ink is white).
+  static Color get onLight => DS.third ? Tactile.ink : const Color(0xFF161616);
+  static Color get onLightMuted => DS.third ? Tactile.inkMuted : const Color(0xFF5F5F5F);
   static const glow = Color(0x40FFFFFF);
 
   // ---- Type (≈1.4× the phone sizes) ----
   static const clockSize = 88.0;
-  static const date = TextStyle(fontFamily: DS.font, fontSize: 18, fontWeight: FontWeight.w500, color: inkMuted);
-  static const rowTitle = TextStyle(fontFamily: DS.font, fontSize: 17, fontWeight: FontWeight.w600, color: inkMuted);
-  static const rowTitleFocused = TextStyle(fontFamily: DS.font, fontSize: 17, fontWeight: FontWeight.w600, color: ink);
-  static const label = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: ink);
-  static const hint = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
-  static const tileName = TextStyle(fontFamily: DS.font, fontSize: 13, fontWeight: FontWeight.w500, color: ink);
+  static TextStyle get date => _f(TextStyle(fontFamily: DS.face, fontSize: 18, fontWeight: FontWeight.w500, color: inkMuted));
+  static TextStyle get rowTitle => _f(TextStyle(fontFamily: DS.face, fontSize: 17, fontWeight: FontWeight.w600, color: inkMuted));
+  static TextStyle get rowTitleFocused => _f(TextStyle(fontFamily: DS.face, fontSize: 17, fontWeight: FontWeight.w600, color: ink));
+  static TextStyle get label => _f(TextStyle(fontFamily: DS.face, fontSize: 15, fontWeight: FontWeight.w500, color: ink));
+  static TextStyle get hint => _f(TextStyle(fontFamily: DS.face, fontSize: 13, fontWeight: FontWeight.w500, color: ink));
+  static TextStyle get tileName => _f(TextStyle(fontFamily: DS.face, fontSize: 13, fontWeight: FontWeight.w500, color: ink));
   // Hero text sits on full-screen pictures: a soft shadow keeps it readable on bright frames.
   static const heroShadow = [Shadow(color: Color(0x99000000), blurRadius: 18)];
-  static const heroEyebrow = TextStyle(
-    fontFamily: DS.font,
+  static TextStyle get heroEyebrow => _f(TextStyle(
+    fontFamily: DS.face,
     fontSize: 12,
     fontWeight: FontWeight.w600,
     letterSpacing: 1.4,
     color: inkMuted,
     shadows: heroShadow,
-  );
-  static const heroTitle = TextStyle(
-    fontFamily: DS.font,
+  ));
+  static TextStyle get heroTitle => _f(TextStyle(
+    fontFamily: DS.face,
     fontSize: 40,
     fontWeight: FontWeight.w600,
     height: 1.05,
     letterSpacing: -.8,
     color: ink,
     shadows: heroShadow,
-  );
-  static const heroMeta = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xD9FFFFFF), shadows: heroShadow);
-  static const heroBody = TextStyle(fontFamily: DS.font, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: inkMuted, shadows: heroShadow);
-  static const keycap = TextStyle(fontFamily: DS.font, fontSize: 12, fontWeight: FontWeight.w600, color: ink);
-  static const topClock = TextStyle(fontFamily: DS.font, fontSize: 20, fontWeight: FontWeight.w500, color: ink);
+  ));
+  static TextStyle get heroMeta => _f(TextStyle(fontFamily: DS.face, fontSize: 15, fontWeight: FontWeight.w500, color: Color(0xD9FFFFFF), shadows: heroShadow));
+  static TextStyle get heroBody => _f(TextStyle(fontFamily: DS.face, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: inkMuted, shadows: heroShadow));
+  static TextStyle get keycap => _f(TextStyle(fontFamily: DS.face, fontSize: 12, fontWeight: FontWeight.w600, color: ink));
+  static TextStyle get topClock => _f(TextStyle(fontFamily: DS.face, fontSize: 20, fontWeight: FontWeight.w500, color: ink));
   static const panel = Color(0xFF1C1C1C);
   static const scrim = Color(0xFF000000); // backdrop fades into the canvas through this
-  static const panelTitle = TextStyle(fontFamily: DS.font, fontSize: 24, fontWeight: FontWeight.w600, color: ink);
-  static const panelRow = TextStyle(fontFamily: DS.font, fontSize: 17, fontWeight: FontWeight.w500, color: ink);
+  static TextStyle get panelTitle => _f(TextStyle(fontFamily: DS.face, fontSize: 24, fontWeight: FontWeight.w600, color: ink));
+  static TextStyle get panelRow => _f(TextStyle(fontFamily: DS.face, fontSize: 17, fontWeight: FontWeight.w500, color: ink));
 }

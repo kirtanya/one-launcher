@@ -150,7 +150,7 @@ class _AddSourceState extends State<_AddSource> {
                 ? Text(TvMetro.cased('Add a source'), style: TvMetro.title(size: 40).copyWith(height: 1))
                 : Text('Add a source', style: TvDS.heroTitle.copyWith(fontSize: 32)),
             const SizedBox(height: DS.s12),
-            const SizedBox(
+            SizedBox(
               width: 620,
               child: Text(
                 'A Stremio addon’s manifest link (it ends with /manifest.json). Its catalogs and details join search. Streams are never used.',

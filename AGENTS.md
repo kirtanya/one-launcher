@@ -66,6 +66,13 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - Fonts: `assets/fonts/tactile/*` (Barlow Semi Condensed default, Chakra Petch, Space Grotesk,
   IBM Plex Mono, Space Mono for readouts); registered in `pubspec.yaml` as `Tactile*`.
 - `lib/third/third_home.dart`: the Real home (hosts Classic's `HomeScreen` layout for now).
+- **Real on TV** (`homeView = 'third'` on the TV too; Customise → Home view → Real), an old TV
+  set: `lib/tv/tv_real.dart` (`CrtGlass` overlay from `main_tv.dart`'s builder: scanlines,
+  vignette, rounded tube; `TvReal.panel/key/paintRing/legend`). `TvDS` text styles are getters
+  on `DS.face` with an emboss in Real; `TvDS.surface / surfaceFocused / onLight` switch to key
+  colours, so every chip, pill and button follows. Sounds: `TvApps.sound('tick'|'clunk'|'thunk')`
+  → `TvActivity` SoundPool (`android/app/src/tv/res/raw/real_*.wav`); focus moves tick, OK
+  clunks (`tv_focus.dart`), Back thunks (`main_tv.dart` key handler).
 - No glass in Real (`main.dart` `_themedIcons` turns `Glass.classic` off).
 
 ## File map (phone)

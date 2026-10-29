@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'tv_real.dart';
+import '../third/tactile/tactile.dart';
+import '../third/tactile/parts.dart';
 
 import '../apps.dart';
 import '../ui/ds.dart';
@@ -214,8 +217,10 @@ Future<void> showTvPanel(
           Align(
             alignment: Alignment.centerRight,
             child: Material(
-              color: TvMetro.on ? DS.card : const Color(0xFF1C1C1C), // Tiles: Metro's near-black, flat
-              child: SizedBox(
+              color: DS.third ? Colors.transparent : (TvMetro.on ? DS.card : const Color(0xFF1C1C1C)), // Tiles: Metro's near-black, flat
+              child: Container(
+                decoration: DS.third ? TvReal.panel : null, // Real: a moulded plate
+                child: SizedBox(
                 width: 440,
                 height: double.infinity,
                 child: FocusTraversalGroup(
@@ -235,6 +240,8 @@ Future<void> showTvPanel(
                           ],
                           TvMetro.on
                               ? Text(TvMetro.cased(title), style: TvMetro.title(size: 34), maxLines: 2, overflow: TextOverflow.ellipsis)
+                              : DS.third
+                              ? Text(title.toUpperCase(), style: TvReal.legend(24), maxLines: 2, overflow: TextOverflow.ellipsis)
                               : Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: DS.s24),
                           for (final (i, a) in actions2.indexed)
@@ -252,7 +259,9 @@ Future<void> showTvPanel(
                                         duration: Motion.pressIn * 2,
                                         height: 52,
                                         padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                                        decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
+                                        decoration: DS.third
+                                            ? TvReal.key(focused: f) // Real: the focused row is a key, lit by its indicator
+                                            : BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
                                         child: Row(
                                           children: [
                                             if (a.swatch != null)
@@ -266,12 +275,12 @@ Future<void> showTvPanel(
                                                 ),
                                               )
                                             else
-                                              Icon(a.icon, size: 22, color: f ? (a.danger ? DS.alert : TvDS.onLight) : (a.danger ? DS.alert : TvDS.inkMuted)),
+                                              Icon(a.icon, size: 22, color: a.danger ? DS.alert : (f ? (DS.third ? Tactile.light : TvDS.onLight) : TvDS.inkMuted)),
                                             const SizedBox(width: DS.s16),
                                             Expanded(
                                               child: Text(
                                                 a.label,
-                                                style: TvDS.panelRow.copyWith(color: f ? TvDS.onLight : TvDS.ink),
+                                                style: TvDS.panelRow.copyWith(color: f && !DS.third ? TvDS.onLight : TvDS.ink),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                               ),
@@ -282,10 +291,13 @@ Future<void> showTvPanel(
                                                 style: TvDS.panelRow.copyWith(
                                                   fontSize: 15,
                                                   fontWeight: FontWeight.w400,
-                                                  color: f ? TvDS.onLightMuted : TvDS.inkMuted,
+                                                  color: f && !DS.third ? TvDS.onLightMuted : TvDS.inkMuted,
                                                 ),
                                               ),
-                                            if (a.selected) Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                                            if (a.selected)
+                                              DS.third
+                                                  ? Padding(padding: const EdgeInsets.only(left: 8), child: TLed(on: true, size: 8)) // Real: the chosen one's lamp
+                                                  : Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
                                           ],
                                         ),
                                       ),
@@ -298,6 +310,7 @@ Future<void> showTvPanel(
                 ),
               ),
             ),
+          ),
           ),
         ],
       ),
@@ -329,6 +342,7 @@ class _TvRingPainter extends BoxPainter {
     if (!ring.on || configuration.size == null) return;
     final out = ring.gap + ring.width / 2; // centre of the stroke, beyond the gap
     final rect = (offset & configuration.size!).inflate(out);
+    if (DS.third) return TvReal.paintRing(canvas, RRect.fromRectAndRadius(rect, Radius.circular(ring.radius + out)), ring.width); // Real: phosphor light
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(ring.radius + out)),
       Paint()

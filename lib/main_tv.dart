@@ -7,6 +7,7 @@ import 'ratings.dart';
 import 'tv/tv_apps.dart';
 import 'tv/tv_home.dart';
 import 'tv/tv_metro.dart';
+import 'tv/tv_real.dart';
 import 'ui/ds.dart';
 import 'ui/glass.dart';
 import 'ui/theme.dart';
@@ -47,12 +48,22 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
     theme.addListener(_onTheme);
     _syncGlass(repaint: false); // no rebuild needed before the first frame
     prefs.addListener(_syncGlass);
+    HardwareKeyboard.instance.addHandler(_backSound);
+  }
+
+  /// Real: Back on the remote sounds like a heavier key (the set clunks back a level).
+  bool _backSound(KeyEvent e) {
+    if (DS.third && e is KeyDownEvent && (e.logicalKey == LogicalKeyboardKey.goBack || e.logicalKey == LogicalKeyboardKey.escape)) {
+      TvApps.instance.sound('thunk');
+    }
+    return false; // never swallows the key
   }
 
   @override
   void dispose() {
     theme.removeListener(_onTheme);
     prefs.removeListener(_syncGlass);
+    HardwareKeyboard.instance.removeHandler(_backSound);
     super.dispose();
   }
 
@@ -94,7 +105,7 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        fontFamily: DS.font,
+        fontFamily: DS.face, // Real: its own face
         scaffoldBackgroundColor: DS.canvas,
         colorScheme: ColorScheme.dark(primary: DS.onCanvas, surface: DS.canvas),
         // Focus is shown by our own ring/scale; no Material highlight boxes.
@@ -104,6 +115,8 @@ class _OneLauncherTvState extends State<OneLauncherTv> {
       ),
       // Remotes send "select"; treat it like Enter everywhere (text fields, buttons).
       shortcuts: {...WidgetsApp.defaultShortcuts, const SingleActivator(LogicalKeyboardKey.select): const ActivateIntent()},
+      // Real: everything is seen through the old set's curved glass.
+      builder: (context, child) => DS.third ? Stack(fit: StackFit.expand, children: [child!, const CrtGlass()]) : child!,
       home: TvHome(prefs: prefs, theme: theme),
     );
   }

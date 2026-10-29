@@ -38,6 +38,26 @@ class TvActivity : FlutterActivity() {
     private val net = Executors.newFixedThreadPool(4) // catalog / details requests (artwork keeps its own threads)
     private val main = Handler(Looper.getMainLooper())
     private val content by lazy { TvContent(this) }
+
+    // The Real view's sounds (res/raw): short mechanical clicks, played on the TV itself since
+    // TVs usually have system sounds off. Loaded once, quiet, as UI sounds.
+    private val sounds by lazy {
+        val pool = android.media.SoundPool.Builder()
+            .setMaxStreams(4)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            .build()
+        val ids = mapOf(
+            "tick" to pool.load(this, R.raw.real_tick, 1),
+            "clunk" to pool.load(this, R.raw.real_clunk, 1),
+            "thunk" to pool.load(this, R.raw.real_thunk, 1),
+        )
+        pool to ids
+    }
     private val oneStream by lazy { OneStream(this) }
     // What's playing / paused right now (needs Notification access, like the phone's Now playing).
     private val media by lazy { MediaWatcher(this, artWidth = 960, square = false) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
@@ -55,6 +75,11 @@ class TvActivity : FlutterActivity() {
             if (media.handle(call, result)) return@setMethodCallHandler
             if (oneStream.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
+                "sound" -> {
+                    val (pool, ids) = sounds
+                    ids[call.argument<String>("name")]?.let { pool.play(it, .45f, .45f, 1, 0, 1f) }
+                    result.success(null)
+                }
                 "getWatchNext" -> worker.execute {
                     val list = content.watchNext()
                     main.post { result.success(list) }

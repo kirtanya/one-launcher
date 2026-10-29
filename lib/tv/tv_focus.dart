@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../ui/ds.dart';
+import 'tv_apps.dart';
+
 /// Anything you can land on with the remote: tiles, buttons, menu rows.
 ///
 /// OK fires on key *release*, and only if the press started here — so holding OK on a tile
@@ -53,7 +56,10 @@ class _TvFocusableState extends State<TvFocusable> {
             widget.onLongSelect!();
           }
         case KeyUpEvent():
-          if (_held && !_long) widget.onSelect?.call();
+          if (_held && !_long) {
+            if (DS.third) TvApps.instance.sound('clunk'); // Real: the key bottoming out
+            widget.onSelect?.call();
+          }
           _held = false;
       }
       return KeyEventResult.handled;
@@ -79,6 +85,7 @@ class _TvFocusableState extends State<TvFocusable> {
       onFocusChange: (f) {
         if (!f) _held = false;
         setState(() => _focused = f);
+        if (f && DS.third) TvApps.instance.sound('tick'); // Real: a detent, like a channel dial
         if (f) widget.onFocus?.call();
       },
       // Touch / mouse still work (TV emulators, phones with a mouse).
