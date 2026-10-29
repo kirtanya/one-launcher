@@ -196,38 +196,44 @@ class _RecentSearchesState extends State<RecentSearches> {
     final rows = [
       for (final (i, q) in history.indexed)
         // A short cascade on arrival, newest (nearest the bar) first; rows already shown don't replay.
-        if (!_gone.contains(q)) _Cascade(key: ValueKey(q), index: i, upward: widget.upward, child: _row(q, i)),
+        if (!_gone.contains(q)) Cascade(key: ValueKey(q), index: i, upward: widget.upward, child: _row(q, i)),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
-    if (metro) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_header(), ...rows]);
+    // The title arrives last, after the row farthest from the bar.
+    final header = Cascade(key: const ValueKey('header'), index: rows.length, upward: widget.upward, child: _header());
+    if (metro) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, ...rows]);
     return OneCard(
       padding: const EdgeInsets.symmetric(vertical: DS.s4),
       // Title stays on top; newest sits nearest the bar.
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [_header(), ...(widget.upward ? rows.reversed : rows)]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, ...(widget.upward ? rows.reversed : rows)]),
     );
   }
 }
 
-/// One recent search fading in a beat after the one before it (index × 40 ms), rising from the
-/// bar's side. Mounted once per row, so updates and removals don't replay it.
-class _Cascade extends StatelessWidget {
-  const _Cascade({super.key, required this.index, required this.child, required this.upward});
+/// One row (or card) of search results arriving: rising from the bar's side and fading in, a beat
+/// after the one nearer the bar ([index] 0 = nearest), so the list builds up one by one. Mounted
+/// once per row, so updates and removals don't replay it.
+class Cascade extends StatelessWidget {
+  const Cascade({super.key, required this.index, required this.child, required this.upward});
   final int index;
   final Widget child;
   final bool upward;
 
+  static const _step = 70; // ms between rows
+  static const _each = 380; // ms each row takes
+
   @override
   Widget build(BuildContext context) {
-    if (Perf.lite.value || index > 8) return child;
-    final start = (index * .08).clamp(0.0, .6);
+    if (Perf.lite.value || index > 10) return child;
+    final wait = index * _step;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Interval(start, 1, curve: Curves.easeOutCubic),
+      duration: Duration(milliseconds: wait + _each),
+      curve: Interval(wait / (wait + _each), 1, curve: Curves.easeOutCubic),
       child: child,
       builder: (context, t, child) => Opacity(
         opacity: t,
-        child: Transform.translate(offset: Offset(0, (upward ? 10 : -10) * (1 - t)), child: child),
+        child: Transform.translate(offset: Offset(0, (upward ? 28 : -28) * (1 - t)), child: child),
       ),
     );
   }

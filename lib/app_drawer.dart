@@ -38,6 +38,7 @@ class AppDrawer extends StatefulWidget {
     required this.scroll,
     required this.expanded,
     required this.searching,
+    this.leaving = false,
     required this.query,
     required this.onLaunch,
     required this.onCompact,
@@ -82,6 +83,9 @@ class AppDrawer extends StatefulWidget {
   final ScrollController scroll;
   final ValueListenable<double> expanded; // 0 = half screen, 1 = full screen
   final bool searching;
+
+  /// Search is opening (or open): the cards slide off the sides, then the results come in.
+  final bool leaving;
   final String query;
   final ValueChanged<AppEntry> onLaunch;
   final ValueChanged<bool> onCompact; // list scrolled up (true) or back down (false)
@@ -92,7 +96,7 @@ class AppDrawer extends StatefulWidget {
   State<AppDrawer> createState() => AppDrawerState();
 }
 
-class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixin {
+class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
   static const _mostUsedCount = 16; // green card: 2 pages × 8
   String? _openId; // the one open folder (Most used is the hero card, always open)
 
@@ -201,6 +205,12 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   String? _glideId;
   double _glideFrom = 0;
 
+  /// Opening search: the cards slide out sideways (0 → 1); closing it brings them back.
+  late final AnimationController _away = AnimationController(vsync: this, duration: awayDuration, value: widget.leaving ? 1 : 0);
+
+  /// How long the cards take to clear before the results come in.
+  static const awayDuration = Duration(milliseconds: 560);
+
   @override
   void initState() {
     super.initState();
@@ -209,10 +219,38 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
   }
 
   @override
+  void didUpdateWidget(AppDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.leaving != oldWidget.leaving) widget.leaving ? _away.forward() : _away.reverse();
+  }
+
+  @override
   void dispose() {
     widget.expanded.removeListener(_trackFull);
     _glide.dispose();
+    _away.dispose();
     super.dispose();
+  }
+
+  /// Card [i] (0 = the green card, then the folders) on its way out: alternately off the left and
+  /// the right edge, each a beat after the one above it, picking up speed as it goes.
+  Widget _slideAway(int i, Widget child) {
+    if (Perf.lite.value) return child;
+    final start = (i * .1).clamp(0.0, .4);
+    final curve = Interval(start, start + .6, curve: Curves.easeInCubic);
+    final dir = i.isEven ? -1.0 : 1.0;
+    return AnimatedBuilder(
+      animation: _away,
+      child: child,
+      builder: (context, child) {
+        final t = curve.transform(_away.value);
+        if (t == 0) return child!;
+        return Transform.translate(
+          offset: Offset(dir * MediaQuery.sizeOf(context).width * 1.05 * t, 0),
+          child: Opacity(opacity: (1 - t * .6).clamp(0.0, 1.0), child: child),
+        );
+      },
+    );
   }
 
   /// Accordion: opening one folder closes the other. The sheet expands, the folder opens and
@@ -514,7 +552,7 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
       ];
     } else {
       content = [
-        box(edge(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero))),
+        box(_slideAway(0, edge(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero)))),
         for (final (i, (folder, list)) in groups.indexed) ...[
           // Gap above the folder; its key marks where the folder starts.
           SliverToBoxAdapter(
@@ -528,21 +566,24 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
               slivers: [
                 // Open folder: header pins to the top while its apps scroll under it.
                 if (_openId == folder.id)
-                  PinnedHeaderSliver(child: folderHeader(i, folder, list))
+                  PinnedHeaderSliver(child: _slideAway(i + 1, folderHeader(i, folder, list)))
                 else
-                  SliverToBoxAdapter(child: edge(folderHeader(i, folder, list))), // closed folders scale at the edges
+                  SliverToBoxAdapter(child: _slideAway(i + 1, edge(folderHeader(i, folder, list)))), // closed folders scale at the edges
                 SliverToBoxAdapter(
-                  child: RepaintBoundary(
-                    child: _FolderBody(
-                      key: _body(folder.id),
-                      apps: list,
-                      open: _openId == folder.id,
-                      tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-                      maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
-                      outer: widget.scroll,
-                      onHandoff: (on) => _handoff = on,
-                      onLaunch: widget.onLaunch,
-                      onLongPress: _longPress,
+                  child: _slideAway(
+                    i + 1,
+                    RepaintBoundary(
+                      child: _FolderBody(
+                        key: _body(folder.id),
+                        apps: list,
+                        open: _openId == folder.id,
+                        tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+                        maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
+                        outer: widget.scroll,
+                        onHandoff: (on) => _handoff = on,
+                        onLaunch: widget.onLaunch,
+                        onLongPress: _longPress,
+                      ),
                     ),
                   ),
                 ),
@@ -647,8 +688,8 @@ double pullOffset(double p) => 140 * (1 - math.exp(-p / 140));
 /// Pull this far (px of finger travel) and let go to open search.
 const pullToOpen = 200.0; // long enough that the nav → search morph visibly scrubs under the finger
 
-/// The pill that grows in the gap while pulling the drawer down: "Pull to search", then
-/// "Release to search" (filled) once far enough.
+/// The hint that grows in the gap while pulling the drawer down: "Pull to search", then
+/// "Release to search" (full ink) once far enough. Plain text — no pill, no icon.
 class _PullPill extends StatelessWidget {
   const _PullPill({required this.progress, required this.ready});
   final double progress;
@@ -656,23 +697,17 @@ class _PullPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Opacity(
-        opacity: progress,
-        child: Transform.scale(
-          scale: .7 + .3 * progress,
-          child: AnimatedContainer(
-            duration: Motion.pressIn,
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-            decoration: BoxDecoration(color: ready ? DS.hero : DS.card, borderRadius: BorderRadius.circular(22)),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.search_rounded, size: 20, color: ready ? DS.heroInk : DS.ink),
-                const SizedBox(width: DS.s8),
-                Text(ready ? 'Release to search' : 'Pull to search', style: DS.pill.copyWith(color: ready ? DS.heroInk : DS.ink)),
-              ],
+    return SizedBox(
+      height: 44,
+      child: Center(
+        child: Opacity(
+          opacity: progress,
+          child: Transform.scale(
+            scale: .85 + .15 * progress,
+            child: AnimatedDefaultTextStyle(
+              duration: Motion.pressIn,
+              style: DS.pill.copyWith(color: ready ? DS.ink : DS.inkMuted, fontWeight: ready ? FontWeight.w600 : FontWeight.w500),
+              child: Text(ready ? 'Release to search' : 'Pull to search'),
             ),
           ),
         ),
@@ -1354,23 +1389,29 @@ class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) {
     // No "nothing matches" card: the web rows (and Movies & shows) are the way on.
     final sections = <Widget>[
-      if (apps.isNotEmpty) _appsCard(),
+      if (apps.isNotEmpty) KeyedSubtree(key: const ValueKey('apps'), child: _appsCard()),
       if (shortcuts.isNotEmpty)
-        _rowsCard('App shortcuts', [
-          for (final sc in shortcuts)
-            _WebRow(
-              leading: ShortcutIcon(id: sc.id, size: 24),
-              title: sc.label,
-              query: sc.work ? '${sc.app} · Work' : sc.app,
-              quoted: false,
-              onTap: () => onRun(() => Apps.instance.quickAction(sc.id)),
-            ),
-        ]),
+        KeyedSubtree(
+          key: const ValueKey('shortcuts'),
+          child: _rowsCard('App shortcuts', [
+            for (final sc in shortcuts)
+              _WebRow(
+                leading: ShortcutIcon(id: sc.id, size: 24),
+                title: sc.label,
+                query: sc.work ? '${sc.app} · Work' : sc.app,
+                quoted: false,
+                onTap: () => onRun(() => Apps.instance.quickAction(sc.id)),
+              ),
+          ]),
+        ),
       if (settings.isNotEmpty)
-        _rowsCard('Phone settings', [
-          for (final st in settings)
-            _WebRow(icon: st.icon, title: st.title, query: 'Settings', quoted: false, onTap: () => onRun(() => Apps.instance.openSetting(st.action))),
-        ]),
+        KeyedSubtree(
+          key: const ValueKey('settings'),
+          child: _rowsCard('Phone settings', [
+            for (final st in settings)
+              _WebRow(icon: st.icon, title: st.title, query: 'Settings', quoted: false, onTap: () => onRun(() => Apps.instance.openSetting(st.action))),
+          ]),
+        ),
       // One Stream's movies & shows (when installed): a row of posters, before the web.
       if (oneStream)
         OneStreamSearchRow(
@@ -1387,6 +1428,7 @@ class _SearchResults extends StatelessWidget {
       // The web, like the Pixel search bar: hands the query to Google / the Play Store.
       if (web || play)
         OneCard(
+          key: const ValueKey('web'),
           padding: const EdgeInsets.symmetric(vertical: DS.s4),
           child: Column(
             children: _ordered([
@@ -1397,11 +1439,14 @@ class _SearchResults extends StatelessWidget {
           ),
         ),
     ];
-    final ordered = upward ? sections.reversed.toList() : sections;
+    // Each card arrives a beat after the one nearer the bar (keyed by kind, so cards already
+    // shown don't replay as typing changes what's found).
+    final arriving = [for (final (i, w) in sections.indexed) Cascade(key: w.key, index: i, upward: upward, child: w)];
+    final ordered = upward ? arriving.reversed.toList() : arriving;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (i, w) in ordered.indexed) ...[if (i > 0 && w is! OneStreamSearchRow) const SizedBox(height: DS.stack), w],
+        for (final (i, w) in ordered.indexed) ...[if (i > 0 && w.child is! OneStreamSearchRow) const SizedBox(height: DS.stack), w],
       ],
     );
   }

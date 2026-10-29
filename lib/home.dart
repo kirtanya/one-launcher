@@ -175,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         scroll: scroll,
         expanded: _expanded,
         searching: _showResults,
+        leaving: _searching,
         query: _query.text,
         onLaunch: _launch,
         onCompact: _setCompact,
@@ -380,15 +381,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     setState(() => _searching = true);
     _focus.requestFocus();
     if (prefs.searchPosition == 'top') _drawerKey.currentState?.toTop(); // the bar is at the top of the list
-    // Results once the sheet is up. Not by awaiting the rise alone: the keyboard arriving resizes
-    // the sheet and can cut that animation short, whose future then never completes — the results
-    // (recent searches) never showed. Whichever comes first: the rise ends, or its time is up.
+    // Results once the sheet is up and the cards have slid off the sides. Not by awaiting the
+    // rise alone: the keyboard arriving resizes the sheet and can cut that animation short, whose
+    // future then never completes — the results (recent searches) never showed.
+    final cleared = Future<void>.delayed(AppDrawerState.awayDuration + const Duration(milliseconds: 40));
     if (_sheet.isAttached) {
       await Future.any([
         _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle),
         Future<void>.delayed(Motion.snapDuration + const Duration(milliseconds: 60)),
       ]);
     }
+    await cleared;
     if (mounted && _searching) setState(() => _showResults = true);
   }
 
