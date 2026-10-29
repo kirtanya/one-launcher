@@ -384,7 +384,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // Results once the sheet is up and the cards have slid off the sides. Not by awaiting the
     // rise alone: the keyboard arriving resizes the sheet and can cut that animation short, whose
     // future then never completes — the results (recent searches) never showed.
-    final cleared = Future<void>.delayed(AppDrawerState.awayDuration + const Duration(milliseconds: 40));
+    // A full pull has already slid them out under the finger: then only the rise is left.
+    final left = 1 - (_pull.value / pullToOpen).clamp(0.0, 1.0);
+    final cleared = Future<void>.delayed(AppDrawerState.awayDuration * left + const Duration(milliseconds: 40));
     if (_sheet.isAttached) {
       await Future.any([
         _sheet.animateTo(1, duration: Motion.snapDuration, curve: Motion.settle),

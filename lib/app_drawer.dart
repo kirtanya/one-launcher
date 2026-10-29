@@ -221,7 +221,13 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(AppDrawer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.leaving != oldWidget.leaving) widget.leaving ? _away.forward() : _away.reverse();
+    if (widget.leaving == oldWidget.leaving) return;
+    if (widget.leaving) {
+      _away.value = math.max(_away.value, _pulled); // opened by a pull: carry on from where the finger left it
+      _away.forward();
+    } else {
+      _away.reverse();
+    }
   }
 
   @override
@@ -232,18 +238,23 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// How far the pull has got towards opening search (0–1).
+  double get _pulled => (widget.pull.value / pullToOpen).clamp(0.0, 1.0);
+
   /// Card [i] (0 = the green card, then the folders) on its way out: alternately off the left and
-  /// the right edge, each a beat after the one above it, picking up speed as it goes.
+  /// the right edge, each a beat after the one above it. Pulling down scrubs it with the finger
+  /// (all gone by the "Release to search" line, back again as the finger goes back); opening or
+  /// closing search plays it on its own.
   Widget _slideAway(int i, Widget child) {
     if (Perf.lite.value) return child;
     final start = (i * .1).clamp(0.0, .4);
-    final curve = Interval(start, start + .6, curve: Curves.easeInCubic);
+    final curve = Interval(start, start + .6, curve: Curves.easeInOutCubic);
     final dir = i.isEven ? -1.0 : 1.0;
     return AnimatedBuilder(
-      animation: _away,
+      animation: Listenable.merge([_away, widget.pull]),
       child: child,
       builder: (context, child) {
-        final t = curve.transform(_away.value);
+        final t = curve.transform(widget.leaving || _away.isAnimating ? _away.value : _pulled);
         if (t == 0) return child!;
         return Transform.translate(
           offset: Offset(dir * MediaQuery.sizeOf(context).width * 1.05 * t, 0),
