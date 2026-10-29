@@ -359,8 +359,6 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
     if (n.dragDetails != null && n.metrics.axis == Axis.vertical) FocusManager.instance.primaryFocus?.unfocus();
     if (n.metrics.axis != Axis.vertical || n.depth != 0) return false; // the main list only
     final d = n.scrollDelta ?? 0;
-    // Mid-pull, moving the finger back up takes the pull back first.
-    if (widget.pull.value > 0 && n.dragDetails != null && d > 0) widget.onPull(-d);
     // Pulling the results down while searching = done searching — with the bar at the top.
     // With the bar at the bottom the results scroll on their own; the bar swipes away instead.
     if (widget.searching && widget.searchBar != null && n.dragDetails != null && d < -2) {
@@ -584,40 +582,47 @@ class AppDrawerState extends State<AppDrawer> with SingleTickerProviderStateMixi
             ],
           );
         },
-        child: NotificationListener<OverscrollNotification>(
-          onNotification: _onOverscroll,
-          child: NotificationListener<ScrollStartNotification>(
-            onNotification: _onScrollStart,
-            child: NotificationListener<ScrollEndNotification>(
-              onNotification: _onScrollEnd,
-              child: NotificationListener<ScrollUpdateNotification>(
-                onNotification: _onScroll,
-                child: CustomScrollView(
-                  controller: widget.scroll,
-                  physics: const ClampingScrollPhysics(),
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // see _onScroll: only up/down drags close the keyboard
-                  slivers: [
-                    // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
-                    // reaches full screen, and pinned folder headers stop just below it. Only this
-                    // spacer follows the sheet's drag, so the cards don't rebuild every frame.
-                    PinnedHeaderSliver(
-                      child: ValueListenableBuilder<double>(
-                        valueListenable: widget.expanded,
-                        builder: (context, e, _) => SizedBox(
-                          height: DS.gutter + statusBar * e,
-                          child: ColoredBox(color: DS.canvas),
+        // Mid-pull, moving the finger back up takes the pull back, like scrubbing back (the finger
+        // itself: at rest the sheet grows instead of the list scrolling, so no scroll reports it).
+        child: Listener(
+          onPointerMove: (e) {
+            if (widget.pull.value > 0 && e.delta.dy < 0) widget.onPull(e.delta.dy);
+          },
+          child: NotificationListener<OverscrollNotification>(
+            onNotification: _onOverscroll,
+            child: NotificationListener<ScrollStartNotification>(
+              onNotification: _onScrollStart,
+              child: NotificationListener<ScrollEndNotification>(
+                onNotification: _onScrollEnd,
+                child: NotificationListener<ScrollUpdateNotification>(
+                  onNotification: _onScroll,
+                  child: CustomScrollView(
+                    controller: widget.scroll,
+                    physics: const ClampingScrollPhysics(),
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual, // see _onScroll: only up/down drags close the keyboard
+                    slivers: [
+                      // Pinned top spacer in the sheet colour: grows to cover the status bar as the sheet
+                      // reaches full screen, and pinned folder headers stop just below it. Only this
+                      // spacer follows the sheet's drag, so the cards don't rebuild every frame.
+                      PinnedHeaderSliver(
+                        child: ValueListenableBuilder<double>(
+                          valueListenable: widget.expanded,
+                          builder: (context, e, _) => SizedBox(
+                            height: DS.gutter + statusBar * e,
+                            child: ColoredBox(color: DS.canvas),
+                          ),
                         ),
                       ),
-                    ),
-                    // The search bar, when it lives in the list (Settings → Search bar: Top).
-                    if (widget.searchBar != null) SliverToBoxAdapter(child: widget.searchBar!),
-                    ...content,
-                    // Room for the floating search dock (and the keyboard while searching).
-                    if (!upward)
-                      SliverToBoxAdapter(
-                        child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
-                      ),
-                  ],
+                      // The search bar, when it lives in the list (Settings → Search bar: Top).
+                      if (widget.searchBar != null) SliverToBoxAdapter(child: widget.searchBar!),
+                      ...content,
+                      // Room for the floating search dock (and the keyboard while searching).
+                      if (!upward)
+                        SliverToBoxAdapter(
+                          child: Builder(builder: (context) => SizedBox(height: MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s32)),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

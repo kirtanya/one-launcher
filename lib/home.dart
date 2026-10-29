@@ -412,7 +412,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// Drawer pulled down past its top. Counts only while the sheet rests (pulling a full-screen
   /// sheet down shrinks it first) and the gesture is on (Settings → Pull down to search).
   void _onPull(double delta) {
-    if (!prefs.pullToSearch || _searching || _expanded.value > .01) return;
+    // Taking a pull back always counts (moving up mid-pull also grows the sheet a little).
+    if (!prefs.pullToSearch || _searching || (_expanded.value > .01 && delta > 0)) return;
     _pullBack.stop(); // a stopped spring-back never completes, so clear its flag here
     _pullOpening.value = false;
     final before = _pull.value;

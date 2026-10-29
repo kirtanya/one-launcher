@@ -486,32 +486,23 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
     value: widget.active ? 1 : 0,
   );
 
-  @override
-  void initState() {
-    super.initState();
-    widget.pull?.addListener(_follow);
-  }
-
-  /// Pulling the list down: the morph is wherever the finger is (until search opens, when the
-  /// animation carries on from there; a pull let go short of it eases back with the pull).
-  void _follow() {
-    if (widget.active || _t.isAnimating) return;
-    _t.value = (widget.pull!.value / widget.pullFull).clamp(0.0, 1.0);
-  }
+  /// How far the pull has got towards opening search (0–1).
+  double get _pulled => widget.pull == null ? 0 : (widget.pull!.value / widget.pullFull).clamp(0.0, 1.0);
 
   @override
   void didUpdateWidget(_NavSearch old) {
     super.didUpdateWidget(old);
-    if (old.pull != widget.pull) {
-      old.pull?.removeListener(_follow);
-      widget.pull?.addListener(_follow);
+    if (widget.active == old.active) return;
+    if (widget.active) {
+      _t.value = math.max(_t.value, _pulled); // opened by a pull: carry on from where the finger left it
+      _t.forward();
+    } else {
+      _t.reverse();
     }
-    if (widget.active != old.active) widget.active ? _t.forward() : _t.reverse();
   }
 
   @override
   void dispose() {
-    widget.pull?.removeListener(_follow);
     _t.dispose();
     super.dispose();
   }
@@ -532,9 +523,11 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
         final w = c.maxWidth;
         final barW = w - h - SearchDock.gap; // room for the close circle on the right
         return AnimatedBuilder(
-          animation: _t,
+          animation: Listenable.merge([_t, if (widget.pull != null) widget.pull!]),
           builder: (context, _) {
-            final p = _t.value;
+            // Pulling the list down scrubs the morph like a seek bar: it's wherever the finger is,
+            // forwards and back. Opening / closing search plays it on its own.
+            final p = widget.active || _t.isAnimating ? _t.value : _pulled;
             final t = _span(p, 0, .8); // the pill widens
             final slide = _span(p, 0, .65, Curves.easeInCubic); // tabs slide out, picking up speed
             final fade = _span(p, .3, .65, Curves.easeIn); // …and fade once they're on their way
