@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tactile Specimen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@600;800&family=Inter:wght@400;500;600;700&family=Space+Mono&display=swap" rel="stylesheet">
+<style>
+/* ---- Finishes (docs/TACTILE_LANGUAGE.md §3) ---- */
+:root, [data-finish="porcelain"] {
+  --panel:#ECEDEF; --plate:#F6F7F8; --tray:#D9DBDF; --ink:#2A2C30; --ink2:#2A2C3099;
+  --hi:#FFFFFFE6; --hi2:#FFFFFF99; --lo:#00000033; --lo2:#0000001F; --rim:#0000001F;
+  --cap-top:#FFFFFF; --cap-bot:#E3E5E8; --well:#E2E4E7; --lcd:#C9D3C9; --lcd-ink:#1D2A1F;
+  --led-off:#B9BCC1;
+}
+[data-finish="concrete"] {
+  --panel:#B7B8BA; --plate:#C6C7C9; --tray:#2E2F31; --ink:#2A2B2D; --ink2:#2A2B2Daa;
+  --hi:#FFFFFFB3; --hi2:#FFFFFF66; --lo:#00000047; --lo2:#00000029; --rim:#00000026;
+  --cap-top:#D6D7D9; --cap-bot:#A9AAAD; --well:#A8A9AC; --lcd:#9FB3A6; --lcd-ink:#13201A;
+  --led-off:#3A3A3D;
+}
+[data-finish="graphite"] {
+  --panel:#2B2A2D; --plate:#333236; --tray:#1C1B1E; --ink:#E6E4E8; --ink2:#E6E4E899;
+  --hi:#FFFFFF1F; --hi2:#FFFFFF12; --lo:#00000099; --lo2:#00000066; --rim:#FFFFFF14;
+  --cap-top:#3D3C41; --cap-bot:#28272B; --well:#232225; --lcd:#0F1A16; --lcd-ink:#7CFFD2;
+  --led-off:#47464B;
+}
+:root { --accent:#2BD9C0; --cap-accent:#E5484D; }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { margin:0; background:var(--panel); color:var(--ink); font-family:Inter,system-ui,sans-serif; transition:background .4s, color .4s; }
+main { max-width:520px; margin:0 auto; padding:24px 16px 80px; }
+.legend { font:600 11px/1.2 Inter; letter-spacing:1.3px; text-transform:uppercase; color:var(--ink2); }
+.readout { font-family:'Space Mono',monospace; letter-spacing:1px; text-transform:uppercase; font-size:12px; }
+h1 { font:700 28px/1.1 Inter; letter-spacing:-.5px; margin:0 0 4px; }
+h2 { margin:0 0 14px; }
+.sub { color:var(--ink2); font-size:14px; margin:0 0 20px; }
+
+/* Plate: +1 (ref 2) */
+.plate { background:var(--plate); border-radius:24px; padding:20px; margin:0 0 18px;
+  box-shadow: inset 0 1px 0 var(--hi), 0 1px 1px var(--lo2), 0 12px 28px var(--lo2), 0 0 0 1px var(--rim); }
+.row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.col { display:flex; flex-direction:column; align-items:center; gap:10px; }
+
+/* Bracket line (ref 3) */
+.bracket { position:relative; height:12px; margin:6px 8px 12px; border:1.5px solid var(--ink2); border-top:0; border-radius:0 0 3px 3px; }
+.bracket::after { content:""; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%) rotate(45deg); width:8px; height:8px; background:var(--ink2); }
+
+/* Finish + colour pickers */
+.pick { display:flex; gap:8px; flex-wrap:wrap; }
+
+/* Tray: −2, dark housing of keys (ref 1) */
+.tray { display:inline-flex; gap:4px; padding:4px; border-radius:16px; background:var(--tray);
+  box-shadow: inset 0 3px 6px #00000066, inset 0 -1px 0 var(--hi2), 0 1px 0 var(--hi); }
+/* Key: +1, concave dish */
+/* Key size: 64 dp, smaller on narrow phones so a five-key tray fits (gutter 16 + plate 20 + tray 4 + gaps). */
+:root { --k: clamp(48px, calc((100vw - 104px) / 5), 64px); }
+.key { position:relative; width:var(--k); height:var(--k); border:0; border-radius:12px; cursor:pointer; color:var(--ink);
+  background: radial-gradient(circle at 50% 45%, var(--cap-bot) 0 46%, transparent 47%), linear-gradient(var(--cap-top), var(--cap-bot));
+  box-shadow: inset 0 1px 0 var(--hi), inset 0 -2px 2px #0000001a, 0 1px 1px var(--lo), 0 4px 8px var(--lo2);
+  transition: transform .06s ease-out, box-shadow .06s ease-out, filter .06s; display:grid; place-items:center; }
+.key .glyph { font-size:18px; opacity:.8; }
+.key.down { transform:translateY(2px); filter:brightness(.96);
+  box-shadow: inset 0 2px 3px #00000026, 0 0 0 var(--lo), 0 1px 2px var(--lo2); }
+.key.latched { transform:translateY(1.5px); filter:brightness(.97); box-shadow: inset 0 2px 3px #00000022, 0 1px 2px var(--lo2); }
+.key.colored { background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--cap-accent) 85%, #000) 0 46%, transparent 47%), linear-gradient(color-mix(in srgb, var(--cap-accent) 80%, #fff), color-mix(in srgb, var(--cap-accent) 90%, #000)); color:#fff; }
+.key .led { position:absolute; top:7px; right:7px; }
+.keylabels { display:flex; gap:4px; padding:0 4px; }
+.keylabels span { width:var(--k); text-align:center; }
+
+/* LED (ref 1, 3) */
+.led { width:9px; height:9px; border-radius:50%; background:var(--led-off); box-shadow: inset 0 1px 1px #0000004d, 0 1px 0 var(--hi2); transition: background .12s, box-shadow .2s; }
+.led.on { background:var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb,var(--accent) 60%,#fff), 0 0 8px 2px color-mix(in srgb,var(--accent) 55%,transparent), inset 0 -1px 1px #0003; }
+.led.on::after { content:""; display:block; width:3px; height:3px; margin:1.5px 0 0 2px; border-radius:50%; background:#fff9; }
+.led.blink.on { animation: blink 1.2s steps(1) infinite; }
+@keyframes blink { 50% { background:var(--led-off); box-shadow:none; } }
+
+/* Switch: well + thumb (ref 4) */
+.switch { position:relative; width:120px; height:62px; border-radius:31px; background:var(--well); cursor:pointer; touch-action:none;
+  box-shadow: inset 0 4px 8px #0000004d, inset 0 -1px 1px var(--hi), 0 1px 0 var(--hi), 0 0 0 1px var(--rim); }
+.switch .thumb { position:absolute; top:5px; left:5px; width:52px; height:52px; border-radius:20px;
+  background: linear-gradient(var(--cap-top), var(--cap-bot));
+  box-shadow: inset 0 1px 0 var(--hi), 0 2px 3px var(--lo), 0 6px 10px var(--lo2); transition: left .24s cubic-bezier(.3,1.4,.5,1), transform .1s; }
+.switch.on .thumb { left:63px; }
+.switch.on { background: color-mix(in srgb, var(--accent) 22%, var(--well)); }
+.switch.drag .thumb { transition:none; transform:scaleX(.97); }
+.monolabel { font-family:'Space Mono',monospace; color:var(--accent); letter-spacing:2px; font-size:13px; filter:brightness(.8); }
+
+/* Knob: bezel ring + domed cap + pointer + scale (refs 1–3) */
+.knob { position:relative; width:112px; height:112px; touch-action:none; cursor:grab; }
+.knob .scale { position:absolute; inset:0; }
+.knob .bezel { position:absolute; inset:14px; border-radius:50%;
+  background: linear-gradient(#0000002e, var(--hi)); box-shadow: 0 0 0 1px var(--rim); }
+.knob .cap { position:absolute; inset:20px; border-radius:50%;
+  background: radial-gradient(circle at 38% 28%, var(--cap-top), var(--cap-bot) 75%);
+  box-shadow: inset 0 1px 1px var(--hi), 0 2px 3px var(--lo), 0 10px 18px var(--lo2); }
+.knob .pointer { position:absolute; left:50%; top:8px; width:4px; height:16px; margin-left:-2px; border-radius:2px; background:var(--accent);
+  box-shadow:0 0 6px color-mix(in srgb,var(--accent) 60%,transparent); }
+.knob .rot { position:absolute; inset:0; border-radius:50%; }
+.knobval { font-family:'Doto','Space Mono',monospace; font-weight:800; font-size:18px; }
+
+/* Fader (ref 2) */
+.fader { position:relative; width:44px; height:150px; touch-action:none; cursor:grab; }
+.fader .track { position:absolute; left:50%; top:8px; bottom:8px; width:6px; margin-left:-3px; border-radius:3px; background:var(--tray);
+  box-shadow: inset 0 1px 2px #00000080, 0 1px 0 var(--hi); }
+.fader .capf { position:absolute; left:6px; width:32px; height:18px; border-radius:9px;
+  background: linear-gradient(var(--cap-top), var(--cap-bot)); box-shadow: inset 0 1px 0 var(--hi), 0 2px 3px var(--lo), 0 5px 8px var(--lo2); }
+.fader .capf::after { content:""; position:absolute; left:8px; right:8px; top:8px; height:2px; border-radius:1px; background:var(--ink); opacity:.7; }
+
+/* Segmented (ref 2) */
+.seg { position:relative; display:inline-flex; padding:4px; border-radius:22px; background:var(--well);
+  box-shadow: inset 0 2px 4px #00000033, 0 1px 0 var(--hi); }
+.seg button { position:relative; z-index:1; border:0; background:none; padding:8px 16px; font:600 13px Inter; color:var(--ink2); cursor:pointer; }
+.seg button.sel { color:var(--ink); }
+.seg .slider { position:absolute; top:4px; bottom:4px; border-radius:18px; background: linear-gradient(var(--cap-top), var(--cap-bot));
+  box-shadow: inset 0 1px 0 var(--hi), 0 1px 2px var(--lo), 0 3px 6px var(--lo2); transition: left .22s cubic-bezier(.3,1.3,.5,1), width .22s; }
+
+/* LCD (ref 2) */
+.lcd { position:relative; border-radius:14px; padding:16px 18px; background:var(--lcd); color:var(--lcd-ink); overflow:hidden;
+  box-shadow: inset 0 3px 8px #00000059, inset 0 -1px 0 var(--hi), 0 1px 0 var(--hi), 0 0 0 1px var(--rim); }
+.lcd::before { content:""; position:absolute; inset:0; background-image: radial-gradient(#0000000f 1px, transparent 1.2px); background-size:3px 3px; pointer-events:none; }
+.lcd .big { font:800 64px/1 'Doto','Space Mono',monospace; letter-spacing:2px; }
+.lcd .small { font:600 13px 'Space Mono',monospace; letter-spacing:2px; opacity:.8; text-transform:uppercase; }
+.lcd .cursor { display:inline-block; width:10px; height:18px; background:currentColor; vertical-align:-3px; animation: blink 1s steps(1) infinite; }
+
+/* Dial (ref 5) */
+.dial { position:relative; width:200px; height:200px; border-radius:50%; margin:6px auto; touch-action:none;
+  background: radial-gradient(circle at 50% 30%, var(--cap-top), var(--cap-bot) 70%);
+  box-shadow: inset 0 1px 1px var(--hi), 0 0 0 1px var(--rim), 0 4px 6px var(--lo), 0 18px 30px var(--lo2); transition: transform .08s; }
+.dial .center { position:absolute; inset:62px; border-radius:50%; border:0; cursor:pointer;
+  background: radial-gradient(circle at 50% 30%, var(--cap-top), var(--cap-bot) 75%);
+  box-shadow: 0 0 0 6px var(--well), 0 0 0 7px var(--rim), inset 0 1px 0 var(--hi), 0 3px 6px var(--lo); transition: transform .06s; color:var(--ink); font-size:20px; }
+.dial .center.down { transform: translateY(2px) scale(.98); }
+.dial .tick { position:absolute; left:50%; top:12px; width:2px; height:12px; margin-left:-1px; background:var(--ink2); border-radius:1px; }
+.dial .arrow { position:absolute; font-size:12px; color:var(--ink2); }
+
+/* Grille (ref 1) */
+.grille { display:grid; grid-template-columns:repeat(3,10px); gap:6px; }
+.grille i { width:10px; height:10px; border-radius:50%; background:var(--tray); box-shadow: inset 0 2px 2px #0006, 0 1px 0 var(--hi); }
+.grille i:nth-child(3n+2) { transform:translateY(8px); }
+
+.notes { font-size:13px; color:var(--ink2); line-height:1.5; margin:10px 0 0; }
+.swatch { width:30px; height:30px; border-radius:50%; border:0; cursor:pointer; box-shadow:0 0 0 2px var(--plate), 0 0 0 3px var(--rim), 0 2px 4px var(--lo2); }
+</style>
+</head>
+<body data-finish="porcelain">
+<main>
+  <h1>Tactile</h1>
+  <p class="sub">The third look: a pattern library. Everything here moves, clicks and lights like hardware. Turn the sound on and touch things.</p>
+
+  <section class="plate">
+    <h2 class="legend">Finish · colour</h2>
+    <div class="row" style="justify-content:space-between">
+      <div class="seg" id="finish"><span class="slider"></span>
+        <button data-v="porcelain" class="sel">Porcelain</button><button data-v="concrete">Concrete</button><button data-v="graphite">Graphite</button>
+      </div>
+    </div>
+    <div class="bracket"></div>
+    <div class="row">
+      <span class="legend">Light</span>
+      <div class="pick" id="accent">
+        <button class="swatch" style="background:#2BD9C0" data-c="#2BD9C0" aria-label="Cyan"></button>
+        <button class="swatch" style="background:#FF8A2A" data-c="#FF8A2A" aria-label="Orange"></button>
+        <button class="swatch" style="background:#3D7BFF" data-c="#3D7BFF" aria-label="Blue"></button>
+        <button class="swatch" style="background:#B7F04A" data-c="#B7F04A" aria-label="Lime"></button>
+        <button class="swatch" style="background:#FF5DA2" data-c="#FF5DA2" aria-label="Pink"></button>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="legend">Cap</span>
+      <div class="pick" id="cap">
+        <button class="swatch" style="background:#E5484D" data-c="#E5484D" aria-label="Red"></button>
+        <button class="swatch" style="background:#F2C230" data-c="#F2C230" aria-label="Yellow"></button>
+        <button class="swatch" style="background:#3D7BFF" data-c="#3D7BFF" aria-label="Blue"></button>
+        <button class="swatch" style="background:#2EA043" data-c="#2EA043" aria-label="Green"></button>
+      </div>
+      <button class="key" id="sound" style="width:auto;padding:0 14px;height:40px;margin-left:auto"><span class="legend" style="color:var(--ink)">Sound on</span></button>
+    </div>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">LCD · clock & search</h2>
+    <div class="lcd"><div class="small" id="date">FRI 30 OCT</div><div class="big" id="clock">12:40</div></div>
+    <div class="lcd" style="margin-top:12px;padding:12px 16px"><span class="small">SEARCH 148 APPS </span><span class="cursor"></span></div>
+    <p class="notes">A well with a backlit screen: clock, search field, now playing. Dot-matrix readout, faint pixel grid.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Tray · keys · LED (bottom nav)</h2>
+    <div class="tray" id="nav">
+      <button class="key latched" data-k="home"><span class="led on"></span><span class="glyph">⌂</span></button>
+      <button class="key" data-k="search"><span class="led"></span><span class="glyph">⌕</span></button>
+      <button class="key" data-k="remote"><span class="led"></span><span class="glyph">▣</span></button>
+      <button class="key" data-k="settings"><span class="led"></span><span class="glyph">☰</span></button>
+    </div>
+    <div class="keylabels legend" style="margin-top:8px"><span>home</span><span>search</span><span>remote</span><span>settings</span></div>
+    <p class="notes">The current tab is a latched key with its LED lit. Keys travel 2 dp on touch-down, with a click and a haptic.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Keys · momentary & coloured caps</h2>
+    <div class="tray">
+      <button class="key mom"><span class="glyph">❚❚</span></button>
+      <button class="key mom"><span class="glyph">▶</span></button>
+      <button class="key mom"><span class="glyph">◀◀</span></button>
+      <button class="key mom"><span class="glyph">▶▶</span></button>
+      <button class="key mom colored"><span class="glyph">●</span></button>
+    </div>
+    <p class="notes">Transport row from ref 1. One coloured cap per screen: Call, Record, the main action. It keeps the same shading as neutral caps.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Switch</h2>
+    <div class="row" style="gap:28px">
+      <div class="col"><div class="switch" id="sw1"><div class="thumb"></div></div><span class="monolabel">PULL TO SEARCH.</span></div>
+      <div class="col"><span class="led" id="swled"></span><span class="legend">State</span></div>
+    </div>
+    <p class="notes">Drag the thumb or tap. It follows your finger, snaps past halfway, and lands with a click at the wall.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Knobs · detents</h2>
+    <div class="row" style="justify-content:space-around">
+      <div class="col"><div class="knob" data-steps="20" data-val="8"><svg class="scale" viewBox="0 0 112 112"></svg><div class="bezel"></div><div class="rot"><div class="cap"></div><div class="pointer"></div></div></div><span class="knobval">40</span><span class="legend">Dim</span></div>
+      <div class="col"><div class="knob" data-steps="10" data-val="5"><svg class="scale" viewBox="0 0 112 112"></svg><div class="bezel"></div><div class="rot"><div class="cap"></div><div class="pointer"></div></div></div><span class="knobval">5</span><span class="legend">Volume</span></div>
+    </div>
+    <p class="notes">Drag up or down, or around. Each detent ticks; the ends give a firmer click. For settings values and remote volume.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Faders · segmented</h2>
+    <div class="row" style="gap:24px;align-items:flex-end">
+      <div class="col"><div class="fader" data-v=".7"><div class="track"></div><div class="capf"></div></div><span class="legend">Top</span></div>
+      <div class="col"><div class="fader" data-v=".4"><div class="track"></div><div class="capf"></div></div><span class="legend">Pad</span></div>
+      <div class="col" style="align-self:center;margin-left:auto">
+        <div class="seg" id="seg"><span class="slider"></span><button class="sel">Fast</button><button>Slow</button><button>Auto</button></div>
+        <span class="legend">Effects</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">Dial · TV remote</h2>
+    <div class="dial" id="dial"><div class="tick"></div>
+      <span class="arrow" style="top:30px;left:50%;transform:translateX(-50%)">▲</span>
+      <span class="arrow" style="bottom:30px;left:50%;transform:translateX(-50%)">▼</span>
+      <span class="arrow" style="left:30px;top:50%;transform:translateY(-50%)">◀</span>
+      <span class="arrow" style="right:30px;top:50%;transform:translateY(-50%)">▶</span>
+      <button class="center" id="ok">OK</button></div>
+    <div class="row" style="justify-content:center;margin-top:10px"><div class="grille"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+    <p class="notes">The ring tilts toward the side you press; the centre key travels. The grille marks the mic and speaker zone.</p>
+  </section>
+
+  <section class="plate">
+    <h2 class="legend">LEDs · signals</h2>
+    <div class="row" style="gap:22px">
+      <div class="col"><span class="led on"></span><span class="legend">On</span></div>
+      <div class="col"><span class="led"></span><span class="legend">Off</span></div>
+      <div class="col"><span class="led on blink" style="--accent:#FF4D4D"></span><span class="legend">Alert</span></div>
+      <div class="col"><span class="led on" style="--accent:#FF9F1A"></span><span class="legend">Warn</span></div>
+      <div class="col"><span class="led on" style="--accent:#2BD9A0"></span><span class="legend">Ok</span></div>
+      <div class="col"><span class="led on" style="--accent:#3D7BFF"></span><span class="legend">Info</span></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ---- Feel: sound + haptics (docs §6) ----
+let audio = null, soundOn = true, lastTick = 0;
+function ctx() { if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)(); return audio; }
+// A short mechanical click: filtered noise burst + a tiny pitched body.
+function click(kind = 'key') {
+  const now = performance.now();
+  if (kind === 'tick' && now - lastTick < 35) return; lastTick = now;
+  if (navigator.vibrate) navigator.vibrate(kind === 'heavy' ? 14 : kind === 'tick' ? 4 : 8);
+  if (!soundOn) return;
+  const a = ctx(), t = a.currentTime;
+  const p = { key:[2400,.18,.035], up:[3200,.08,.02], heavy:[1200,.28,.05], tick:[4200,.06,.012], slide:[1800,.05,.03] }[kind] || [2400,.15,.03];
+  const n = a.createBuffer(1, a.sampleRate * p[2], a.sampleRate), d = n.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 4);
+  const src = a.createBufferSource(); src.buffer = n;
+  const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = p[0]; bp.Q.value = 1.4;
+  const g = a.createGain(); g.gain.value = p[1];
+  src.connect(bp).connect(g).connect(a.destination); src.start(t);
+  if (kind === 'heavy' || kind === 'key') { // body thunk
+    const o = a.createOscillator(), og = a.createGain(); o.frequency.setValueAtTime(kind === 'heavy' ? 160 : 260, t); o.frequency.exponentialRampToValueAtTime(60, t + .05);
+    og.gain.setValueAtTime(kind === 'heavy' ? .25 : .1, t); og.gain.exponentialRampToValueAtTime(.001, t + .06); o.connect(og).connect(a.destination); o.start(t); o.stop(t + .07);
+  }
+}
+
+// ---- Finish / colours ----
+function segment(el, onPick) {
+  const slider = el.querySelector('.slider'), btns = [...el.querySelectorAll('button')];
+  const place = b => { slider.style.left = b.offsetLeft + 'px'; slider.style.width = b.offsetWidth + 'px'; };
+  btns.forEach(b => b.addEventListener('pointerdown', () => { btns.forEach(x => x.classList.remove('sel')); b.classList.add('sel'); place(b); click('key'); onPick && onPick(b); }));
+  requestAnimationFrame(() => place(el.querySelector('.sel')));
+}
+segment(document.getElementById('finish'), b => document.body.dataset.finish = b.dataset.v);
+segment(document.getElementById('seg'));
+document.querySelectorAll('#accent .swatch').forEach(s => s.onclick = () => { document.documentElement.style.setProperty('--accent', s.dataset.c); click('tick'); });
+document.querySelectorAll('#cap .swatch').forEach(s => s.onclick = () => { document.documentElement.style.setProperty('--cap-accent', s.dataset.c); click('tick'); });
+const sb = document.getElementById('sound');
+sb.onclick = () => { soundOn = !soundOn; sb.querySelector('span').textContent = soundOn ? 'Sound on' : 'Sound off'; sb.classList.toggle('latched', !soundOn); click('key'); };
+
+// ---- Keys: travel on touch-down ----
+document.querySelectorAll('.key.mom').forEach(k => {
+  k.addEventListener('pointerdown', () => { k.classList.add('down'); click('key'); });
+  const up = () => { if (k.classList.contains('down')) { k.classList.remove('down'); click('up'); } };
+  k.addEventListener('pointerup', up); k.addEventListener('pointerleave', up);
+});
+// Nav tray: latching, one at a time, LED follows.
+document.querySelectorAll('#nav .key').forEach(k => k.addEventListener('pointerdown', () => {
+  if (k.classList.contains('latched')) return;
+  document.querySelectorAll('#nav .key').forEach(x => { x.classList.remove('latched'); x.querySelector('.led').classList.remove('on'); });
+  k.classList.add('down'); click('heavy');
+  setTimeout(() => { k.classList.remove('down'); k.classList.add('latched'); k.querySelector('.led').classList.add('on'); }, 70);
+}));
+
+// ---- Switch: drag with snap + latch ----
+(function () {
+  const sw = document.getElementById('sw1'), th = sw.querySelector('.thumb'), led = document.getElementById('swled');
+  let on = false, dragging = false, x0 = 0, moved = false, crossed = false;
+  const max = 58;
+  const set = v => { on = v; sw.classList.toggle('on', on); led.classList.toggle('on', on); th.style.left = ''; click('heavy'); };
+  sw.addEventListener('pointerdown', e => { dragging = true; moved = false; crossed = on; x0 = e.clientX; sw.setPointerCapture(e.pointerId); sw.classList.add('drag'); click('tick'); });
+  sw.addEventListener('pointermove', e => {
+    if (!dragging) return; const dx = e.clientX - x0; if (Math.abs(dx) > 3) moved = true;
+    let p = Math.max(-4, Math.min(max + 4, (on ? max : 0) + dx));
+    th.style.left = 5 + p + 'px';
+    const half = p > max / 2; if (half !== crossed) { crossed = half; click('tick'); }
+  });
+  sw.addEventListener('pointerup', e => {
+    dragging = false; sw.classList.remove('drag');
+    if (!moved) return set(!on);
+    const p = (on ? max : 0) + (e.clientX - x0); set(p > max / 2);
+  });
+})();
+
+// ---- Knobs: detents ----
+document.querySelectorAll('.knob').forEach(k => {
+  const steps = +k.dataset.steps, rot = k.querySelector('.rot'), out = k.parentElement.querySelector('.knobval');
+  let v = +k.dataset.val, y0 = 0, v0 = 0, drag = false;
+  const svg = k.querySelector('.scale'); // dotted scale, 270° sweep
+  for (let i = 0; i <= steps; i++) { const a = (-135 + 270 * i / steps) * Math.PI / 180; const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    c.setAttribute('cx', 56 + 52 * Math.sin(a)); c.setAttribute('cy', 56 - 52 * Math.cos(a)); c.setAttribute('r', i % (steps / 5) === 0 ? 1.8 : 1.1); c.setAttribute('fill', 'currentColor'); c.setAttribute('opacity', .55); svg.appendChild(c); }
+  const draw = () => { rot.style.transform = `rotate(${-135 + 270 * v / steps}deg)`; out.textContent = steps === 20 ? v * 5 : v; };
+  draw();
+  k.addEventListener('pointerdown', e => { drag = true; y0 = e.clientY; v0 = v; k.setPointerCapture(e.pointerId); click('tick'); });
+  k.addEventListener('pointermove', e => { if (!drag) return; const nv = Math.max(0, Math.min(steps, Math.round(v0 + (y0 - e.clientY) / 9)));
+    if (nv !== v) { v = nv; draw(); click(v === 0 || v === steps ? 'heavy' : 'tick'); } });
+  k.addEventListener('pointerup', () => drag = false);
+});
+
+// ---- Faders ----
+document.querySelectorAll('.fader').forEach(f => {
+  const cap = f.querySelector('.capf'); let v = +f.dataset.v, drag = false, last = -1;
+  const draw = () => cap.style.top = (8 + (1 - v) * (150 - 16 - 18)) + 'px'; draw();
+  const at = e => { const r = f.getBoundingClientRect(); v = Math.max(0, Math.min(1, 1 - (e.clientY - r.top - 17) / (r.height - 34))); draw();
+    const step = Math.round(v * 10); if (step !== last) { last = step; click('tick'); } };
+  f.addEventListener('pointerdown', e => { drag = true; f.setPointerCapture(e.pointerId); at(e); });
+  f.addEventListener('pointermove', e => drag && at(e)); f.addEventListener('pointerup', () => drag = false);
+});
+
+// ---- Dial ----
+(function () {
+  const d = document.getElementById('dial'), ok = document.getElementById('ok');
+  d.addEventListener('pointerdown', e => { if (e.target === ok) return; const r = d.getBoundingClientRect(); const x = e.clientX - r.left - r.width / 2, y = e.clientY - r.top - r.height / 2;
+    d.style.transform = `perspective(400px) rotateX(${-y / 40}deg) rotateY(${x / 40}deg)`; click('key'); });
+  const up = () => { d.style.transform = ''; }; d.addEventListener('pointerup', up); d.addEventListener('pointerleave', up);
+  ok.addEventListener('pointerdown', () => { ok.classList.add('down'); click('key'); });
+  ok.addEventListener('pointerup', () => { ok.classList.remove('down'); click('up'); });
+})();
+
+// ---- Clock ----
+function tick() { const n = new Date(); document.getElementById('clock').textContent = n.toTimeString().slice(0, 5);
+  document.getElementById('date').textContent = n.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' }).toUpperCase().replace(',', ''); }
+tick(); setInterval(tick, 10000);
+</script>
+</body>
+</html>

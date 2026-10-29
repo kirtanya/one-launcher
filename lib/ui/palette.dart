@@ -49,10 +49,6 @@ class OnePalette {
     hairline: const Color(0xFF383838),
   );
 
-  /// The third view's palette, made from the theme's [base] (being designed: [base] as is, until
-  /// its own colours are set).
-  factory OnePalette.third(OnePalette base) => base;
-
   /// "One original": the look extracted from the first reference (see docs/DESIGN_STYLE.md).
   static const original = OnePalette(
     canvas: Color(0xFF1F1F1F),

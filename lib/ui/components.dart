@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../third/tactile/parts.dart';
+import '../third/tactile/tactile.dart';
 import 'ds.dart';
 import 'glass.dart';
 import 'motion.dart';
@@ -23,6 +25,8 @@ class OneCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: a moulded plate.
+    if (DS.third) return TPlate(radius: DS.rCard, color: color, padding: padding, onTap: onTap, onLongPress: onLongPress, child: child);
     final ink = InkWell(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -58,6 +62,27 @@ class CircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: a round key (on the wallpaper too: hardware doesn't go see-through).
+    if (DS.third) {
+      final key = SizedBox.square(
+        dimension: DS.tap,
+        child: Center(
+          child: TKey(
+            width: size,
+            height: size,
+            radius: size / 2,
+            onTap: onTap,
+            child: AnimatedRotation(
+              turns: turns,
+              duration: Motion.snapDuration,
+              curve: Motion.snap,
+              child: Icon(icon, size: size * .45, color: Tactile.ink),
+            ),
+          ),
+        ),
+      );
+      return tooltip == null ? key : Tooltip(message: tooltip!, child: key);
+    }
     final (bg, fg, border) = switch (tone) {
       CircleTone.ink => (DS.ink, DS.card, null),
       CircleTone.soft => (DS.heroSoft, DS.heroInk, null),

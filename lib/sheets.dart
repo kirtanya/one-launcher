@@ -11,6 +11,9 @@ import 'prefs.dart';
 import 'photo_wallpaper.dart';
 import 'quick_actions.dart';
 import 'tv_remote.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
+import 'third/tactile/tactile_settings.dart';
 import 'tiles/landing.dart';
 import 'home.dart' show HomeScreen;
 import 'tiles/tiles_home.dart' show TilesHome, addActionTile;
@@ -1422,6 +1425,26 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: a key; the chosen one latched with its LED lit.
+    if (DS.third) {
+      return TKey(
+        height: 40,
+        width: null,
+        latched: selected,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TLed(on: selected, size: 6),
+              const SizedBox(width: DS.s8),
+              Text(label, style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      );
+    }
     return Pressable(
       scale: .94,
       child: Material(
@@ -1604,15 +1627,28 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
     const look = _Category.look, home = _Category.home, appsCat = _Category.apps, search = _Category.search, remote = _Category.tv, launcher = _Category.launcher;
     return <_Setting>[
       // ---- Look: colour, wallpaper, motion ----
-      _Setting(
-        look,
-        'Theme',
-        Icons.palette_outlined,
-        'Colours & style',
-        '$source · $style · $cards',
-        keywords: 'theme material you dark light cards accent themed icons',
-        open: (c) => showColoursSheet(c, prefs: prefs, theme: theme),
-      ),
+      // Tactile has its own theming instead of Material's Colours & style.
+      if (DS.third)
+        _Setting(
+          look,
+          'Theme',
+          Icons.palette_outlined,
+          'Tactile style',
+          '${Tactile.finishes.firstWhere((f) => f.$1 == prefs.tactileFinish, orElse: () => Tactile.finishes.first).$2} · '
+              '${Tactile.lights.firstWhere((l) => l.$1 == prefs.tactileLight, orElse: () => Tactile.lights.first).$2} light',
+          keywords: 'theme finish porcelain concrete graphite light led cap colour lightness dark sounds clicks',
+          open: (c) => showTactileStyle(c, prefs: prefs),
+        )
+      else
+        _Setting(
+          look,
+          'Theme',
+          Icons.palette_outlined,
+          'Colours & style',
+          '$source · $style · $cards',
+          keywords: 'theme material you dark light cards accent themed icons',
+          open: (c) => showColoursSheet(c, prefs: prefs, theme: theme),
+        ),
       _Setting(
         look,
         'Wallpaper',
@@ -1921,6 +1957,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
   String summaryOf(_Category cat) {
     final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
     return switch (cat) {
+      _Category.look when DS.third =>
+        '${Tactile.finishes.firstWhere((f) => f.$1 == prefs.tactileFinish, orElse: () => Tactile.finishes.first).$2} · ${prefs.wallpaperPhoto != null ? 'your photo' : 'phone wallpaper'}',
       _Category.look => '${const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours'} · '
           '${prefs.wallpaperPhoto != null ? 'your photo' : 'phone wallpaper'}',
       _Category.home =>
@@ -2350,6 +2388,18 @@ class _HomeEditorState extends State<_HomeEditor> {
       _label('Tile transparency', prefs.tileOpacity >= .99 ? 'Solid' : '${((1 - prefs.tileOpacity) * 100).round()}% see-through'),
       _slider(1 - prefs.tileOpacity, .7, 14, (x) => prefs.setTileLook(opacity: 1 - x)),
       _Group(null, [
+        _NavRow(
+          Icons.wallpaper_rounded,
+          'Wallpaper',
+          prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper',
+          () => _showWallpaperSheet(context, prefs: prefs),
+        ),
+      ]),
+    ],
+    // Tactile: no glass (hardware isn't see-through); its look is its own page.
+    'look' when DS.third => [
+      _Group(null, [
+        _NavRow(Icons.palette_outlined, 'Tactile style', 'Finish, light, cap, lightness, clicks', () => showTactileStyle(context, prefs: prefs)),
         _NavRow(
           Icons.wallpaper_rounded,
           'Wallpaper',
@@ -3020,6 +3070,10 @@ class _Group extends StatelessWidget {
                       style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12, letterSpacing: 1.1, fontWeight: FontWeight.w600),
                     ),
             ),
+          // Tactile: the group is a moulded plate.
+          if (DS.third)
+            TPlate(radius: DS.rMedia, child: Column(children: [for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, thickness: 1, indent: 72, endIndent: DS.s16, color: DS.hairline), r]]))
+          else
           ClipRRect(
             borderRadius: BorderRadius.circular(DS.rMedia),
             child: Material(
@@ -3113,6 +3167,9 @@ class _SwitchRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (DS.third) // Tactile: the real switch (a thumb in a well)
+                TSwitch(value: value, onChanged: onChanged)
+              else
               Switch(
                 value: value,
                 // Metro: the accent when on.
@@ -3136,7 +3193,20 @@ class _IconDisc extends StatelessWidget {
 
   // The theme's accent (the green card's colour): rows read at a glance, in any theme.
   @override
-  Widget build(BuildContext context) => Container(
+  Widget build(BuildContext context) => DS.third
+      // Tactile: a small moulded cap with the glyph printed on it.
+      ? Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            gradient: Tactile.capFace(),
+            border: Border.all(color: Tactile.rim, width: .6),
+            boxShadow: Tactile.raised(),
+          ),
+          child: Icon(icon, size: 20, color: Tactile.ink.withValues(alpha: .8)),
+        )
+      : Container(
     width: 40,
     height: 40,
     // Metro: an accent tile (the tile corner setting) instead of a rounded disc.
@@ -3154,6 +3224,10 @@ class _SplitSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     final v = prefs.topShare;
     final pct = (v * 100).round();
+    if (DS.third) {
+      const lo = Prefs.topShareMin, hi = Prefs.topShareMax;
+      return TKnobRow(title: 'Top widgets size', readout: '$pct%', value: (v - lo) / (hi - lo), steps: 6, onChanged: (x) => prefs.setTopShare(lo + x * (hi - lo)));
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
       child: Column(
@@ -3314,6 +3388,15 @@ class _PaddingSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final v = prefs.topPadding;
+    if (DS.third) {
+      return TKnobRow(
+        title: 'Top widgets padding',
+        readout: v == 0 ? 'NONE' : '${v.round()} PT',
+        value: v / Prefs.topPaddingMax,
+        steps: 5,
+        onChanged: (x) => prefs.setTopPadding(x * Prefs.topPaddingMax),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
       child: Column(
@@ -3363,6 +3446,9 @@ class _DimSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     final v = prefs.wallpaperDim;
     final pct = (v * 100).round();
+    if (DS.third) {
+      return TKnobRow(title: 'Wallpaper dim', readout: pct == 0 ? 'OFF' : '$pct%', value: v / .6, steps: 12, onChanged: (x) => prefs.setWallpaperDim(x * .6));
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s16, 0),
       child: Column(

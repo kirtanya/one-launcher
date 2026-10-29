@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'prefs.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'tv_remote.dart';
 import 'ui/components.dart' show confirmReset;
 import 'ui/ds.dart';
@@ -635,6 +637,102 @@ class _HoldState extends State<_Hold> {
 }
 
 /// The round D-pad: four arrow zones around an OK button. Holding an arrow repeats it.
+/// Tactile's d-pad (ref 5): a big domed dial with a lit tick at the top and hairline arrows; it
+/// tilts toward the side pressed, and its centre is a round key (OK) in a recess.
+class _Dial extends StatefulWidget {
+  const _Dial({required this.size, required this.onKey, this.onHold});
+  final double size;
+  final void Function(int code, {bool strong}) onKey;
+  final void Function(int code, bool down)? onHold;
+
+  @override
+  State<_Dial> createState() => _DialState();
+}
+
+class _DialState extends State<_Dial> {
+  Offset _tilt = Offset.zero; // where it's pressed, −1…1
+
+  @override
+  Widget build(BuildContext context) {
+    final size = widget.size, ok = size * .4;
+    Widget arrow(Alignment at, IconData icon, int code, String label) => Align(
+      alignment: at,
+      child: _Repeat(
+        onKey: () => widget.onKey(code),
+        child: Tooltip(
+          message: label,
+          child: SizedBox(width: size * .3, height: size * .3, child: Icon(icon, size: 30, color: Tactile.inkMuted)),
+        ),
+      ),
+    );
+    return Listener(
+      onPointerDown: (e) {
+        final p = (e.localPosition - Offset(size / 2, size / 2)) / (size / 2);
+        if (p.distance < .45) return; // the OK key presses itself
+        TactileFeel.press();
+        setState(() => _tilt = p);
+      },
+      onPointerUp: (_) => setState(() => _tilt = Offset.zero),
+      onPointerCancel: (_) => setState(() => _tilt = Offset.zero),
+      child: TweenAnimationBuilder<Offset>(
+        tween: Tween(end: _tilt),
+        duration: const Duration(milliseconds: 90),
+        builder: (context, t, child) => Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, .0015)
+            ..rotateX(t.dy * .07)
+            ..rotateY(-t.dx * .07),
+          child: child,
+        ),
+        child: SizedBox.square(
+          dimension: size,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(center: const Alignment(0, -.6), radius: 1, colors: [Tactile.capTop, Tactile.capBottom]),
+              border: Border.all(color: Tactile.rim, width: .8),
+              boxShadow: Tactile.proud,
+            ),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: const Alignment(0, -.93),
+                  child: Container(
+                    width: 3,
+                    height: 12,
+                    decoration: BoxDecoration(color: Tactile.light, borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: Tactile.light.withValues(alpha: .6), blurRadius: 6)]),
+                  ),
+                ),
+                arrow(Alignment.topCenter, Icons.keyboard_arrow_up_rounded, TvKey.up, 'Up'),
+                arrow(Alignment.bottomCenter, Icons.keyboard_arrow_down_rounded, TvKey.down, 'Down'),
+                arrow(Alignment.centerLeft, Icons.keyboard_arrow_left_rounded, TvKey.left, 'Left'),
+                arrow(Alignment.centerRight, Icons.keyboard_arrow_right_rounded, TvKey.right, 'Right'),
+                Center(
+                  child: TWell(
+                    radius: ok / 2 + 6,
+                    padding: const EdgeInsets.all(6),
+                    child: _Hold(
+                      onHold: widget.onHold == null ? null : (d) => widget.onHold!(TvKey.ok, d),
+                      child: TKey(
+                        width: ok,
+                        height: ok,
+                        radius: ok / 2,
+                        onTap: () => widget.onKey(TvKey.ok, strong: true),
+                        child: Text('OK', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1.5, color: Tactile.ink)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DPad extends StatelessWidget {
   const _DPad({required this.size, required this.onKey, this.onHold});
   final double size;
@@ -643,6 +741,7 @@ class _DPad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (DS.third) return _Dial(size: size, onKey: onKey, onHold: onHold);
     final ok = size * .38;
     Widget arrow(Alignment at, IconData icon, int code, String label) => Align(
       alignment: at,

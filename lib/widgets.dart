@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'apps.dart';
+import 'third/tactile/tactile.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
 import 'ui/glass.dart';
@@ -248,9 +249,16 @@ Future<Object?> showOneSheetWith(
                                     children: [
                                       Center(
                                         child: Container(
-                                          width: 32,
-                                          height: 4,
-                                          decoration: BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
+                                          width: DS.third ? 40 : 32,
+                                          height: DS.third ? 6 : 4,
+                                          // Tactile: a finger groove moulded into the plate.
+                                          decoration: DS.third
+                                              ? BoxDecoration(
+                                                  color: Tactile.well,
+                                                  borderRadius: BorderRadius.circular(3),
+                                                  border: Border(bottom: BorderSide(color: Tactile.highlight, width: .8), top: BorderSide(color: Tactile.shade, width: .8)),
+                                                )
+                                              : BoxDecoration(color: DS.hairline, borderRadius: BorderRadius.circular(2)),
                                         ),
                                       ),
                                       if (showBack)

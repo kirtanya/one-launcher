@@ -6,6 +6,7 @@ import 'package:material_color_utilities/material_color_utilities.dart';
 
 import '../prefs.dart';
 import 'ds.dart';
+import '../third/tactile/tactile.dart';
 import 'palette.dart';
 
 /// Theming like Pixel's "Wallpaper & style":
@@ -158,7 +159,8 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
     final source = prefs.themeSource == 'system' && !hasSystem ? 'original' : prefs.themeSource;
     final dark = darkCards || _forceDark;
     final lang = DesignLanguage.of(prefs.homeView);
-    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$lang|${prefs.tileRadius}';
+    final tactile = '${prefs.tactileFinish}|${prefs.tactileLight}|${prefs.tactileCap}|${prefs.tactileLightness}|${prefs.tactileSounds}|$_forceDark|${WidgetsBinding.instance.platformDispatcher.platformBrightness}';
+    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$lang|${prefs.tileRadius}|$tactile';
     if (key == _key) return;
     _key = key;
     final palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
@@ -168,7 +170,19 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
     DS.metroRadius = prefs.tileRadius;
     DS.palette = switch (lang) {
       DesignLanguage.metro => OnePalette.metro(metroAccent(palette.hero)),
-      DesignLanguage.third => OnePalette.third(palette),
+      // Tactile has its own theming (Settings → Look → Tactile style), not the Material one.
+      DesignLanguage.third => Tactile.palette(
+        palette,
+        finish: _forceDark
+            ? 'graphite'
+            : (prefs.tactileFinish == 'auto'
+                  ? (WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark ? 'graphite' : 'porcelain')
+                  : prefs.tactileFinish),
+        light: prefs.tactileLight,
+        cap: prefs.tactileCap,
+        lightness: prefs.tactileLightness,
+        sounds: prefs.tactileSounds,
+      ),
       DesignLanguage.classic => palette,
     };
     notifyListeners();

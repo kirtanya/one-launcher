@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'ui/ds.dart';
 import 'ui/glass.dart';
 import 'ui/perf.dart';
@@ -224,6 +226,18 @@ class _DockCircle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: a round key.
+    if (DS.third) {
+      return TKey(
+        width: SearchDock.height,
+        height: SearchDock.height,
+        radius: SearchDock.height / 2,
+        tooltip: tooltip,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Icon(icon, color: Tactile.ink),
+      );
+    }
     return Pressable(
       scale: .88,
       child: DecoratedBox(
@@ -358,7 +372,7 @@ class _NavBar extends StatelessWidget {
       padding: const EdgeInsets.all(_inset),
       child: Stack(
         children: [
-          if (on >= 0)
+          if (on >= 0 && !DS.third) // Tactile: the chosen tab is a latched key instead
             AnimatedPositioned(
               duration: Motion.snapDuration,
               curve: Motion.settle,
@@ -414,6 +428,21 @@ class _NavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: each tab is a key in the tray; the current one stays down with its LED lit.
+    if (DS.third) {
+      return Semantics(
+        button: true,
+        selected: selected,
+        label: tab.label,
+        child: TKey(
+          latched: selected,
+          led: selected,
+          onTap: tab.onTap,
+          onLongPress: tab.onLongPress,
+          child: Icon(_hairline[tab.icon] ?? tab.icon, color: Tactile.ink, size: 22),
+        ),
+      );
+    }
     return Semantics(
       button: true,
       selected: selected,
@@ -560,7 +589,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
             // The Search icon's centre: on its tab at rest, at the bar's start (16 + 12) when searching.
             final iconX = _lerp(navLeft + inset + searchAt * (tab + gap) + tab / 2, 28, glide);
             final searching = widget.active || p > 0;
-            final radius = BorderRadius.circular(99);
+            final radius = BorderRadius.circular(DS.third ? _trayRadius : 99); // Tactile: a squared-off tray, like the keys
             return Stack(
               clipBehavior: Clip.none,
               children: [
@@ -570,11 +599,11 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                   width: pillW,
                   height: h,
                   child: DecoratedBox(
-                    decoration: BoxDecoration(borderRadius: radius, boxShadow: Perf.lite.value ? null : SearchDock.shadow),
-                    child: glassOr(
-                      colour: DS.base,
-                      shape: StadiumBorder(side: SearchDock.border),
-                      child: ClipRRect(
+                    decoration: BoxDecoration(borderRadius: radius, boxShadow: Perf.lite.value ? null : (DS.third ? Tactile.proud : SearchDock.shadow)),
+                    child: _surface(
+                      h,
+                      lcd: searching,
+                      ClipRRect(
                         borderRadius: radius, // tabs leaving are cut by the pill's round ends
                         child: Stack(
                           clipBehavior: Clip.hardEdge,
@@ -603,7 +632,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                                 key: const ValueKey('icon'),
                                 left: iconX - 12,
                                 top: (h - 24) / 2,
-                                child: Icon(Icons.search_rounded, color: DS.ink, size: 24),
+                                child: Icon(Icons.search_rounded, color: DS.third ? TLcd.text : DS.ink, size: 24),
                               ),
                               Positioned(
                                 key: const ValueKey('field'),
@@ -624,9 +653,13 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                                         textInputAction: TextInputAction.go,
                                         autocorrect: false,
                                         enableSuggestions: false,
-                                        cursorColor: DS.ink,
-                                        style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
-                                        decoration: InputDecoration.collapsed(hintText: widget.hint, hintStyle: DS.rowSub),
+                                        cursorColor: DS.third ? TLcd.text : DS.ink,
+                                        cursorWidth: DS.third ? 9 : 2, // Tactile: a block cursor, like the display's
+                                        style: DS.third ? _lcdText : DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                                        decoration: InputDecoration.collapsed(
+                                          hintText: DS.third ? widget.hint.toUpperCase() : widget.hint,
+                                          hintStyle: DS.third ? _lcdText.copyWith(color: TLcd.text.withValues(alpha: .5)) : DS.rowSub,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -658,3 +691,28 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
     );
   }
 }
+
+/// The bar's body: glass / the lowest surface with an outline, or in Tactile a recessed tray.
+/// [lcd]: searching — the tray lights up as a display strip.
+Widget _surface(double height, Widget child, {bool lcd = false}) => DS.third
+    ? TweenAnimationBuilder<Color?>(
+        tween: ColorTween(end: lcd ? TLcd.glass : Tactile.well),
+        duration: Motion.snapDuration,
+        builder: (context, c, child) => CustomPaint(painter: WellPainter(radius: _trayRadius, floor: c!, depth: 2.5), child: child),
+        child: child,
+      )
+    : glassOr(colour: DS.base, shape: StadiumBorder(side: SearchDock.border), child: child);
+
+/// Tactile's search text: the display's readout (mono, tracked, upper case as typed).
+TextStyle get _lcdText => TextStyle(fontFamily: 'monospace', fontSize: 16, letterSpacing: 1.5, fontWeight: FontWeight.w600, color: TLcd.text);
+
+/// Tactile prints its glyphs in hairline (outlined) form, like the legends on hardware.
+final _hairline = <IconData, IconData>{
+  Icons.home_rounded: Icons.home_outlined,
+  Icons.search_rounded: Icons.search_outlined,
+  Icons.settings_remote_rounded: Icons.settings_remote_outlined,
+  Icons.tune_rounded: Icons.tune_outlined,
+};
+
+/// Tactile's tray corners: the keys' (12) plus the 4 dp gutter, so the two nest.
+const _trayRadius = 16.0;

@@ -8,6 +8,7 @@ import '../apps.dart';
 import '../prefs.dart';
 import '../remote_sheet.dart';
 import '../tv_remote.dart';
+import '../third/tactile/parts.dart';
 import '../ui/motion.dart';
 import '../ui/ds.dart';
 import '../widgets.dart';
@@ -174,6 +175,7 @@ class _ClockPageState extends State<ClockPage> with Ticking {
     final is24 = MediaQuery.alwaysUse24HourFormatOf(context);
     final h = is24 ? now.hour : (now.hour % 12 == 0 ? 12 : now.hour % 12);
     final time = '${h.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    if (DS.third) return _lcdClock(time);
     // The date is the label (tap → Calendar); the time is the big figure (tap → Clock).
     return _Page(
       label: '${_days[now.weekday - 1]}, ${now.day} ${_months[now.month - 1]}',
@@ -181,6 +183,42 @@ class _ClockPageState extends State<ClockPage> with Ticking {
       onTap: widget.onTap,
       onTapLabel: widget.onTapDate,
       semantics: 'Time $time. Opens Clock',
+    );
+  }
+
+  /// Tactile: the clock on a backlit dot-matrix display — date above (tap → Calendar), the time
+  /// big (tap → Clock), sized to the space.
+  Widget _lcdClock(String time) {
+    final date = '${_days[now.weekday - 1].substring(0, 3)} ${now.day} ${_months[now.month - 1]}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: DS.s8, vertical: DS.s8),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // The time fills the width (or the height, if that's what runs out first).
+          final dot = ((c.maxWidth - 40) / (DotMatrix.widthOf(time, 1))).clamp(3.0, 11.0);
+          final fit = ((c.maxHeight - 60) / 7).clamp(3.0, 11.0);
+          final d = dot < fit ? dot : fit;
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Semantics(
+              label: 'Time $time, $date. Opens Clock',
+              child: TLcd(
+                radius: 18,
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    GestureDetector(onTap: widget.onTapDate, child: DotMatrix(date, dot: 2.6, color: TLcd.text)),
+                    SizedBox(height: d * 1.2),
+                    GestureDetector(onTap: widget.onTap, child: DotMatrix(time, dot: d, color: TLcd.text)),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

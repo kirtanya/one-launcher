@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../prefs.dart';
+import '../third/tactile/parts.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
 import '../ui/perf.dart';
@@ -89,6 +90,9 @@ class _TopCarouselState extends State<TopCarousel> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     for (var i = 0; i < ids.length; i++)
+                      if (DS.third) // Tactile: a row of LEDs, the current page lit
+                        Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: TLed(on: i == index, size: 6))
+                      else
                       AnimatedContainer(
                         duration: Motion.snapDuration,
                         curve: Motion.settle,

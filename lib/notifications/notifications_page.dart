@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../third/tactile/parts.dart';
+import '../third/tactile/tactile.dart';
 import '../ui/components.dart';
 import '../ui/ds.dart';
 import '../ui/motion.dart';
@@ -265,8 +267,8 @@ class _NotifCardState extends State<_NotifCard> {
   @override
   Widget build(BuildContext context) {
     final more = n.fullText.length > n.text.length || n.messages.length > 1 || n.picture != null;
-    final card = Material(
-      color: DS.cardMuted,
+    final card = _plate(Material(
+      color: DS.third ? Colors.transparent : DS.cardMuted,
       borderRadius: BorderRadius.circular(DS.rMedia),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -398,8 +400,9 @@ class _NotifCardState extends State<_NotifCard> {
           ),
         ),
       ),
-    );
+    ));
     if (!n.clearable) return card;
+    // (Tactile: a plate; it slides away like a card pulled off a tray.)
     return Dismissible(
       key: ValueKey('d:${n.key}'),
       onDismissed: (_) {
@@ -410,6 +413,24 @@ class _NotifCardState extends State<_NotifCard> {
     );
   }
 }
+
+/// Tactile: a notification is a moulded plate (lit top edge, soft shadow); others as they are.
+Widget _plate(Widget child, {double? radius}) => DS.third
+    ? DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius ?? DS.rMedia),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color.lerp(Tactile.plate, Colors.white, Tactile.dark ? .04 : .35)!, Tactile.plate],
+            stops: const [0, .1],
+          ),
+          border: Border.all(color: Tactile.rim, width: .6),
+          boxShadow: Tactile.plateShadow,
+        ),
+        child: child,
+      )
+    : child;
 
 /// A call: the caller big, with the call's own buttons (Answer / Decline / Hang up…) as large
 /// round buttons — green to pick up, red to end.
@@ -450,6 +471,19 @@ class _CallCard extends StatelessWidget {
                     for (final a in n.actions)
                       Column(
                         children: [
+                          if (DS.third) // Tactile: big round keys, green / red caps
+                            TKey(
+                              width: 60,
+                              height: 60,
+                              radius: 30,
+                              tint: _isEnd(a.title) ? const Color(0xFFD8443F) : (_isAnswer(a.title) ? const Color(0xFF3E9B57) : null),
+                              onTap: () => c.act(n, a.index),
+                              child: Icon(
+                                _isEnd(a.title) ? Icons.call_end_rounded : (_isAnswer(a.title) ? Icons.call_rounded : Icons.more_horiz_rounded),
+                                color: _isEnd(a.title) || _isAnswer(a.title) ? Colors.white : Tactile.ink,
+                              ),
+                            )
+                          else
                           FloatingActionButton(
                             heroTag: null,
                             elevation: 0,

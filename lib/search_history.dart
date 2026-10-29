@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'prefs.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/perf.dart';
@@ -335,6 +337,34 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tactile: a key with its legend (Clear all: a plain legend key).
+    if (DS.third) {
+      return TKey(
+        height: RecentSearchPills.height,
+        width: null,
+        radius: 12,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[Icon(icon, size: 16, color: Tactile.inkMuted), const SizedBox(width: DS.s8)],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 170),
+                child: Text(
+                  muted ? label.toUpperCase() : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: muted ? DS.pill.copyWith(color: Tactile.inkMuted) : DS.rowTitle.copyWith(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(RecentSearchPills.height / 2));
     return Material(
       color: muted ? DS.cardMuted : DS.card,

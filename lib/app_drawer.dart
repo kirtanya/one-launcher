@@ -18,6 +18,8 @@ import 'search.dart';
 import 'search_dock.dart';
 import 'google_suggest.dart';
 import 'search_history.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'system_settings.dart';
 import 'quick_chips.dart';
 import 'quick_actions.dart';
@@ -726,7 +728,10 @@ class _PullPill extends StatelessWidget {
           opacity: progress,
           child: Transform.scale(
             scale: .85 + .15 * progress,
-            child: AnimatedDefaultTextStyle(
+            child: DS.third
+                // Tactile: a dot-matrix readout, lit in the theme's light once you can let go.
+                ? DotMatrix(ready ? 'RELEASE TO SEARCH' : 'PULL TO SEARCH', dot: 2.2, color: ready ? Tactile.light : Tactile.inkMuted, ghost: false)
+                : AnimatedDefaultTextStyle(
               duration: Motion.pressIn,
               style: DS.pill.copyWith(color: ready ? DS.ink : DS.inkMuted, fontWeight: ready ? FontWeight.w600 : FontWeight.w500),
               child: Text(ready ? 'Release to search' : 'Pull to search'),
@@ -843,6 +848,9 @@ class _HeroCardState extends State<_HeroCard> {
               const SizedBox(width: DS.s8),
               if (pages.length > 1)
                 for (var i = 0; i < pages.length; i++)
+                  if (DS.third) // Tactile: LEDs
+                    Padding(padding: const EdgeInsets.only(right: 6), child: TLed(on: i == _page, size: 6))
+                  else
                   AnimatedContainer(
                     duration: Motion.snapDuration,
                     curve: Motion.settle,
@@ -891,6 +899,16 @@ class _FolderHeader extends StatelessWidget {
       decoration: BoxDecoration(
         color: Glass.on(tone == CardTone.muted ? DS.cardMuted : DS.card),
         borderRadius: BorderRadius.vertical(top: r, bottom: open ? Radius.zero : r),
+        // Tactile: a moulded plate (lit top edge, soft shadow under it while closed).
+        gradient: DS.third
+            ? LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color.lerp(Tactile.plate, Colors.white, Tactile.dark ? .04 : .35)!, Tactile.plate],
+                stops: const [0, .1],
+              )
+            : null,
+        boxShadow: DS.third && !open ? Tactile.plateShadow : null,
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(

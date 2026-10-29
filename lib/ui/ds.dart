@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../third/tactile/tactile.dart';
 import 'palette.dart';
 
 /// Design tokens extracted from the reference (see docs/DESIGN_STYLE.md).
@@ -18,7 +19,7 @@ class DS {
   static double metroRadius = 0;
 
   /// [text] in the active language's case (Metro writes headers in lowercase).
-  static String cased(String text) => metro ? text.toLowerCase() : text;
+  static String cased(String text) => metro ? text.toLowerCase() : (third ? text.toUpperCase() : text); // Tactile: printed legends
 
   static Color get canvas => palette.canvas;
   static const onCanvas = Color(0xFFFFFFFF);
@@ -69,13 +70,22 @@ class DS {
   static const appIcon = 48.0;
 
   // ---- Type ----
-  static const font = 'InstrumentSans';
-  static const greeting = TextStyle(fontFamily: font, fontSize: 22, fontWeight: FontWeight.w400, height: 1.15, color: onCanvas);
-  static TextStyle get display => TextStyle(fontFamily: font, fontSize: 26, fontWeight: FontWeight.w500, height: 1.2, letterSpacing: -0.5, color: heroInk);
+  static const font = 'InstrumentSans'; // Classic / Metro (and the TV)
+
+  /// The active language's text face: Instrument Sans, or Tactile's own.
+  static String get face => third ? Tactile.font : font;
+
+  /// Tactile prints its text into the plastic (a hairline of light under it); others: none.
+  static TextStyle _p(TextStyle s) => third ? s.copyWith(shadows: Tactile.emboss) : s;
+  static TextStyle get greeting => TextStyle(fontFamily: face, fontSize: 22, fontWeight: FontWeight.w400, height: 1.15, color: onCanvas);
+  static TextStyle get display => TextStyle(fontFamily: face, fontSize: 26, fontWeight: FontWeight.w500, height: 1.2, letterSpacing: -0.5, color: heroInk);
   static TextStyle get title => metro
       // Metro: big, light, tight.
-      ? TextStyle(fontFamily: font, fontSize: 30, fontWeight: FontWeight.w300, height: 1.1, letterSpacing: -0.6, color: ink)
-      : TextStyle(fontFamily: font, fontSize: 24, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: -0.4, color: ink);
+      ? TextStyle(fontFamily: face, fontSize: 30, fontWeight: FontWeight.w300, height: 1.1, letterSpacing: -0.6, color: ink)
+      : third
+      // Tactile: a condensed, upper-case nameplate, printed.
+      ? _p(TextStyle(fontFamily: Tactile.legendFont, fontSize: 24, fontWeight: FontWeight.w700, height: 1.15, letterSpacing: 1.6, color: ink))
+      : TextStyle(fontFamily: face, fontSize: 24, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: -0.4, color: ink);
 
   /// The accent as text: Metro lightens it so words stay readable on black or a dark wallpaper
   /// (fills keep the full accent).
@@ -83,13 +93,18 @@ class DS {
 
   static TextStyle get eyebrow => metro
       // Metro section headers: the accent (lightened for reading), lowercase, light.
-      ? TextStyle(fontFamily: font, fontSize: 18, fontWeight: FontWeight.w400, color: accentText)
-      : TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w500, color: ink);
-  static TextStyle get rowTitle => TextStyle(fontFamily: font, fontSize: 16, fontWeight: FontWeight.w600, color: ink);
-  static TextStyle get rowSub => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkMuted);
-  static TextStyle get meta => TextStyle(fontFamily: font, fontSize: 14, fontWeight: FontWeight.w400, color: inkFaint);
-  static const pill = TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w600);
-  static TextStyle get iconLabel => TextStyle(fontFamily: font, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2);
+      ? TextStyle(fontFamily: face, fontSize: 18, fontWeight: FontWeight.w400, color: accentText)
+      : third
+      // Tactile: legends — condensed, bold, tracked (callers upper-case them with cased()).
+      ? _p(TextStyle(fontFamily: Tactile.legendFont, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.4, color: inkMuted))
+      : TextStyle(fontFamily: face, fontSize: 14, fontWeight: FontWeight.w500, color: ink);
+  static TextStyle get rowTitle => _p(TextStyle(fontFamily: face, fontSize: 16, fontWeight: third ? FontWeight.w500 : FontWeight.w600, color: ink));
+  static TextStyle get rowSub => _p(TextStyle(fontFamily: face, fontSize: 14, fontWeight: FontWeight.w400, color: inkMuted));
+  static TextStyle get meta => _p(TextStyle(fontFamily: face, fontSize: 14, fontWeight: FontWeight.w400, color: inkFaint));
+  static TextStyle get pill => third
+      ? TextStyle(fontFamily: Tactile.legendFont, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2)
+      : TextStyle(fontFamily: face, fontSize: 12, fontWeight: FontWeight.w600);
+  static TextStyle get iconLabel => _p(TextStyle(fontFamily: face, fontSize: 12, fontWeight: FontWeight.w500, color: ink, height: 1.2));
 
   /// The big clock: tall condensed digits that fill the width (scaled with FittedBox).
   static const clockFont = 'ClockFlex'; // Google Sans Flex, variable: weight / width / slant / roundness (top/header_fonts.dart)
@@ -102,7 +117,7 @@ class DS {
     color: clockInk,
     shadows: wallpaperShadow,
   );
-  static const wallpaperDate = TextStyle(fontFamily: font, fontSize: 17, fontWeight: FontWeight.w500, color: onWallpaper, shadows: wallpaperShadow);
+  static TextStyle get wallpaperDate => TextStyle(fontFamily: font, fontSize: 17, fontWeight: FontWeight.w500, color: onWallpaper, shadows: wallpaperShadow);
 
   // ---- Motion ----
   static const fast = Duration(milliseconds: 180);

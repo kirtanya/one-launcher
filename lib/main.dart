@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'one_stream.dart';
 import 'home.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'third/third_home.dart';
 import 'tiles/tiles_home.dart';
 import 'tv_cast.dart';
@@ -61,7 +63,8 @@ class _OneLauncherState extends State<OneLauncher> {
 
   void _themedIcons() {
     final p = widget.prefs;
-    final glass = (p.classicStyle == 'glass', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
+    // Tactile has no glass: its surfaces are moulded plastic.
+    final glass = (p.classicStyle == 'glass' && p.homeView != 'third', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
     if (AppIcon.themed == p.themedIcons && glass == (Glass.classic, Glass.blur, Glass.tint, Glass.edge, Glass.sheen, Glass.tiles)) return;
     AppIcon.themed = p.themedIcons;
     Glass.classic = glass.$1;
@@ -102,26 +105,43 @@ class _OneLauncherState extends State<OneLauncher> {
       color: Colors.transparent,
       theme: ThemeData(
         brightness: Brightness.dark,
-        fontFamily: DS.font,
+        fontFamily: DS.face,
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.dark(primary: DS.ink, surface: DS.card),
+        sliderTheme: DS.third ? tactileSliderTheme() : null, // Tactile: every slider is a fader
         textSelectionTheme: TextSelectionThemeData(cursorColor: DS.ink, selectionHandleColor: DS.ink, selectionColor: DS.hero),
         // Dialogs, snackbars and text buttons speak the active design language too
         // (docs/DESIGN_LANGUAGES.md): Classic cards / Metro flat panels with the accent.
+        // Tactile: dialogs are plates; snackbars a backlit display strip; buttons printed legends.
         dialogTheme: DialogThemeData(
           backgroundColor: DS.card,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
+          elevation: DS.third ? 12 : null,
+          shadowColor: DS.third ? Tactile.shade : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DS.rCard),
+            side: DS.third ? BorderSide(color: Tactile.rim, width: .6) : BorderSide.none,
+          ),
           titleTextStyle: DS.title.copyWith(fontSize: DS.metro ? 28 : 20),
           contentTextStyle: DS.rowSub,
         ),
         snackBarTheme: SnackBarThemeData(
-          backgroundColor: DS.metro ? DS.hero : DS.ink,
-          contentTextStyle: TextStyle(fontFamily: DS.font, color: DS.metro ? Colors.white : DS.card, fontSize: 15),
+          backgroundColor: DS.third ? TLcd.glass : (DS.metro ? DS.hero : DS.ink),
+          actionTextColor: DS.third ? TLcd.text : null,
+          contentTextStyle: DS.third
+              ? TextStyle(fontFamily: Tactile.monoFont, color: TLcd.text, fontSize: 14, letterSpacing: 1.2)
+              : TextStyle(fontFamily: DS.font, color: DS.metro ? Colors.white : DS.card, fontSize: 15),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
         ),
-        textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: DS.metro ? DS.hero : DS.ink)),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: DS.metro ? DS.hero : DS.ink,
+            textStyle: DS.third ? TextStyle(fontFamily: Tactile.legendFont, fontWeight: FontWeight.w700, letterSpacing: 1.3) : null,
+            splashFactory: DS.third ? NoSplash.splashFactory : null, // Tactile: things press, they don't ripple
+          ),
+        ),
         // Sparkle ripples run a shader; budget GPUs get the plain ripple.
-        splashFactory: Perf.lite.value ? InkRipple.splashFactory : InkSparkle.splashFactory,
+        splashFactory: DS.third ? InkRipple.splashFactory : (Perf.lite.value ? InkRipple.splashFactory : InkSparkle.splashFactory),
+        highlightColor: DS.third ? Tactile.shadeSoft : null, // Tactile: a press darkens, like a key going down
       ),
       // On the web preview there is no wallpaper, so paint a sample one.
       builder: (context, child) => Apps.isDemo

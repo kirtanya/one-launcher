@@ -8,6 +8,8 @@ import 'prefs.dart';
 import 'remote_sheet.dart';
 import 'quick_actions.dart';
 import 'sheets.dart';
+import 'third/tactile/parts.dart';
+import 'third/tactile/tactile.dart';
 import 'ui/ds.dart';
 import 'ui/glass.dart';
 import 'ui/motion.dart';
@@ -303,6 +305,34 @@ class QuickChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconOnly = look.content == 'icon', textOnly = look.content == 'text';
     final h = look.height;
+    // Tactile: each chip is a key; an active one (torch on…) stays down with its LED lit.
+    if (DS.third) {
+      return Center(
+        child: TKey(
+          height: h,
+          width: iconOnly ? h : null,
+          radius: h * .3,
+          latched: active,
+          led: active && iconOnly,
+          tooltip: iconOnly ? label : null,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          child: iconOnly
+              ? Center(child: icon)
+              : Padding(
+                  padding: EdgeInsets.symmetric(horizontal: look.padEnd * .8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (active) ...[const TLed(on: true, size: 6), SizedBox(width: h * .18)],
+                      if (!textOnly) ...[icon, SizedBox(width: h * .2)],
+                      Text(DS.cased(label), style: DS.pill.copyWith(fontSize: look.fontSize * .85, color: Tactile.ink, shadows: Tactile.emboss)),
+                    ],
+                  ),
+                ),
+        ),
+      );
+    }
     return Center(
       child: Pressable(
         scale: .94,

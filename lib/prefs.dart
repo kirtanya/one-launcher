@@ -260,6 +260,32 @@ class Prefs extends ChangeNotifier {
   String get themeStyle => _viewString('themeStyle') ?? 'tonal';
 
   /// Cards: 'light', 'dark', or 'auto' (follow the phone's dark theme).
+  // ---- Tactile (the third view's own theming; docs/TACTILE_LANGUAGE.md §3) ----
+
+  /// The plastic: 'auto' (follows the phone's dark theme), 'porcelain', 'concrete' or 'graphite'.
+  String get tactileFinish => _sp.getString('tactileFinish') ?? 'auto';
+
+  /// The colour of the light (LEDs, lit legends, displays): 'theme' (from the wallpaper) or an ARGB.
+  String get tactileLight => _sp.getString('tactileLight') ?? 'theme';
+
+  /// The coloured cap (the green card, main actions): 'none' (plain plastic) or an ARGB.
+  String get tactileCap => _sp.getString('tactileCap') ?? 'none';
+
+  /// How light the plastic is, 0 (darker) – 1 (lighter); 0.5 = as moulded.
+  double get tactileLightness => _sp.getDouble('tactileLightness') ?? .5;
+
+  /// Key clicks (the phone's touch sound) on top of the haptics.
+  bool get tactileSounds => _sp.getBool('tactileSounds') ?? true;
+
+  Future<void> setTactile({String? finish, String? light, String? cap, double? lightness, bool? sounds}) async {
+    if (finish != null) await _sp.setString('tactileFinish', finish);
+    if (light != null) await _sp.setString('tactileLight', light);
+    if (cap != null) await _sp.setString('tactileCap', cap);
+    if (lightness != null) await _sp.setDouble('tactileLightness', lightness);
+    if (sounds != null) await _sp.setBool('tactileSounds', sounds);
+    notifyListeners();
+  }
+
   String get cardStyle => _viewString('cardStyle') ?? 'light';
   Future<void> setCardStyle(String v) async {
     await _sp.setString(_k('cardStyle'), v);
