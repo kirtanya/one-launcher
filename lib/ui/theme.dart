@@ -159,13 +159,19 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
     final source = prefs.themeSource == 'system' && !hasSystem ? 'original' : prefs.themeSource;
     final dark = darkCards || _forceDark;
     final lang = DesignLanguage.of(prefs.homeView);
-    final tactile = '${prefs.tactileFinish}|${prefs.tactileLight}|${prefs.tactileCap}|${prefs.tactileLightness}|${prefs.tactileSounds}|$_forceDark|${WidgetsBinding.instance.platformDispatcher.platformBrightness}';
+    final tactile = '${prefs.tactileFinish}|${prefs.tactileLight}|${prefs.tactileCap}|${prefs.tactileLightness}|${prefs.tactileLightnessDark}|${prefs.tactileSounds}|${prefs.tactileFace}|$_forceDark|${WidgetsBinding.instance.platformDispatcher.platformBrightness}';
     final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$lang|${prefs.tileRadius}|$tactile';
     if (key == _key) return;
     _key = key;
     final palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
     // The Tiles view speaks Metro everywhere (docs/DESIGN_LANGUAGES.md): its own palette from
     // the theme's colour, corners from the tile setting.
+    // Real's plastic (its own setting, not the card style).
+    final finish = _forceDark
+        ? 'graphite'
+        : (prefs.tactileFinish == 'auto'
+              ? (WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark ? 'graphite' : 'porcelain')
+              : prefs.tactileFinish);
     DS.lang = lang;
     DS.metroRadius = prefs.tileRadius;
     DS.palette = switch (lang) {
@@ -173,15 +179,12 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
       // Tactile has its own theming (Settings → Look → Tactile style), not the Material one.
       DesignLanguage.third => Tactile.palette(
         palette,
-        finish: _forceDark
-            ? 'graphite'
-            : (prefs.tactileFinish == 'auto'
-                  ? (WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark ? 'graphite' : 'porcelain')
-                  : prefs.tactileFinish),
+        finish: finish,
         light: prefs.tactileLight,
         cap: prefs.tactileCap,
-        lightness: prefs.tactileLightness,
+        lightness: finish == 'graphite' ? prefs.tactileLightnessDark : prefs.tactileLightness,
         sounds: prefs.tactileSounds,
+        face: prefs.tactileFace,
       ),
       DesignLanguage.classic => palette,
     };

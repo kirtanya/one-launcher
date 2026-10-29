@@ -286,7 +286,7 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
     child: Text(
       DS.cased(text),
       style: DS.metro
-          ? TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 20, fontWeight: FontWeight.w300)
+          ? TextStyle(fontFamily: DS.face, color: tileAccentText(), fontSize: 20, fontWeight: FontWeight.w300)
           : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13),
     ),
   );
@@ -375,7 +375,7 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
                       t.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: DS.metro ? 30 : 24, fontWeight: DS.metro ? FontWeight.w300 : FontWeight.w600, height: 1.1),
+                      style: TextStyle(fontFamily: DS.face, color: Colors.white, fontSize: DS.metro ? 30 : 24, fontWeight: DS.metro ? FontWeight.w300 : FontWeight.w600, height: 1.1),
                     ),
                   ),
                   if (resume && d!.resumeProgress > 0) Positioned(left: 0, right: 0, bottom: 0, child: _bar(d.resumeProgress, colour: Colors.white)),
@@ -443,7 +443,7 @@ class _OneStreamTitleSheetState extends State<OneStreamTitleSheet> {
                 Text(
                   DS.cased('On ${TvCast.tvName}'),
                   style: DS.metro
-                      ? TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 16, fontWeight: FontWeight.w400)
+                      ? TextStyle(fontFamily: DS.face, color: tileAccentText(), fontSize: 16, fontWeight: FontWeight.w400)
                       : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13),
                 ),
                 const SizedBox(height: DS.s8),

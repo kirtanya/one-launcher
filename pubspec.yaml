@@ -74,3 +74,48 @@ flutter:
     - family: ClockFlex # Google Sans Flex, cut down (tool/subset_fonts.py)
       fonts:
         - asset: assets/fonts/ClockFlex.ttf
+    # Real (Tactile) view's faces — Settings → Look → Real style → Type (OFL, Google Fonts)
+    - family: TactileBarlow
+      fonts:
+        - asset: assets/fonts/tactile/BarlowSemiCondensed-400.ttf
+          weight: 400
+        - asset: assets/fonts/tactile/BarlowSemiCondensed-500.ttf
+          weight: 500
+        - asset: assets/fonts/tactile/BarlowSemiCondensed-600.ttf
+          weight: 600
+        - asset: assets/fonts/tactile/BarlowSemiCondensed-700.ttf
+          weight: 700
+    - family: TactileChakra
+      fonts:
+        - asset: assets/fonts/tactile/ChakraPetch-400.ttf
+          weight: 400
+        - asset: assets/fonts/tactile/ChakraPetch-500.ttf
+          weight: 500
+        - asset: assets/fonts/tactile/ChakraPetch-600.ttf
+          weight: 600
+        - asset: assets/fonts/tactile/ChakraPetch-700.ttf
+          weight: 700
+    - family: TactileGrotesk
+      fonts:
+        - asset: assets/fonts/tactile/SpaceGrotesk-400.ttf
+          weight: 400
+        - asset: assets/fonts/tactile/SpaceGrotesk-500.ttf
+          weight: 500
+        - asset: assets/fonts/tactile/SpaceGrotesk-600.ttf
+          weight: 600
+        - asset: assets/fonts/tactile/SpaceGrotesk-700.ttf
+          weight: 700
+    - family: TactilePlexMono
+      fonts:
+        - asset: assets/fonts/tactile/IBMPlexMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/tactile/IBMPlexMono-500.ttf
+          weight: 500
+        - asset: assets/fonts/tactile/IBMPlexMono-600.ttf
+          weight: 600
+    - family: TactileSpaceMono
+      fonts:
+        - asset: assets/fonts/tactile/SpaceMono-400.ttf
+          weight: 400
+        - asset: assets/fonts/tactile/SpaceMono-700.ttf
+          weight: 700

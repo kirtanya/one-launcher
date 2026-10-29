@@ -109,6 +109,59 @@ class _OneLauncherState extends State<OneLauncher> {
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.dark(primary: DS.ink, surface: DS.card),
         sliderTheme: DS.third ? tactileSliderTheme() : null, // Tactile: every slider is a fader
+        // Tactile's own versions of the stock widgets, so every screen gets them without being
+        // edited: fields are wells, buttons keys, menus plates, tooltips a display.
+        inputDecorationTheme: DS.third
+            ? InputDecorationTheme(
+                filled: true,
+                fillColor: Tactile.well,
+                hintStyle: TextStyle(color: Tactile.inkMuted),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Tactile.rim, width: .6)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Tactile.rim, width: .6)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Tactile.light, width: 1)),
+              )
+            : null,
+        filledButtonTheme: DS.third
+            ? FilledButtonThemeData(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Tactile.capTop,
+                  foregroundColor: Tactile.ink,
+                  elevation: 3,
+                  shadowColor: Tactile.shade,
+                  side: BorderSide(color: Tactile.rim, width: .6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: TextStyle(fontFamily: DS.face, fontWeight: FontWeight.w700, letterSpacing: 1.2),
+                  splashFactory: NoSplash.splashFactory,
+                ),
+              )
+            : null,
+        popupMenuTheme: DS.third
+            ? PopupMenuThemeData(
+                color: Tactile.plate,
+                elevation: 10,
+                shadowColor: Tactile.shade,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: Tactile.rim, width: .6)),
+                textStyle: TextStyle(fontFamily: DS.face, color: Tactile.ink, fontSize: 15),
+              )
+            : null,
+        switchTheme: DS.third
+            ? SwitchThemeData(
+                thumbColor: WidgetStatePropertyAll(Tactile.capTop),
+                trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Color.lerp(Tactile.well, Tactile.light, .3) : Tactile.well),
+                trackOutlineColor: WidgetStatePropertyAll(Tactile.rim),
+              )
+            : null,
+        tooltipTheme: DS.third
+            ? TooltipThemeData(
+                decoration: BoxDecoration(color: TLcd.glass, borderRadius: BorderRadius.circular(8), border: Border.all(color: Tactile.rim)),
+                textStyle: TextStyle(fontFamily: Tactile.monoFont, color: TLcd.text, fontSize: 12, letterSpacing: 1),
+              )
+            : null,
+        progressIndicatorTheme: DS.third ? ProgressIndicatorThemeData(color: Tactile.light, linearTrackColor: Tactile.well, circularTrackColor: Tactile.well) : null,
+        dividerTheme: DS.third ? DividerThemeData(color: Tactile.rim, thickness: 1) : null,
+        listTileTheme: DS.third ? ListTileThemeData(iconColor: Tactile.ink, textColor: Tactile.ink) : null,
+        iconTheme: DS.third ? IconThemeData(color: Tactile.ink) : null,
+        bottomSheetTheme: DS.third ? BottomSheetThemeData(backgroundColor: Tactile.plate, modalBackgroundColor: Tactile.plate) : null,
         textSelectionTheme: TextSelectionThemeData(cursorColor: DS.ink, selectionHandleColor: DS.ink, selectionColor: DS.hero),
         // Dialogs, snackbars and text buttons speak the active design language too
         // (docs/DESIGN_LANGUAGES.md): Classic cards / Metro flat panels with the accent.
@@ -140,7 +193,8 @@ class _OneLauncherState extends State<OneLauncher> {
           ),
         ),
         // Sparkle ripples run a shader; budget GPUs get the plain ripple.
-        splashFactory: DS.third ? InkRipple.splashFactory : (Perf.lite.value ? InkRipple.splashFactory : InkSparkle.splashFactory),
+        // Tactile: nothing ripples — a press darkens the part, like a key going down.
+        splashFactory: DS.third ? NoSplash.splashFactory : (Perf.lite.value ? InkRipple.splashFactory : InkSparkle.splashFactory),
         highlightColor: DS.third ? Tactile.shadeSoft : null, // Tactile: a press darkens, like a key going down
       ),
       // On the web preview there is no wallpaper, so paint a sample one.

@@ -9,7 +9,7 @@ import 'prefs.dart';
 import 'third/tactile/parts.dart';
 import 'third/tactile/tactile.dart';
 import 'tv_remote.dart';
-import 'ui/components.dart' show confirmReset;
+import 'ui/components.dart' show RoleSurface, confirmReset;
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
@@ -441,7 +441,14 @@ class _RemoteSheetState extends State<_RemoteSheet> {
           for (final app in [for (final id in prefs.remoteApps) ?remoteAppFor(id)])
             Padding(
               padding: const EdgeInsets.only(right: DS.s8),
-              child: ActionChip(
+              child: DS.third
+                  ? TKey(
+                      height: 40,
+                      width: null,
+                      onTap: () => openRemoteApp(app),
+                      child: Padding(padding: const EdgeInsets.symmetric(horizontal: DS.s12), child: Text(app.name, style: DS.rowTitle.copyWith(fontSize: 14))),
+                    )
+                  : ActionChip(
                 label: Text(app.name, style: DS.rowTitle.copyWith(fontSize: 14)),
                 backgroundColor: DS.cardMuted,
                 side: BorderSide.none,
@@ -452,6 +459,18 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 },
               ),
             ),
+          if (DS.third)
+            TKey(
+              height: 40,
+              width: null,
+              tooltip: 'Edit quick apps',
+              onTap: () => showRemoteAppsEditor(context, prefs: prefs),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.edit_outlined, size: 16, color: Tactile.inkMuted), const SizedBox(width: 6), Text(DS.cased('Edit'), style: DS.pill.copyWith(color: Tactile.ink))]),
+              ),
+            )
+          else
           ActionChip(
             avatar: Icon(Icons.edit_outlined, size: 18, color: DS.ink),
             label: Text('Edit', style: DS.rowTitle.copyWith(fontSize: 14)),
@@ -512,10 +531,9 @@ class _TvRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: DS.s8),
-    child: Material(
+    child: RoleSurface(
       color: DS.cardMuted,
-      borderRadius: BorderRadius.circular(DS.rMedia),
-      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -549,7 +567,18 @@ class _Primary extends StatelessWidget {
   final bool compact;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
+  Widget build(BuildContext context) => DS.third
+      // Tactile: a long key with its legend.
+      ? TKey(
+          height: 52,
+          width: compact ? null : double.infinity,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: DS.s24),
+            child: Center(child: Text(DS.cased(label), style: DS.pill.copyWith(fontSize: 14, color: Tactile.ink))),
+          ),
+        )
+      : SizedBox(
     height: 52,
     width: compact ? null : double.infinity,
     child: FilledButton(
@@ -586,7 +615,17 @@ class _Round extends StatelessWidget {
     triggerMode: onHold == null ? null : TooltipTriggerMode.manual,
     child: _Hold(
       onHold: onHold,
-      child: Pressable(
+      // Tactile: a round key (power: a red cap).
+      child: DS.third
+          ? TKey(
+              width: 56,
+              height: 56,
+              radius: 28,
+              tint: danger ? const Color(0xFFC8443F) : null,
+              onTap: onTap,
+              child: Icon(icon, color: danger ? Colors.white : Tactile.ink),
+            )
+          : Pressable(
         scale: .9,
         child: Material(
           color: danger ? DS.alert.withValues(alpha: .14) : DS.cardMuted,
@@ -849,11 +888,8 @@ class _Volume extends StatelessWidget {
   final ValueListenable<(int, int, bool)?> volume;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 64,
-    padding: const EdgeInsets.symmetric(horizontal: DS.s4),
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 32)),
-    child: ValueListenableBuilder<(int, int, bool)?>(
+  Widget build(BuildContext context) => _bar(
+    ValueListenableBuilder<(int, int, bool)?>(
       valueListenable: volume,
       builder: (context, v, _) => Row(
         children: [
@@ -883,17 +919,29 @@ class _Volume extends StatelessWidget {
           ),
           SizedBox(
             width: 36,
-            child: Text(
-              v == null ? '' : '${v.$1}',
-              textAlign: TextAlign.center,
-              style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600, fontSize: 14),
-            ),
+            child: DS.third && v != null
+                ? Center(child: DotMatrix('${v.$1}', dot: 2.2, color: Tactile.light, ghost: false))
+                : Text(
+                    v == null ? '' : '${v.$1}',
+                    textAlign: TextAlign.center,
+                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
           ),
         ],
       ),
     ),
   );
 }
+
+/// A remote control bar (volume, brightness): Classic a soft pill; Tactile a recess in the panel.
+Widget _bar(Widget child) => DS.third
+    ? TWell(radius: 20, padding: const EdgeInsets.symmetric(horizontal: DS.s4), child: SizedBox(height: 64, child: child))
+    : Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: DS.s4),
+        decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 32)),
+        child: child,
+      );
 
 /// Brightness: a direct slider (Android brightness on the TV, through One Launcher TV — works on
 /// TVs whose backlight follows it; sends at most every 300 ms and on release, remembered since
@@ -919,11 +967,8 @@ class _BrightnessState extends State<_Brightness> {
   }
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 64,
-    padding: const EdgeInsets.symmetric(horizontal: DS.s4),
-    decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 32)),
-    child: Row(
+  Widget build(BuildContext context) => _bar(
+    Row(
       children: [
         Tooltip(
           message: 'Brightness',
@@ -1386,7 +1431,20 @@ class _NowPlayingState extends State<_NowPlaying> {
     final playing = n['playing'] == true;
     return Container(
       padding: const EdgeInsets.all(DS.s12),
-      decoration: BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 24)),
+      // Tactile: a plate (lit top edge, soft shadow).
+      decoration: DS.third
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color.lerp(Tactile.plate, Colors.white, Tactile.dark ? .04 : .35)!, Tactile.plate],
+                stops: const [0, .1],
+              ),
+              border: Border.all(color: Tactile.rim, width: .6),
+              boxShadow: Tactile.plateShadow,
+            )
+          : BoxDecoration(color: DS.cardMuted, borderRadius: BorderRadius.circular(DS.metro ? DS.rMedia : 24)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1433,7 +1491,7 @@ class _NowPlayingState extends State<_NowPlaying> {
             const SizedBox(height: DS.s12),
             ClipRRect(
               borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(value: (pos / dur).clamp(0, 1), minHeight: 4, color: DS.ink, backgroundColor: DS.hairline),
+              child: LinearProgressIndicator(value: (pos / dur).clamp(0, 1), minHeight: 4, color: DS.third ? Tactile.light : DS.ink, backgroundColor: DS.hairline),
             ),
           ],
           const SizedBox(height: DS.s4),

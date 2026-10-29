@@ -124,7 +124,7 @@ class _RecentSearchesState extends State<RecentSearches> {
       child: Text(
         DS.cased('Clear all'),
         style: metro
-            ? const TextStyle(fontFamily: DS.font, color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w400)
+            ? TextStyle(fontFamily: DS.face, color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w400)
             : DS.rowSub.copyWith(color: DS.ink, fontWeight: FontWeight.w500, fontSize: 13),
       ),
     );
@@ -139,7 +139,7 @@ class _RecentSearchesState extends State<RecentSearches> {
               overflow: TextOverflow.ellipsis,
               // Same headers as the results around it (Classic card title / Metro accent header).
               style: metro
-                  ? TextStyle(fontFamily: DS.font, color: DS.accentText, fontSize: 20, fontWeight: FontWeight.w300)
+                  ? TextStyle(fontFamily: DS.face, color: DS.accentText, fontSize: 20, fontWeight: FontWeight.w300)
                   : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13),
             ),
           ),
@@ -180,7 +180,7 @@ class _RecentSearchesState extends State<RecentSearches> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: metro
-                        ? TextStyle(fontFamily: DS.font, color: ink, fontSize: 18, fontWeight: FontWeight.w300)
+                        ? TextStyle(fontFamily: DS.face, color: ink, fontSize: 18, fontWeight: FontWeight.w300)
                         : DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
                   ),
                 ),

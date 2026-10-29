@@ -79,7 +79,7 @@ class _Avatar extends StatelessWidget {
         : BoxDecoration(shape: BoxShape.circle, color: HSLColor.fromAHSL(1, (name.hashCode % 360).abs().toDouble(), .38, .46).toColor()),
     child: Text(
       name.characters.firstOrNull?.toUpperCase() ?? '?',
-      style: TextStyle(fontFamily: DS.font, fontSize: size * .46, fontWeight: FontWeight.w600, color: Colors.white),
+      style: TextStyle(fontFamily: DS.face, fontSize: size * .46, fontWeight: FontWeight.w600, color: Colors.white),
     ),
   );
 }
@@ -200,7 +200,7 @@ Future<void> showReview(BuildContext context, ShowReview r, String title) => sho
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: DS.metro
-              ? TextStyle(fontFamily: DS.font, color: tileAccentText(), fontSize: 16, fontWeight: FontWeight.w400)
+              ? TextStyle(fontFamily: DS.face, color: tileAccentText(), fontSize: 16, fontWeight: FontWeight.w400)
               : DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 12),
         ),
         const SizedBox(height: DS.s12),

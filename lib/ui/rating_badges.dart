@@ -70,7 +70,7 @@ class ImdbBadge extends StatelessWidget {
             SizedBox(width: 5 * k),
             Text(
               scoreLabel(score),
-              style: TextStyle(fontFamily: DS.font, fontSize: size, fontWeight: FontWeight.w600, height: 1.15, color: _imdbInk),
+              style: TextStyle(fontFamily: DS.face, fontSize: size, fontWeight: FontWeight.w600, height: 1.15, color: _imdbInk),
             ),
           ],
         ),
@@ -103,7 +103,7 @@ class RottenTomatoesBadge extends StatelessWidget {
           SizedBox(width: size * .35),
           Text(
             '$percent%',
-            style: TextStyle(fontFamily: DS.font, fontSize: size, fontWeight: FontWeight.w600, height: 1.15, color: ink),
+            style: TextStyle(fontFamily: DS.face, fontSize: size, fontWeight: FontWeight.w600, height: 1.15, color: ink),
           ),
         ],
       ),
@@ -187,13 +187,13 @@ class MetacriticBadge extends StatelessWidget {
           decoration: BoxDecoration(color: metascoreColour(score), borderRadius: _corners(3)),
           child: Text(
             '$score',
-            style: TextStyle(fontFamily: DS.font, fontSize: size * .95, fontWeight: FontWeight.w600, height: 1, color: Colors.white),
+            style: TextStyle(fontFamily: DS.face, fontSize: size * .95, fontWeight: FontWeight.w600, height: 1, color: Colors.white),
           ),
         ),
         SizedBox(width: size * .45),
         Text(
           'Metascore',
-          style: TextStyle(fontFamily: DS.font, fontSize: size * .8, fontWeight: FontWeight.w500, color: muted),
+          style: TextStyle(fontFamily: DS.face, fontSize: size * .8, fontWeight: FontWeight.w500, color: muted),
         ),
       ],
     ),
@@ -221,7 +221,7 @@ class ReviewScore extends StatelessWidget {
         SizedBox(width: size * .15),
         Text(
           scoreLabel(rating, trim: true),
-          style: TextStyle(fontFamily: DS.font, fontSize: size, fontWeight: FontWeight.w600, height: 1.3, color: _imdbInk),
+          style: TextStyle(fontFamily: DS.face, fontSize: size, fontWeight: FontWeight.w600, height: 1.3, color: _imdbInk),
         ),
       ],
     ),

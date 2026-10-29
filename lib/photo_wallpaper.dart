@@ -386,7 +386,7 @@ class _PhotoEditorState extends State<_PhotoEditor> {
                         ),
                         const Spacer(),
                         FilledButton(
-                          style: FilledButton.styleFrom(backgroundColor: DS.onWallpaper, foregroundColor: Colors.black, minimumSize: const Size(96, 44)),
+                          style: DS.third ? null : FilledButton.styleFrom(backgroundColor: DS.onWallpaper, foregroundColor: Colors.black, minimumSize: const Size(96, 44)),
                           onPressed: () => Navigator.pop(context),
                           child: Text(
                             'Done',

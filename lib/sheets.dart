@@ -85,7 +85,8 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
       return Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Material(
+          child: RoleSurface(
+            role: SurfaceRole.key,
             color: metro ? Colors.transparent : DS.cardMuted,
             shape: metro
                 ? RoundedRectangleBorder(
@@ -93,7 +94,6 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
                     side: BorderSide(color: DS.hairline),
                   )
                 : RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
-            clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: a.enabled
                   ? () {
@@ -352,7 +352,7 @@ Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, requi
             child: SizedBox(
               height: 56,
               child: FilledButton(
-                style: FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
+                style: DS.third ? null : FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
                 onPressed: () => save(ctx),
                 child: Text('Save', style: DS.rowTitle.copyWith(color: DS.card)),
               ),
@@ -494,8 +494,9 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
               padding: const EdgeInsets.symmetric(horizontal: DS.s16),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(DS.rMedia),
-                child: Material(
+                child: RoleSurface(
                   color: DS.cardMuted,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
                   child: Column(
                     children: [
                       ReorderableListView.builder(
@@ -1633,10 +1634,10 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
           look,
           'Theme',
           Icons.palette_outlined,
-          'Tactile style',
+          'Real style',
           '${Tactile.finishes.firstWhere((f) => f.$1 == prefs.tactileFinish, orElse: () => Tactile.finishes.first).$2} · '
               '${Tactile.lights.firstWhere((l) => l.$1 == prefs.tactileLight, orElse: () => Tactile.lights.first).$2} light',
-          keywords: 'theme finish porcelain concrete graphite light led cap colour lightness dark sounds clicks',
+          keywords: 'theme finish porcelain concrete graphite light led cap colour lightness dark sounds clicks font type face',
           open: (c) => showTactileStyle(c, prefs: prefs),
         )
       else
@@ -1682,7 +1683,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
         'Home view',
         switch (prefs.homeView) {
           'tiles' => 'Tiles · Start + all apps A–Z',
-          'third' => 'New view · being designed',
+          'third' => 'Real · feels like hardware',
           _ => 'Classic · clock on top, apps below',
         },
         keywords: 'tiles lumia windows start grid classic layout view face glass motion interactions',
@@ -1962,7 +1963,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       _Category.look => '${const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours'} · '
           '${prefs.wallpaperPhoto != null ? 'your photo' : 'phone wallpaper'}',
       _Category.home =>
-        '${const {'tiles': 'Tiles', 'third': 'New view'}[prefs.homeView] ?? 'Classic'} · ${prefs.topPages.length} top ${prefs.topPages.length == 1 ? 'widget' : 'widgets'}',
+        '${const {'tiles': 'Tiles', 'third': 'Real'}[prefs.homeView] ?? 'Classic'} · ${prefs.topPages.length} top ${prefs.topPages.length == 1 ? 'widget' : 'widgets'}',
       _Category.apps => hidden == 0 ? 'Folders, pins, hidden apps' : '$hidden hidden · folders, pins',
       _Category.search => '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · ${prefs.searchIn.length} sources',
       _Category.tv => prefs.tvHost == null ? 'Not set up' : prefs.tvName,
@@ -2066,10 +2067,9 @@ class _CategoryGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const gap = DS.s12;
-    Widget card(_Category cat, String summary) => Material(
+    Widget card(_Category cat, String summary) => RoleSurface(
       color: DS.metro ? Colors.transparent : DS.cardMuted,
-      borderRadius: BorderRadius.circular(DS.rMedia),
-      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
       child: InkWell(
         onTap: () {
           HapticFeedback.selectionClick();
@@ -2279,10 +2279,10 @@ class _HomeEditorState extends State<_HomeEditor> {
   /// One home view to pick: a full-width card (icon, name, what it is), the chosen one filled.
   Widget _viewCard(String id, IconData icon, String title, String sub) {
     final on = prefs.homeView == id;
-    return Material(
+    return RoleSurface(
       color: on ? DS.hero : DS.cardMuted,
-      borderRadius: BorderRadius.circular(DS.rMedia),
-      clipBehavior: Clip.antiAlias,
+      selected: on,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
       child: InkWell(
         onTap: () {
           HapticFeedback.selectionClick();
@@ -2355,7 +2355,7 @@ class _HomeEditorState extends State<_HomeEditor> {
             const SizedBox(height: DS.s8),
             _viewCard('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
             const SizedBox(height: DS.s8),
-            _viewCard('third', Icons.auto_awesome_outlined, 'New view', 'Being designed'),
+            _viewCard('third', Icons.auto_awesome_outlined, 'Real', 'Feels like hardware: keys, knobs, lights'),
           ],
         ),
       ),
@@ -2399,7 +2399,7 @@ class _HomeEditorState extends State<_HomeEditor> {
     // Tactile: no glass (hardware isn't see-through); its look is its own page.
     'look' when DS.third => [
       _Group(null, [
-        _NavRow(Icons.palette_outlined, 'Tactile style', 'Finish, light, cap, lightness, clicks', () => showTactileStyle(context, prefs: prefs)),
+        _NavRow(Icons.palette_outlined, 'Real style', 'Finish, type, light, cap, lightness, clicks', () => showTactileStyle(context, prefs: prefs)),
         _NavRow(
           Icons.wallpaper_rounded,
           'Wallpaper',
@@ -2491,7 +2491,7 @@ class _HomeEditorState extends State<_HomeEditor> {
                               padding: const EdgeInsets.fromLTRB(0, DS.s8, DS.s20, DS.s8),
                               child: Text(
                                 name.toLowerCase(),
-                                style: TextStyle(fontFamily: DS.font, fontSize: 24, fontWeight: FontWeight.w300, color: _tab == id ? DS.ink : DS.inkFaint),
+                                style: TextStyle(fontFamily: DS.face, fontSize: 24, fontWeight: FontWeight.w300, color: _tab == id ? DS.ink : DS.inkFaint),
                               ),
                             ),
                           ),
@@ -2510,10 +2510,11 @@ class _HomeEditorState extends State<_HomeEditor> {
                         for (final (id, icon, name) in _tabs)
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 2),
-                            child: Material(
+                            child: RoleSurface(
+                              role: SurfaceRole.key,
+                              selected: DS.third && _tab == id,
                               color: _tab == id ? DS.cardMuted : Colors.transparent,
-                              shape: const StadiumBorder(),
-                              clipBehavior: Clip.antiAlias,
+                              shape: DS.third ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)) : const StadiumBorder(),
                               child: InkWell(
                                 onTap: () {
                                   HapticFeedback.selectionClick();
@@ -2592,7 +2593,8 @@ class _EditorFrame extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, DS.s8),
               child: Row(
                 children: [
-                  Material(
+                  RoleSurface(
+                    role: SurfaceRole.key,
                     color: DS.metro ? Colors.transparent : DS.card,
                     shape: const CircleBorder(),
                     // Back to where it was opened from (Settings, or the home screen).
@@ -2613,7 +2615,7 @@ class _EditorFrame extends StatelessWidget {
                   ),
                   FilledButton(
                     // Classic: an ink pill. Metro: a flat accent box.
-                    style: FilledButton.styleFrom(
+                    style: DS.third ? null : FilledButton.styleFrom(
                       backgroundColor: DS.metro ? DS.hero : DS.ink,
                       foregroundColor: DS.metro ? Colors.white : DS.card,
                       shape: DS.metro ? RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)) : const StadiumBorder(),

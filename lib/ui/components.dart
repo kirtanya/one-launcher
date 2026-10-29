@@ -226,3 +226,74 @@ Future<bool> confirmReset(BuildContext context, {required String title, required
       ),
     ) ==
     true;
+
+/// What a surface is, not how it looks — each design language draws the role its own way:
+/// Classic / Metro a Material of [SurfaceRole]'s colour; Tactile moulded plastic (a plate that
+/// stands off the panel, a key you press, or a recess). Screens ask for a role; the language
+/// decides the look (docs/DESIGN_LANGUAGES.md).
+enum SurfaceRole { raised, key, recessed }
+
+class RoleSurface extends StatelessWidget {
+  const RoleSurface({super.key, this.role = SurfaceRole.raised, required this.color, required this.shape, required this.child, this.selected = false});
+  final SurfaceRole role;
+
+  /// Classic / Metro's fill.
+  final Color color;
+  final ShapeBorder shape;
+  final Widget child;
+
+  /// A chosen key / card: Tactile shows it pressed in (latched), with a faint glow of light.
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!DS.third) return Material(color: color, shape: shape, clipBehavior: Clip.antiAlias, child: child);
+    final outlined = switch (shape) {
+      RoundedRectangleBorder(:final borderRadius) => RoundedRectangleBorder(borderRadius: borderRadius, side: BorderSide(color: Tactile.rim, width: .6)),
+      StadiumBorder() => StadiumBorder(side: BorderSide(color: Tactile.rim, width: .6)),
+      CircleBorder() => CircleBorder(side: BorderSide(color: Tactile.rim, width: .6)),
+      _ => shape,
+    };
+    final inner = Material(type: MaterialType.transparency, shape: outlined, clipBehavior: Clip.antiAlias, child: child);
+    if (role == SurfaceRole.recessed) {
+      final r = switch (shape) {
+        RoundedRectangleBorder(:final borderRadius) => borderRadius.resolve(TextDirection.ltr).topLeft.x,
+        _ => 999.0,
+      };
+      return LayoutBuilder(
+        builder: (context, c) => CustomPaint(
+          painter: WellPainter(radius: r == 999.0 ? c.biggest.shortestSide / 2 : r, floor: Tactile.well, depth: 2),
+          child: inner,
+        ),
+      );
+    }
+    final key = role == SurfaceRole.key;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      transform: Matrix4.translationValues(0, selected ? 1.5 : 0, 0),
+      decoration: ShapeDecoration(
+        shape: outlined,
+        gradient: key
+            ? Tactile.capFace()
+            : LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color.lerp(Tactile.plate, Colors.white, Tactile.dark ? .04 : .35)!, Tactile.plate],
+                stops: const [0, .1],
+              ),
+        shadows: selected ? Tactile.raised(pressed: true) : (key ? Tactile.raised() : Tactile.plateShadow),
+      ),
+      foregroundDecoration: selected
+          ? ShapeDecoration(
+              shape: outlined,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black.withValues(alpha: Tactile.dark ? .22 : .07), Tactile.light.withValues(alpha: .06)],
+              ),
+            )
+          : null,
+      child: inner,
+    );
+  }
+}

@@ -76,7 +76,7 @@ class AppIcon extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               app.label.isEmpty ? '?' : app.label[0].toUpperCase(),
-              style: TextStyle(fontFamily: DS.font, color: DS.card, fontSize: size * .42, fontWeight: FontWeight.w600),
+              style: TextStyle(fontFamily: DS.face, color: DS.card, fontSize: size * .42, fontWeight: FontWeight.w600),
             ),
           );
         },
@@ -665,9 +665,7 @@ class _SheetSearchFieldState extends State<SheetSearchField> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s24, DS.s8),
-      child: TextField(
+    final field = TextField(
         controller: _text,
         focusNode: _focus,
         onChanged: widget.onChanged,
@@ -691,12 +689,18 @@ class _SheetSearchFieldState extends State<SheetSearchField> {
                     },
                   ),
           ),
-          filled: true,
+          filled: !DS.third,
           fillColor: DS.cardMuted,
           contentPadding: const EdgeInsets.symmetric(horizontal: DS.s20, vertical: DS.s12),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(DS.s24), borderSide: BorderSide.none),
         ),
-      ),
+      );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s24, DS.s4, DS.s24, DS.s8),
+      // Tactile: the field is a recess in the panel.
+      child: DS.third ? CustomPaint(painter: WellPainter(radius: 16, floor: Tactile.well, depth: 2.2), child: field) : field,
     );
   }
 }

@@ -10,6 +10,7 @@ import '../remote_sheet.dart';
 import '../tv_remote.dart';
 import '../third/tactile/parts.dart';
 import '../ui/motion.dart';
+import '../ui/components.dart';
 import '../ui/ds.dart';
 import '../widgets.dart';
 import 'header_fonts.dart';
@@ -137,10 +138,10 @@ class GlassPill extends StatelessWidget {
     return Pressable(
       enabled: onTap != null,
       scale: .94,
-      child: Material(
+      child: RoleSurface(
+        role: SurfaceRole.key,
         color: DS.glass,
         shape: const StadiumBorder(side: BorderSide(color: DS.glassLine)),
-        clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: Padding(padding: const EdgeInsets.fromLTRB(6, 6, 12, 6), child: child),
@@ -758,10 +759,10 @@ class _Control extends StatelessWidget {
           child: Pressable(
             scale: .88,
             enabled: enabled,
-            child: Material(
+            child: RoleSurface(
+              role: SurfaceRole.key,
               color: primary ? DS.onWallpaper : DS.glass,
               shape: CircleBorder(side: primary ? BorderSide.none : const BorderSide(color: DS.glassLine)),
-              clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: enabled ? onTap : null,
                 child: SizedBox.square(

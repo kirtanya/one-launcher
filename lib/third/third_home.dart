@@ -4,7 +4,7 @@ import '../home.dart';
 import '../prefs.dart';
 import '../ui/theme.dart';
 
-/// The third home view (Settings → Home screen → Home view → New view) and the root of its own
+/// The third home view (Settings → Home screen → Home view → Real) and the root of its own
 /// design language (`DesignLanguage.third`, docs/DESIGN_LANGUAGES.md). Everything this view
 /// shows — and every sheet, menu and page it opens — speaks that language.
 ///

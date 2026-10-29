@@ -106,10 +106,9 @@ class _WorkProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s16, 0),
-    child: Material(
+    child: RoleSurface(
       color: DS.cardMuted,
-      borderRadius: BorderRadius.circular(DS.rMedia),
-      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
       child: InkWell(
         onTap: () {
           HapticFeedback.selectionClick();
@@ -145,9 +144,9 @@ class _NoAccess extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s16, 0),
-    child: Material(
+    child: RoleSurface(
       color: DS.cardMuted,
-      borderRadius: BorderRadius.circular(DS.rMedia),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
       child: Padding(
         padding: const EdgeInsets.all(DS.s16),
         child: Column(
@@ -444,10 +443,9 @@ class _CallCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = NotificationCenter.instance;
-    return Material(
+    return RoleSurface(
       color: DS.hero,
-      borderRadius: BorderRadius.circular(DS.rCard),
-      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rCard)),
       child: InkWell(
         onTap: n.canOpen ? () => c.open(n) : null,
         child: Padding(

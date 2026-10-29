@@ -19,9 +19,9 @@ editors, dialogs, snackbars. Features and data are shared; the look and layout a
 | Glass | Home look → Glass (drawer, cards, chips, dock) | Tile look → Glass (tiles, app list, search field, sheets) |
 | Today page | Side panel left of home (swipe right; Settings → Today panel turns it off): rounded cards, the first one the hero, Sentence case; list = one card per widget with small-caps headers | Page left of Start: live tiles in the tile look; list = accent headers + accent squares |
 
-## The third view (being designed)
+## The third view: Real (Tactile, docs/TACTILE_LANGUAGE.md)
 
-`homeView = 'third'` (shown as "New view") speaks `DesignLanguage.third`. Its look is not
+`homeView = 'third'` (shown as "Real") speaks `DesignLanguage.third`. Its look is not
 defined yet, so it starts as a copy of Classic: `ThirdHome` (`lib/third/third_home.dart`) hosts
 the Classic home, and `DS.third` surfaces read Classic's tokens. Its hooks, ready to fill in:
 

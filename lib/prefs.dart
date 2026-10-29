@@ -271,13 +271,20 @@ class Prefs extends ChangeNotifier {
   /// The coloured cap (the green card, main actions): 'none' (plain plastic) or an ARGB.
   String get tactileCap => _sp.getString('tactileCap') ?? 'none';
 
-  /// How light the plastic is, 0 (darker) – 1 (lighter); 0.5 = as moulded.
+  /// How light the plastic is, 0 (darker) – 1 (lighter); 0.5 = as moulded. Kept apart for the
+  /// light finishes (Porcelain, Concrete) and Graphite: the same step doesn't suit both.
   double get tactileLightness => _sp.getDouble('tactileLightness') ?? .5;
+  double get tactileLightnessDark => _sp.getDouble('tactileLightnessDark') ?? tactileLightness; // starts from the one setting there was
+
+  /// The face (Tactile.faces id).
+  String get tactileFace => _sp.getString('tactileFace') ?? 'barlow';
 
   /// Key clicks (the phone's touch sound) on top of the haptics.
   bool get tactileSounds => _sp.getBool('tactileSounds') ?? true;
 
-  Future<void> setTactile({String? finish, String? light, String? cap, double? lightness, bool? sounds}) async {
+  Future<void> setTactile({String? finish, String? light, String? cap, double? lightness, double? lightnessDark, bool? sounds, String? face}) async {
+    if (lightnessDark != null) await _sp.setDouble('tactileLightnessDark', lightnessDark);
+    if (face != null) await _sp.setString('tactileFace', face);
     if (finish != null) await _sp.setString('tactileFinish', finish);
     if (light != null) await _sp.setString('tactileLight', light);
     if (cap != null) await _sp.setString('tactileCap', cap);

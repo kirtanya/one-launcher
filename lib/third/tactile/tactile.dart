@@ -28,13 +28,20 @@ abstract final class Tactile {
   /// Key clicks on (the phone's touch sound); the haptics always play.
   static bool sounds = true;
 
-  static bool get dark => finish == TactileFinish.graphite;
+  /// Dark plastic: Graphite, or a light finish darkened far enough that it reads as dark (then
+  /// its text, shading and LEDs switch over too, so nothing goes dark on dark).
+  static bool get dark => finish == TactileFinish.graphite || _dim;
+  static bool _dim = false;
 
-  /// The plastic: tinted toward the theme a few percent, then made lighter or darker.
+  /// The plastic: tinted toward the theme a few percent, then made lighter or darker. Darker goes
+  /// a long way (Graphite nearly to black, light finishes to a deep grey); lighter a little.
   static Color _t(Color c) {
     final tinted = Color.lerp(c, hue, .05)!;
     final l = lightness - .5;
-    return l == 0 ? tinted : Color.lerp(tinted, l > 0 ? Colors.white : Colors.black, l.abs() * (dark ? .5 : .55))!;
+    if (l == 0) return tinted;
+    final graphite = finish == TactileFinish.graphite;
+    final amount = l < 0 ? -l * 2 * (graphite ? .88 : .72) : l * 2 * (graphite ? .35 : .6);
+    return Color.lerp(tinted, l > 0 ? Colors.white : Colors.black, amount)!;
   }
 
   /// The choices offered in Settings → Look → Tactile style.
@@ -83,7 +90,7 @@ abstract final class Tactile {
     TactileFinish.concrete => const Color(0xFFA9AAAD),
     TactileFinish.graphite => const Color(0xFF29282C),
   });
-  static Color get ink => dark || lightness < .25 && finish != TactileFinish.porcelain ? const Color(0xFFE2E0E4) : const Color(0xFF26282C);
+  static Color get ink => dark ? const Color(0xFFE2E0E4) : const Color(0xFF26282C);
   static Color get inkMuted => ink.withValues(alpha: .62);
   static Color get ledOff => dark ? const Color(0xFF4A494E) : const Color(0xFFBBBEC3);
 
@@ -95,14 +102,23 @@ abstract final class Tactile {
 
   // ---- Type (§5): its own faces, not Classic's ----
 
-  /// Body and titles: the phone's Roboto, set firmer than Classic's.
-  static const font = 'sans-serif';
+  /// The faces to choose from (Settings → Look → Real style → Type): (id, name, family).
+  static const faces = [
+    ('barlow', 'Barlow', 'TactileBarlow'), // DIN-like signage: panel legends (default)
+    ('chakra', 'Chakra', 'TactileChakra'), // angular, instrument-like
+    ('grotesk', 'Grotesk', 'TactileGrotesk'), // Space Grotesk: technical, friendly
+    ('plex', 'Plex Mono', 'TactilePlexMono'), // all monospace, like a terminal
+    ('system', 'Roboto', 'sans-serif'), // the phone's own
+  ];
 
-  /// Legends printed on the panel: condensed, upper case, tracked.
-  static const legendFont = 'sans-serif-condensed';
+  /// Body, titles and legends: the chosen face (Classic's Instrument Sans is never used here).
+  static String font = 'TactileBarlow';
 
-  /// Readouts: mono (displays use the dot matrix).
-  static const monoFont = 'monospace';
+  /// Legends printed on the panel (upper case, tracked): the same face.
+  static String get legendFont => font;
+
+  /// Readouts (values, snackbars, tooltips): Space Mono; displays use the dot matrix.
+  static const monoFont = 'TactileSpaceMono';
 
   /// Printed into the plastic: a hairline of light under the letters (dark finishes: a shade
   /// above them), so text reads as pad-printed, not floating.
@@ -144,9 +160,12 @@ abstract final class Tactile {
   /// colour system, not Material's. Roles: canvas / sheet = the panel; card / base = plates;
   /// cardMuted = wells; hero = the coloured cap (plain plastic unless one is chosen); ink =
   /// printed legends; the theme's colour is used only as light (LEDs, displays), never as a fill.
-  static OnePalette palette(OnePalette base, {required String finish, required String light, required String cap, double lightness = .5, bool sounds = true}) {
+  static OnePalette palette(OnePalette base, {required String finish, required String light, required String cap, double lightness = .5, bool sounds = true, String face = 'barlow'}) {
+    font = faces.firstWhere((f) => f.$1 == face, orElse: () => faces.first).$3;
     Tactile.finish = TactileFinish.values.firstWhere((f) => f.name == finish, orElse: () => TactileFinish.porcelain);
     Tactile.lightness = lightness;
+    _dim = false;
+    _dim = finish != 'graphite' && panel.computeLuminance() < .2; // darkened past mid-grey
     Tactile.sounds = sounds;
     final hsl = HSLColor.fromColor(base.hero);
     hue = hsl.withSaturation(hsl.saturation.clamp(.15, .4)).withLightness(.45).toColor();
