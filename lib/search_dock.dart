@@ -322,7 +322,7 @@ class _NavTab {
 /// accent circle sits behind the selected one and slides to the tab tapped, and the icons crossfade
 /// between ink and accent ink.
 class _NavBar extends StatelessWidget {
-  const _NavBar({required this.tabs, required this.selected, this.bare = false, this.hide});
+  const _NavBar({required this.tabs, required this.selected, this.bare = false, this.hide, this.shift});
   final List<_NavTab> tabs;
   final String selected;
 
@@ -331,6 +331,10 @@ class _NavBar extends StatelessWidget {
 
   /// A tab whose icon is drawn elsewhere for now (Search, while it glides into the search bar).
   final String? hide;
+
+  /// How far each tab is pushed sideways (the morph slides them out of the bar); the accent goes
+  /// with its tab.
+  final List<double>? shift;
 
   static const _inset = 4.0; // bar around the tabs: 4 + 48 + 4 = the dock's 56
   static const _tab = SearchDock.height - _inset * 2; // 48: a full touch target
@@ -353,10 +357,13 @@ class _NavBar extends StatelessWidget {
               top: 0,
               width: _tab,
               height: _tab,
-              child: DecoratedBox(
-                decoration: ShapeDecoration(
-                  color: DS.hero,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+              child: Transform.translate(
+                offset: Offset(shift?[on] ?? 0, 0),
+                child: DecoratedBox(
+                  decoration: ShapeDecoration(
+                    color: DS.hero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+                  ),
                 ),
               ),
             ),
@@ -367,9 +374,12 @@ class _NavBar extends StatelessWidget {
                 if (i > 0) const SizedBox(width: _gap),
                 SizedBox.square(
                   dimension: _tab,
-                  child: Opacity(
-                    opacity: t.id == hide ? 0 : 1,
-                    child: _NavButton(tab: t, selected: i == on),
+                  child: Transform.translate(
+                    offset: Offset(shift?[i] ?? 0, 0),
+                    child: Opacity(
+                      opacity: t.id == hide ? 0 : 1,
+                      child: _NavButton(tab: t, selected: i == on),
+                    ),
                   ),
                 ),
               ],
@@ -433,9 +443,11 @@ class _NavButton extends StatelessWidget {
 }
 
 /// The nav and the search bar as one shape. Searching ([active]) the pill widens from the centred
-/// nav to the full search bar; the Search icon glides from its tab to the bar's start; the other
-/// tabs fade out and the field fades in; the close button scales in beside it (0 → 100 %, a slight
-/// overshoot). Closing plays it backwards.
+/// nav to the full search bar; the tabs left of Search slide out past its left edge and the ones
+/// right of it out past the right (clipped by the pill); the Search icon glides to the bar's start;
+/// the field slides in after them and the close button scales in beside it (0 → 100 %, a slight
+/// overshoot). Each part has its own stretch of the timeline, so they follow one another. Closing
+/// plays it backwards; pulling the list down plays it under the finger.
 class _NavSearch extends StatefulWidget {
   const _NavSearch({
     required this.active,
@@ -466,7 +478,13 @@ class _NavSearch extends StatefulWidget {
 }
 
 class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMixin {
-  late final _t = AnimationController(vsync: this, duration: Motion.snapDuration, value: widget.active ? 1 : 0);
+  // Slower than the app's usual snap so every step of the morph can be seen.
+  late final _t = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 720),
+    reverseDuration: const Duration(milliseconds: 560),
+    value: widget.active ? 1 : 0,
+  );
 
   @override
   void initState() {
@@ -500,6 +518,9 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
 
+  /// [p]'s progress through its stretch [from]–[to] of the timeline, eased.
+  static double _span(double p, double from, double to, [Curve curve = Curves.easeInOutCubic]) => curve.transform(((p - from) / (to - from)).clamp(0.0, 1.0));
+
   @override
   Widget build(BuildContext context) {
     const h = SearchDock.height, inset = _NavBar._inset, tab = _NavBar._tab, gap = _NavBar._gap;
@@ -513,14 +534,29 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
         return AnimatedBuilder(
           animation: _t,
           builder: (context, _) {
-            final t = Motion.settle.transform(_t.value); // the shape: springy settle
-            final fade = Curves.easeOut.transform((_t.value * 2).clamp(0.0, 1.0)); // tabs go in the first half
-            final field = Curves.easeOut.transform(((_t.value - .4) / .6).clamp(0.0, 1.0)); // field in the second
-            final close = Curves.easeOutBack.transform(((_t.value - .35) / .65).clamp(0.0, 1.0));
+            final p = _t.value;
+            final t = _span(p, 0, .8); // the pill widens
+            final slide = _span(p, 0, .65, Curves.easeInCubic); // tabs slide out, picking up speed
+            final fade = _span(p, .3, .65, Curves.easeIn); // …and fade once they're on their way
+            final glide = _span(p, .1, .8); // the Search icon to the bar's start
+            final field = _span(p, .5, 1, Curves.easeOutCubic); // the field slides in after them
+            final close = _span(p, .6, 1, Curves.easeOutBack);
             final pillW = _lerp(navW, barW, t);
             final pillLeft = _lerp((w - navW) / 2, 0, t);
+            final navLeft = (pillW - navW) / 2; // the tabs' row, centred in the pill
+            // Each tab's way out: left of Search past the pill's left edge, right of it past the
+            // right edge, keeping their spacing (in the row's own coordinates).
+            final shift = [
+              for (var i = 0; i < n; i++)
+                slide *
+                    (i < searchAt
+                        ? -navLeft - (i + 1) * (tab + gap)
+                        : i > searchAt
+                        ? pillW - navLeft - inset - (searchAt + 1) * (tab + gap) + gap
+                        : 0.0),
+            ];
             // The Search icon's centre: on its tab at rest, at the bar's start (16 + 12) when searching.
-            final iconX = _lerp((pillW - navW) / 2 + inset + searchAt * (tab + gap) + tab / 2, 28, t);
+            final iconX = _lerp(navLeft + inset + searchAt * (tab + gap) + tab / 2, 28, glide);
             final searching = widget.active || _t.value > 0;
             final radius = BorderRadius.circular(99);
             return Stack(
@@ -536,61 +572,67 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                     child: glassOr(
                       colour: DS.card,
                       shape: const StadiumBorder(),
-                      child: Stack(
-                        clipBehavior: Clip.hardEdge,
-                        children: [
-                          // The nav: tabs fading where they are, centred in the widening pill (Search's own
-                          // icon hidden while its copy glides to the bar's start).
-                          // Keys keep each layer itself as others come and go: the field must never be
-                          // rebuilt mid-search (a new field loses focus and the keyboard drops).
-                          if (fade < 1)
-                            Positioned(
-                              key: const ValueKey('tabs'),
-                              left: (pillW - navW) / 2,
-                              top: 0,
-                              width: navW,
-                              height: h,
-                              child: IgnorePointer(
-                                ignoring: searching,
-                                child: Opacity(
-                                  opacity: 1 - fade,
-                                  child: _NavBar(selected: widget.selected, tabs: widget.tabs, bare: true, hide: searching ? 'search' : null),
-                                ),
-                              ),
-                            ),
-                          if (searching) ...[
-                            Positioned(
-                              key: const ValueKey('icon'),
-                              left: iconX - 12,
-                              top: (h - 24) / 2,
-                              child: Icon(Icons.search_rounded, color: DS.ink, size: 24),
-                            ),
-                            Positioned(
-                              key: const ValueKey('field'),
-                              left: 48,
-                              right: DS.s16,
-                              top: 0,
-                              bottom: 0,
-                              child: Opacity(
-                                opacity: field,
-                                child: Center(
-                                  child: TextField(
-                                    controller: widget.controller,
-                                    focusNode: widget.focus,
-                                    onChanged: widget.onChanged,
-                                    onSubmitted: widget.onSubmitted,
-                                    textInputAction: TextInputAction.go,
-                                    autocorrect: false,
-                                    enableSuggestions: false,
-                                    cursorColor: DS.ink,
-                                    style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
-                                    decoration: InputDecoration.collapsed(hintText: widget.hint, hintStyle: DS.rowSub),
+                      child: ClipRRect(
+                        borderRadius: radius, // tabs leaving are cut by the pill's round ends
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            // The nav: tabs fading where they are, centred in the widening pill (Search's own
+                            // icon hidden while its copy glides to the bar's start).
+                            // Keys keep each layer itself as others come and go: the field must never be
+                            // rebuilt mid-search (a new field loses focus and the keyboard drops).
+                            if (fade < 1)
+                              Positioned(
+                                key: const ValueKey('tabs'),
+                                left: navLeft,
+                                top: 0,
+                                width: navW,
+                                height: h,
+                                child: IgnorePointer(
+                                  ignoring: searching,
+                                  child: Opacity(
+                                    opacity: 1 - fade,
+                                    child: _NavBar(selected: widget.selected, tabs: widget.tabs, bare: true, hide: searching ? 'search' : null, shift: shift),
                                   ),
                                 ),
                               ),
-                            ),
+                            if (searching) ...[
+                              Positioned(
+                                key: const ValueKey('icon'),
+                                left: iconX - 12,
+                                top: (h - 24) / 2,
+                                child: Icon(Icons.search_rounded, color: DS.ink, size: 24),
+                              ),
+                              Positioned(
+                                key: const ValueKey('field'),
+                                left: 48,
+                                right: DS.s16,
+                                top: 0,
+                                bottom: 0,
+                                child: Opacity(
+                                  opacity: field,
+                                  child: Transform.translate(
+                                    offset: Offset(_lerp(32, 0, field), 0),
+                                    child: Center(
+                                      child: TextField(
+                                        controller: widget.controller,
+                                        focusNode: widget.focus,
+                                        onChanged: widget.onChanged,
+                                        onSubmitted: widget.onSubmitted,
+                                        textInputAction: TextInputAction.go,
+                                        autocorrect: false,
+                                        enableSuggestions: false,
+                                        cursorColor: DS.ink,
+                                        style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+                                        decoration: InputDecoration.collapsed(hintText: widget.hint, hintStyle: DS.rowSub),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
