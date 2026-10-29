@@ -17,7 +17,34 @@ TextStyle clockStyle({required double weight, required double width, required do
   );
 }
 
-TextStyle clockStyleOf(Prefs p) => clockStyle(weight: p.clockWeight, width: p.clockWidth, slant: p.clockSlant, round: p.clockRound);
+TextStyle clockStyleOf(Prefs p) {
+  final s = clockStyle(weight: p.clockWeight, width: p.clockWidth, slant: p.clockSlant, round: p.clockRound);
+  return p.clockOutline ? outlined(s, p.clockStroke) : s;
+}
+
+/// [s] drawn as a stroke only, [width] dp wide, in its own colour (or [colour]); shadows kept so it
+/// still reads on bright wallpapers. Built fresh: a style can't have both a colour and a paint.
+TextStyle outlined(TextStyle s, double width, {Color? colour}) => TextStyle(
+  inherit: s.inherit,
+  fontFamily: s.fontFamily,
+  fontFamilyFallback: s.fontFamilyFallback,
+  fontSize: s.fontSize,
+  fontWeight: s.fontWeight,
+  fontStyle: s.fontStyle,
+  letterSpacing: s.letterSpacing,
+  wordSpacing: s.wordSpacing,
+  height: s.height,
+  leadingDistribution: s.leadingDistribution,
+  textBaseline: s.textBaseline,
+  fontVariations: s.fontVariations,
+  fontFeatures: s.fontFeatures,
+  shadows: s.shadows,
+  foreground: Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = width
+    ..strokeJoin = StrokeJoin.round
+    ..color = colour ?? s.color ?? DS.clockInk,
+);
 
 /// Quick starting points (the sliders fine-tune from there).
 /// (name, weight, width, slant, roundness)

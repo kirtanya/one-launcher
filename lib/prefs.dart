@@ -169,6 +169,15 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clock → Outline: the figures drawn as a stroke only (no fill), [clockStroke] dp wide (1–8).
+  bool get clockOutline => _sp.getBool('clockOutline') ?? false;
+  double get clockStroke => _sp.getDouble('clockStroke') ?? 2;
+  Future<void> setClockOutline({bool? on, double? stroke}) async {
+    if (on != null) await _sp.setBool('clockOutline', on);
+    if (stroke != null) await _sp.setDouble('clockStroke', stroke.clamp(1, 8));
+    notifyListeners();
+  }
+
   /// The Tiles view's clock tile has its own style (same axes), saved apart from the classic clock.
   double get tileClockWeight => _sp.getDouble('tileClockWeight') ?? 300;
   double get tileClockWidth => _sp.getDouble('tileClockWidth') ?? 60;

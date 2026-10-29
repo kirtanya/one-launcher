@@ -2983,7 +2983,9 @@ class _ClockStyleEditor extends StatelessWidget {
             child: FittedBox(
               child: Text(
                 sample,
-                style: clockStyle(weight: w, width: wd, slant: sl, round: rd).copyWith(shadows: const [], color: DS.onWallpaper),
+                style: !tile && prefs.clockOutline
+                    ? outlined(clockStyle(weight: w, width: wd, slant: sl, round: rd).copyWith(shadows: const []), prefs.clockStroke, colour: DS.onWallpaper)
+                    : clockStyle(weight: w, width: wd, slant: sl, round: rd).copyWith(shadows: const [], color: DS.onWallpaper),
               ),
             ),
           ),
@@ -3016,6 +3018,11 @@ class _ClockStyleEditor extends StatelessWidget {
         // Slant runs 0 → −10; the slider shows it upright → italic.
         slider('Slant', 'Upright', 'Italic', -sl, 0, 10, 10, (x) => set(slant: -x)),
         slider('Roundness', 'Sharp', 'Round', rd, 0, 100, 10, (x) => set(round: x)),
+        // The phone clock only: figures as an outline, with its border width.
+        if (!tile) ...[
+          _SwitchRow(Icons.format_color_text_rounded, 'Outline', 'Only the border of the figures, no fill', prefs.clockOutline, (v) => prefs.setClockOutline(on: v)),
+          if (prefs.clockOutline) slider('Border width', 'Fine', 'Thick', prefs.clockStroke, 1, 8, 14, (x) => prefs.setClockOutline(stroke: x)),
+        ],
       ],
     );
   }
