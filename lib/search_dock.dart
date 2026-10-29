@@ -550,7 +550,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
             ];
             // The Search icon's centre: on its tab at rest, at the bar's start (16 + 12) when searching.
             final iconX = _lerp(navLeft + inset + searchAt * (tab + gap) + tab / 2, 28, glide);
-            final searching = widget.active || _t.value > 0;
+            final searching = widget.active || p > 0;
             final radius = BorderRadius.circular(99);
             return Stack(
               clipBehavior: Clip.none,
