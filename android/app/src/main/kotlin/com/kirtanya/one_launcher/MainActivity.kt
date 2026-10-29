@@ -95,6 +95,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "one_launcher/apps")
+        NotificationFeed.attach(flutterEngine, this) // the launcher's own notification centre
         // Android app widgets shown in the top carousel.
         flutterEngine.platformViewsController.registry.registerViewFactory(WidgetHost.VIEW_TYPE, widgets.factory)
         MediaListener.onCounts = { counts -> if (::channel.isInitialized) channel.invokeMethod("notifCounts", counts) }

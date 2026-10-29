@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 class OnePalette {
   const OnePalette({
     required this.canvas,
+    Color? sheet,
+    Color? base,
     required this.card,
     required this.cardMuted,
     required this.hero,
@@ -15,8 +17,16 @@ class OnePalette {
     required this.inkMuted,
     required this.inkFaint,
     required this.hairline,
-  });
+  }) : sheet = sheet ?? canvas,
+       base = base ?? card;
 
+  /// The lowest surface (Material's surfaceContainerLowest): the nav / search bar and the
+  /// Remote and Settings pages.
+  final Color base;
+
+  /// The phone's app sheet behind the cards: light with light cards, else the dark [canvas]
+  /// (which the TV and other dark surfaces keep using).
+  final Color sheet;
   final Color canvas, card, cardMuted;
   final Color hero, heroSoft, heroInk, heroMuted, heroDivider;
   final Color ink, inkMuted, inkFaint, hairline;
@@ -25,6 +35,7 @@ class OnePalette {
   /// [accent] as the one colour.
   factory OnePalette.metro(Color accent) => OnePalette(
     canvas: const Color(0xFF000000),
+    base: const Color(0xFF000000),
     card: const Color(0xFF1B1B1B),
     cardMuted: const Color(0xFF2A2A2A),
     hero: accent,
@@ -38,9 +49,14 @@ class OnePalette {
     hairline: const Color(0xFF383838),
   );
 
+  /// The third view's palette, made from the theme's [base] (being designed: [base] as is, until
+  /// its own colours are set).
+  factory OnePalette.third(OnePalette base) => base;
+
   /// "One original": the look extracted from the first reference (see docs/DESIGN_STYLE.md).
   static const original = OnePalette(
     canvas: Color(0xFF1F1F1F),
+    sheet: Color(0xFFEBEBEB),
     card: Color(0xFFFFFFFF),
     cardMuted: Color(0xFFF6F5F8),
     hero: Color(0xFFCFE9BC),
@@ -57,6 +73,7 @@ class OnePalette {
   /// "One original" with dark cards: charcoal cards, deep green hero, light text.
   static const originalDark = OnePalette(
     canvas: Color(0xFF111111),
+    base: Color(0xFF111111),
     card: Color(0xFF262626),
     cardMuted: Color(0xFF1E1E1E),
     hero: Color(0xFF2E4724),
@@ -78,6 +95,7 @@ class OnePalette {
     if (darkCards) {
       return OnePalette(
         canvas: dark.surfaceContainerLowest,
+        base: dark.surfaceContainerLowest,
         card: dark.surfaceContainerHigh,
         cardMuted: dark.surfaceContainer,
         hero: dark.primaryContainer,
@@ -96,6 +114,8 @@ class OnePalette {
     final hero = mix(light.surfaceContainerLowest, light.primary, .2);
     return OnePalette(
       canvas: dark.surfaceContainerLow,
+      sheet: light.surfaceContainerHighest,
+      base: light.surfaceContainerLowest,
       card: light.surfaceContainerLowest,
       cardMuted: light.surfaceContainer,
       hero: hero,

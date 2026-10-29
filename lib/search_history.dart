@@ -15,10 +15,22 @@ import 'ui/perf.dart';
 /// the results grow upward from a bottom bar). Metro ([metro]): an accent header + list rows,
 /// like the Tiles search results (docs/DESIGN_LANGUAGES.md).
 class RecentSearches extends StatefulWidget {
-  const RecentSearches({super.key, required this.prefs, required this.onPick, required this.onFill, this.upward = false, this.metro = false});
+  const RecentSearches({
+    super.key,
+    required this.prefs,
+    required this.onPick,
+    required this.onFill,
+    this.upward = false,
+    this.metro = false,
+    this.animate = true,
+  });
   final Prefs prefs;
   final ValueChanged<String> onPick, onFill;
   final bool upward, metro;
+
+  /// Rows cascade in on arrival. Off when the home already brought the card in (it rises with
+  /// the pull above the bar, and this takes over in the same place).
+  final bool animate;
 
   /// Whether the card has anything to show.
   static bool shows(Prefs prefs) => prefs.searchHistory.isNotEmpty;
@@ -196,11 +208,12 @@ class _RecentSearchesState extends State<RecentSearches> {
     final rows = [
       for (final (i, q) in history.indexed)
         // A short cascade on arrival, newest (nearest the bar) first; rows already shown don't replay.
-        if (!_gone.contains(q)) Cascade(key: ValueKey(q), index: i, upward: widget.upward, child: _row(q, i)),
+        if (!_gone.contains(q))
+          widget.animate ? Cascade(key: ValueKey(q), index: i, upward: widget.upward, child: _row(q, i)) : KeyedSubtree(key: ValueKey(q), child: _row(q, i)),
     ];
     if (rows.isEmpty) return const SizedBox.shrink();
     // The title arrives last, after the row farthest from the bar.
-    final header = Cascade(key: const ValueKey('header'), index: rows.length, upward: widget.upward, child: _header());
+    final header = widget.animate ? Cascade(key: const ValueKey('header'), index: rows.length, upward: widget.upward, child: _header()) : _header();
     if (metro) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, ...rows]);
     return OneCard(
       padding: const EdgeInsets.symmetric(vertical: DS.s4),
@@ -234,6 +247,121 @@ class Cascade extends StatelessWidget {
       builder: (context, t, child) => Opacity(
         opacity: t,
         child: Transform.translate(offset: Offset(0, (upward ? 28 : -28) * (1 - t)), child: child),
+      ),
+    );
+  }
+}
+
+/// Search → recent searches with the bar at the bottom: a row of pills just above the bar,
+/// newest first, scrolling sideways — up to the last 5, then "Clear all". No title. Hidden
+/// with no history. Tap one to search it again; long-press to remove it.
+///
+/// [progress] (0–1) brings them in: each pill scales up from nothing, the next one starting
+/// once the one before is a fifth of the way, so they arrive one after another. Search opening
+/// drives it (the pull, under the finger) and closing or typing plays it back out.
+class RecentSearchPills extends StatelessWidget {
+  const RecentSearchPills({super.key, required this.prefs, required this.progress, required this.onPick});
+  final Prefs prefs;
+  final double progress;
+  final ValueChanged<String> onPick;
+
+  static const height = 44.0;
+  static const max = 5;
+
+  /// Pill [i] of [n]'s own progress within [t]: each takes the same time, starting when the
+  /// one before is 20 % through.
+  static double _own(double t, int i, int n) {
+    final d = 1 / (1 + .2 * (n - 1));
+    return ((t - i * .2 * d) / d).clamp(0.0, 1.0);
+  }
+
+  Future<void> _clearAll(BuildContext context) async {
+    if (!await confirmReset(context, title: 'Clear search history?', body: 'Your recent searches are removed from this phone.', action: 'Clear')) return;
+    HapticFeedback.mediumImpact();
+    prefs.clearSearchHistory();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = prefs.searchHistory.take(max).toList();
+    if (recent.isEmpty || progress <= 0) return const SizedBox(height: height);
+    final n = recent.length + 1; // + Clear all
+    Widget pill(int i, Widget child) {
+      final t = Curves.easeOutBack.transform(_own(progress, i, n));
+      return Padding(
+        padding: EdgeInsets.only(left: i == 0 ? 0 : DS.s8),
+        child: Transform.scale(scale: t, child: child),
+      );
+    }
+
+    return SizedBox(
+      height: height,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: DS.gutter),
+        clipBehavior: Clip.none,
+        children: [
+          for (final (i, q) in recent.indexed)
+            pill(
+              i,
+              _Pill(
+                label: q,
+                icon: Icons.history_rounded,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  prefs.addSearch(q); // used again: to the front
+                  onPick(q);
+                },
+                onLongPress: () {
+                  HapticFeedback.mediumImpact();
+                  prefs.removeSearch(q);
+                },
+              ),
+            ),
+          pill(recent.length, _Pill(label: DS.cased('Clear all'), muted: true, onTap: () => _clearAll(context))),
+        ],
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label, this.icon, this.muted = false, required this.onTap, this.onLongPress});
+  final String label;
+  final IconData? icon;
+  final bool muted;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(RecentSearchPills.height / 2));
+    return Material(
+      color: muted ? DS.cardMuted : DS.card,
+      shape: shape,
+      elevation: 0,
+      child: InkWell(
+        customBorder: shape,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Padding(
+          padding: EdgeInsets.only(left: icon == null ? DS.s16 : DS.s12, right: DS.s16),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[Icon(icon, size: 18, color: DS.inkFaint), const SizedBox(width: DS.s8)],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: muted ? DS.inkMuted : DS.ink),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

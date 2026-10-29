@@ -46,12 +46,15 @@ class GlassPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final side = Glass.edgeSide;
-    final outlined = switch (shape) {
-      RoundedRectangleBorder(:final borderRadius) => RoundedRectangleBorder(borderRadius: borderRadius, side: side),
-      StadiumBorder() => StadiumBorder(side: side),
-      CircleBorder() => CircleBorder(side: side),
-      _ => shape,
-    };
+    // Glass edge on: it replaces the shape's own outline; off: the shape keeps its own.
+    final outlined = !Glass.edge
+        ? shape
+        : switch (shape) {
+            RoundedRectangleBorder(:final borderRadius) => RoundedRectangleBorder(borderRadius: borderRadius, side: side),
+            StadiumBorder() => StadiumBorder(side: side),
+            CircleBorder() => CircleBorder(side: side),
+            _ => shape,
+          };
     final pane = Material(
       color: Glass.tinted(colour),
       shape: outlined,

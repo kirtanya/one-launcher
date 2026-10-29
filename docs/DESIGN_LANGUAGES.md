@@ -1,6 +1,6 @@
-# Two design languages, one system
+# Three design languages, one system
 
-One Launcher has two home views. Each one is a complete design language: when you are in a
+One Launcher has three home views. Each one is a complete design language: when you are in a
 view, **every** screen it opens speaks that language — sheets, menus, search, Settings,
 editors, dialogs, snackbars. Features and data are shared; the look and layout are not.
 
@@ -19,7 +19,20 @@ editors, dialogs, snackbars. Features and data are shared; the look and layout a
 | Glass | Home look → Glass (drawer, cards, chips, dock) | Tile look → Glass (tiles, app list, search field, sheets) |
 | Today page | Side panel left of home (swipe right; Settings → Today panel turns it off): rounded cards, the first one the hero, Sentence case; list = one card per widget with small-caps headers | Page left of Start: live tiles in the tile look; list = accent headers + accent squares |
 
-## Shared (both views)
+## The third view (being designed)
+
+`homeView = 'third'` (shown as "New view") speaks `DesignLanguage.third`. Its look is not
+defined yet, so it starts as a copy of Classic: `ThirdHome` (`lib/third/third_home.dart`) hosts
+the Classic home, and `DS.third` surfaces read Classic's tokens. Its hooks, ready to fill in:
+
+- **Tokens:** `DS.lang == DesignLanguage.third` / `DS.third` (`ui/ds.dart`) — branch radii,
+  type, case and components on it, as Metro does on `DS.metro`.
+- **Palette:** `OnePalette.third(base)` (`ui/palette.dart`), applied by `OneTheme._apply`.
+- **Per-view settings:** its own copies of the `Prefs.perView` keys (`third.<key>`, starting
+  from Classic's values), so its colours, glass and chip look don't change the other views.
+- **Home:** `ThirdHome`, routed in `main.dart`; its own screens go in `lib/third/`.
+
+## Shared (all views)
 
 Features and behaviour, search sources (Settings → Search → Search in), quick actions, the
 theme's colour (Classic uses it as the palette, Metro derives its accent from it), wallpaper,
@@ -30,8 +43,9 @@ switch, wallpaper framing (Classic frames its top area, Tiles the whole screen).
 
 The switch is at the token level, so nothing has to remember which view it is in:
 
-- `OneTheme._apply` sets `DS.metro` from `prefs.homeView` and swaps `DS.palette` to
-  `OnePalette.metro(accent)`; `DS.metroRadius` follows the tile corner setting.
+- `OneTheme._apply` sets `DS.lang` (`DesignLanguage.of(prefs.homeView)`; `DS.metro` and
+  `DS.third` read it) and swaps `DS.palette` to `OnePalette.metro(accent)` or
+  `OnePalette.third(palette)`; `DS.metroRadius` follows the tile corner setting.
 - `DS.rCard / rMedia / rSheet`, `DS.title`, `DS.eyebrow` read `DS.metro`; `DS.cased()` gives
   Metro's lowercase.
 - Shared components branch on `DS.metro`: the sheet chrome and rows (`widgets.dart`),

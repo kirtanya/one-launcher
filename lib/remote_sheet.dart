@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +41,7 @@ Future<void> showTvRemote(BuildContext context, {required Prefs prefs}) {
     keyboard: true, // typing: the sheet's content sits above the phone keyboard
     fill: true,
     scrollable: false,
+    underNav: true, // as the Remote tab's page: the buttons scroll under the nav
     builder: (ctx) => _RemoteSheet(prefs: prefs),
   );
 }
@@ -159,7 +161,7 @@ class _RemoteSheetState extends State<_RemoteSheet> {
   Widget _setup(BuildContext context) {
     final pairing = _pairingHost != null;
     return ListView(
-      padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, MediaQuery.viewInsetsOf(context).bottom + DS.s24),
+      padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, math.max(MediaQuery.viewInsetsOf(context).bottom, MediaQuery.paddingOf(context).bottom) + DS.s24),
       children: [
         SheetHeader(
           title: pairing ? 'Enter the code' : 'Connect your TV',
@@ -246,6 +248,10 @@ class _RemoteSheetState extends State<_RemoteSheet> {
       valueListenable: tv.status,
       builder: (context, status, _) {
         final live = status == TvStatus.connected;
+        final reconnect = !live && status != TvStatus.connecting;
+        // The nav's room at the bottom (on the Remote tab's page; 0 in a sheet): the buttons
+        // scroll under the nav, anything fixed at the bottom sits above it.
+        final under = MediaQuery.paddingOf(context).bottom;
         return Column(
           children: [
             // Header: TV name + status, power, more.
@@ -313,7 +319,11 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 builder: (context, ime, remote) => AnimatedSwitcher(
                   duration: Motion.snapDuration,
                   child: ime != null && live
-                      ? _TypingPanel(key: ValueKey('typing:${ime.$2}'), start: ime.$1, label: ime.$2, onKey: _press)
+                      ? Padding(
+                          key: ValueKey('typing:${ime.$2}'),
+                          padding: EdgeInsets.only(bottom: under),
+                          child: _TypingPanel(start: ime.$1, label: ime.$2, onKey: _press),
+                        )
                       : KeyedSubtree(key: const ValueKey('remote'), child: remote!),
                 ),
                 child: Column(
@@ -330,9 +340,11 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                               final hidden = prefs.remoteHidden;
                               // The groups in the user's order (⋮ → Arrange remote), spread out when
                               // they fit; scrolling when they don't.
+                              final room = reconnect ? 0.0 : under;
                               return SingleChildScrollView(
+                                padding: EdgeInsets.only(bottom: room),
                                 child: ConstrainedBox(
-                                  constraints: BoxConstraints(minHeight: c.maxHeight),
+                                  constraints: BoxConstraints(minHeight: math.max(0, c.maxHeight - room)),
                                   child: IntrinsicHeight(
                                     child: Column(
                                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -357,9 +369,9 @@ class _RemoteSheetState extends State<_RemoteSheet> {
                 ),
               ),
             ),
-            if (!live && status != TvStatus.connecting)
+            if (reconnect)
               Padding(
-                padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
+                padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16 + under),
                 // With its address known, Wake-on-LAN may bring a sleeping TV back too.
                 child: _Primary(label: prefs.tvMac != null ? 'Turn on TV' : 'Reconnect', onTap: _turnOn),
               ),
@@ -893,7 +905,7 @@ class _VolumeSliderState extends State<_VolumeSlider> {
 /// Typing on the TV from the phone keyboard: a big field mirroring the TV's focused one (every
 /// change is sent whole), plus the keys you need while typing — move the cursor, Enter, back.
 class _TypingPanel extends StatefulWidget {
-  const _TypingPanel({super.key, required this.start, required this.label, required this.onKey});
+  const _TypingPanel({required this.start, required this.label, required this.onKey});
   final String start, label;
   final void Function(int code, {bool strong}) onKey;
 

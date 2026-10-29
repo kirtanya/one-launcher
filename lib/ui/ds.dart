@@ -8,10 +8,13 @@ class DS {
   /// Active theme colours (Settings → Colours & style). The app rebuilds when it changes.
   static OnePalette palette = OnePalette.original;
 
-  /// The design language in use (docs/DESIGN_LANGUAGES.md). Classic: soft cards and pills.
-  /// Metro (the Tiles view): flat, dark or glass panels, lowercase light titles, accent squares,
-  /// corners from the tile corner setting. Set by OneTheme from the home view.
-  static bool metro = false;
+  /// The design language in use (docs/DESIGN_LANGUAGES.md), one per home view. Classic: soft
+  /// cards and pills. Metro (the Tiles view): flat, dark or glass panels, lowercase light titles,
+  /// accent squares, corners from the tile corner setting. Third: the new view's own language
+  /// (being designed; Classic's look until its tokens are set). Set by OneTheme from the home view.
+  static DesignLanguage lang = DesignLanguage.classic;
+  static bool get metro => lang == DesignLanguage.metro;
+  static bool get third => lang == DesignLanguage.third;
   static double metroRadius = 0;
 
   /// [text] in the active language's case (Metro writes headers in lowercase).
@@ -25,6 +28,8 @@ class DS {
   static Color get card => palette.card;
   static Color get cardMuted => palette.cardMuted;
 
+  static Color get base => palette.base; // surfaceContainerLowest: nav / search bar, Remote & Settings pages
+  static Color get sheet => palette.sheet; // the phone's app sheet (light with light cards)
   static Color get hero => palette.hero;
   static Color get heroSoft => palette.heroSoft;
   static Color get heroInk => palette.heroInk;
@@ -103,4 +108,18 @@ class DS {
   static const fast = Duration(milliseconds: 180);
   static const medium = Duration(milliseconds: 260);
   static const ease = Curves.easeOutCubic;
+}
+
+/// The launcher's design languages, one per home view (Settings → Home screen → Home view).
+enum DesignLanguage {
+  classic, // 'classic' home: clock on top, app drawer with folders
+  metro, // 'tiles' home: Lumia-style Start
+  third; // 'third' home: the new view (being designed)
+
+  /// The language a home view speaks.
+  static DesignLanguage of(String homeView) => switch (homeView) {
+    'tiles' => metro,
+    'third' => third,
+    _ => classic,
+  };
 }

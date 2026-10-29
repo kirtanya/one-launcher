@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'apps.dart';
 import 'one_stream.dart';
 import 'home.dart';
+import 'third/third_home.dart';
 import 'tiles/tiles_home.dart';
 import 'tv_cast.dart';
 import 'prefs.dart';
@@ -138,9 +139,11 @@ class _OneLauncherState extends State<OneLauncher> {
       // The home view the user picked (Settings → Look → Home view).
       home: ListenableBuilder(
         listenable: prefs,
-        builder: (context, _) => prefs.homeView == 'tiles'
-            ? TilesHome(key: const ValueKey('tiles'), prefs: prefs, theme: theme)
-            : HomeScreen(key: const ValueKey('classic'), prefs: prefs, theme: theme),
+        builder: (context, _) => switch (prefs.homeView) {
+          'tiles' => TilesHome(key: const ValueKey('tiles'), prefs: prefs, theme: theme),
+          'third' => ThirdHome(key: const ValueKey('third'), prefs: prefs, theme: theme),
+          _ => HomeScreen(key: const ValueKey('classic'), prefs: prefs, theme: theme),
+        },
       ),
     );
   }

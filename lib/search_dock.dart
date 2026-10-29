@@ -31,6 +31,7 @@ class SearchDock extends StatelessWidget {
     this.onSwipeClose,
     this.onRemote,
     this.onRemoteLongPress,
+    this.onNotifications,
     this.tab = 'home',
     this.onHome,
     this.pull,
@@ -42,7 +43,7 @@ class SearchDock extends StatelessWidget {
   final ValueListenable<double>? pull;
   final double pullFull;
 
-  /// The bottom nav's selected tab at rest: 'home', 'search', 'remote' or 'settings'.
+  /// The bottom nav's selected tab at rest: 'home', 'search', 'remote', 'alerts' or 'settings'.
   final String tab;
 
   /// The nav's Home tab (back to the clock); null = the plain search dock (inside the drawer).
@@ -53,6 +54,9 @@ class SearchDock extends StatelessWidget {
 
   /// Long-press on the remote button (offer to hide it).
   final VoidCallback? onRemoteLongPress;
+
+  /// The notification centre's tab (for now, while it's being built; null = none).
+  final VoidCallback? onNotifications;
 
   /// Swiped down on the bar while searching (defaults to [onClose]).
   final VoidCallback? onSwipeClose;
@@ -72,6 +76,10 @@ class SearchDock extends StatelessWidget {
   // Small blur: it's redrawn every frame, and big blurs are costly on slower phones.
   static const shadow = [BoxShadow(color: Color(0x3D000000), blurRadius: 10, offset: Offset(0, 4))];
   static const gap = 8.0;
+
+  /// The bar's outline: it's the lowest surface, so this keeps it from merging into what's
+  /// behind (glass draws its own bright edge instead).
+  static BorderSide get border => BorderSide(color: DS.hairline);
   static const _slot = height + gap;
 
   @override
@@ -113,6 +121,7 @@ class SearchDock extends StatelessWidget {
                     _NavTab('search', Icons.search_rounded, 'Search', onActivate),
                     if (onRemote != null)
                       _NavTab('remote', Icons.settings_remote_rounded, 'Remote', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'TV remote'),
+                    if (onNotifications != null) _NavTab('alerts', Icons.notifications_none_rounded, 'Notifications', onNotifications!),
                     _NavTab('settings', Icons.tune_rounded, 'Settings', onSettings, tooltip: 'Launcher settings'),
                   ],
                   controller: controller,
@@ -222,8 +231,8 @@ class _DockCircle extends StatelessWidget {
         child: Tooltip(
           message: tooltip,
           child: glassOr(
-            colour: DS.card,
-            shape: const CircleBorder(),
+            colour: DS.base,
+            shape: CircleBorder(side: SearchDock.border),
             child: InkWell(
               onTap: onTap,
               onLongPress: onLongPress,
@@ -344,7 +353,7 @@ class _NavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = tabs.indexWhere((t) => t.id == selected);
-    final bar = RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius + _inset));
+    final bar = RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius + _inset), side: SearchDock.border);
     final content = Padding(
       padding: const EdgeInsets.all(_inset),
       child: Stack(
@@ -392,7 +401,7 @@ class _NavBar extends StatelessWidget {
     return Center(
       child: DecoratedBox(
         decoration: ShapeDecoration(shape: bar, shadows: Perf.lite.value ? null : SearchDock.shadow),
-        child: glassOr(colour: DS.card, shape: bar, child: content),
+        child: glassOr(colour: DS.base, shape: bar, child: content),
       ),
     );
   }
@@ -481,8 +490,8 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
   // Slower than the app's usual snap so every step of the morph can be seen.
   late final _t = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 720),
-    reverseDuration: const Duration(milliseconds: 560),
+    duration: const Duration(milliseconds: 576), // opening
+    reverseDuration: const Duration(milliseconds: 311), // closing: quicker, out of the way
     value: widget.active ? 1 : 0,
   );
 
@@ -563,8 +572,8 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                   child: DecoratedBox(
                     decoration: BoxDecoration(borderRadius: radius, boxShadow: Perf.lite.value ? null : SearchDock.shadow),
                     child: glassOr(
-                      colour: DS.card,
-                      shape: const StadiumBorder(),
+                      colour: DS.base,
+                      shape: StadiumBorder(side: SearchDock.border),
                       child: ClipRRect(
                         borderRadius: radius, // tabs leaving are cut by the pill's round ends
                         child: Stack(

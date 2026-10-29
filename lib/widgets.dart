@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 
@@ -150,6 +151,8 @@ const sheetBack = 'back';
 /// [keyboard]: the sheet has a text field — its content makes room for the keyboard.
 /// [barrier]: the shade behind the sheet (default when null).
 /// [height]: the sheet's height cap; with [fill] it is exactly that tall (content scrolls).
+/// [underNav]: shown as a nav tab's page, the (unscrolled) content runs under the nav and
+/// keeps clear of it itself, from `MediaQuery.padding.bottom`.
 ///
 /// Sheets with a [height] are *paged*: opening another sheet from inside one (Settings → a
 /// detail, Top of home → Clock style…) slides it in as a page of the same sheet, with a back
@@ -163,9 +166,14 @@ Future<Object?> showOneSheetWith(
   bool fill = false,
   Color? barrier,
   bool keyboard = false,
+  bool underNav = false,
 }) {
+  final tab = TabPageHost._take(); // a nav tab's page (Remote, Settings): shown in the home, not as a sheet
   final host = SheetHost.maybeOf(context);
   if (host != null) return host.push(builder, scrollable: scrollable);
+  if (tab != null) {
+    return tab.present((close) => _TabPageBody(builder: builder, scrollable: scrollable, underNav: underNav, navRoom: tab.navRoom, close: close));
+  }
   final paged = height != null;
   final nav = GlobalKey<NavigatorState>();
   final depth = ValueNotifier<int>(0); // pages in a paged sheet (the observer counts the first too)
@@ -279,28 +287,48 @@ Future<Object?> showOneSheetWith(
 
 /// The pages of a paged sheet (see [showOneSheetWith]): sheets opened inside it push here.
 class SheetHost extends InheritedWidget {
-  const SheetHost._({required this.nav, required this.sheet, required super.child});
+  const SheetHost._({required this.nav, required this.sheet, this.onClose, required super.child});
   final GlobalKey<NavigatorState> nav;
   final BuildContext sheet; // the sheet's own route context (to close the whole sheet)
+  final VoidCallback? onClose; // a nav tab's page: closing it is the home's job, not a route pop
 
   static SheetHost? maybeOf(BuildContext context) => context.getInheritedWidgetOfExactType<SheetHost>();
 
   /// Close the whole sheet (from any page), e.g. before opening a system screen.
   static void close(BuildContext context) {
     final host = maybeOf(context);
-    host == null ? Navigator.pop(context) : Navigator.pop(host.sheet);
+    if (host == null) return Navigator.pop(context);
+    host.onClose != null ? host.onClose!() : Navigator.pop(host.sheet);
   }
 
   Future<Object?> push(WidgetBuilder builder, {bool scrollable = true}) => nav.currentState!.push<Object?>(_route(builder, scrollable: scrollable));
 
   /// A page: slides in from the right over the one before (which eases a little to the left).
-  static Route<Object?> _route(WidgetBuilder builder, {required bool scrollable}) => PageRouteBuilder<Object?>(
+  static Route<Object?> _route(WidgetBuilder builder, {required bool scrollable, bool underNav = false}) => PageRouteBuilder<Object?>(
     transitionDuration: Motion.snapDuration,
     reverseTransitionDuration: Motion.snapDuration,
-    pageBuilder: (context, _, _) => Material(
-      color: DS.card,
-      child: scrollable ? SingleChildScrollView(child: Builder(builder: builder)) : Builder(builder: builder),
-    ),
+    pageBuilder: (context, _, _) {
+      // On a nav tab's page the content runs under the floating nav: room to scroll past it.
+      final inset = _NavInset.of(context);
+      return Material(
+        color: _NavInset.within(context) ? DS.base : DS.card, // a nav tab's page: the lowest surface
+        child: scrollable
+            ? SingleChildScrollView(
+                padding: EdgeInsets.only(bottom: inset),
+                child: Builder(builder: builder),
+              )
+            : underNav && inset > 0
+            // Content that lays itself out under the nav: the nav's room as bottom padding.
+            ? MediaQuery(
+                data: MediaQuery.of(context).copyWith(padding: MediaQuery.paddingOf(context).copyWith(bottom: inset)),
+                child: Builder(builder: builder),
+              )
+            : Padding(
+                padding: EdgeInsets.only(bottom: inset),
+                child: Builder(builder: builder),
+              ),
+      );
+    },
     transitionsBuilder: (context, a, b, child) {
       final inC = CurvedAnimation(parent: a, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
       final outC = CurvedAnimation(parent: b, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
@@ -316,6 +344,157 @@ class SheetHost extends InheritedWidget {
 
   @override
   bool updateShouldNotify(SheetHost old) => false;
+}
+
+/// Nav tabs whose pages live inside the home (Remote, Settings), under the nav that stays put —
+/// instead of sheets from the bottom. The home arms it ([arm]) right before opening the tab's
+/// sheet; that one [showOneSheetWith] call (only) then hands its content to [present] as a page.
+class TabPageHost {
+  TabPageHost({required this.present, required this.navRoom});
+
+  /// Shows the page (built with a `close` for it); completes when the page is closed.
+  final Future<Object?> Function(Widget Function(VoidCallback close) build) present;
+
+  /// Room the nav takes at the bottom (above the system bar / keyboard), so content clears it.
+  final double navRoom;
+
+  static TabPageHost? _next;
+  static void arm(TabPageHost host) => _next = host;
+  static TabPageHost? _take() {
+    final h = _next;
+    _next = null;
+    return h;
+  }
+}
+
+/// A nav tab's page: a paged sheet's content (pages slide in, back arrow below the first) on a
+/// full-screen card, leaving room for the nav. Back on its first page closes it.
+class _TabPageBody extends StatefulWidget {
+  const _TabPageBody({required this.builder, required this.scrollable, required this.underNav, required this.navRoom, required this.close});
+  final WidgetBuilder builder;
+  final bool scrollable, underNav;
+  final double navRoom;
+  final VoidCallback close;
+
+  @override
+  State<_TabPageBody> createState() => _TabPageBodyState();
+}
+
+class _TabPageBodyState extends State<_TabPageBody> {
+  final _nav = GlobalKey<NavigatorState>();
+  final _depth = ValueNotifier<int>(0);
+  late final _observer = _DepthObserver(_depth)..onEmpty = widget.close;
+
+  void _back() => _depth.value > 1 ? _nav.currentState!.pop() : widget.close();
+
+  @override
+  void dispose() {
+    _depth.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    // The nav rises with the keyboard, so the content always clears both.
+    final bottom = math.max(mq.viewInsets.bottom, mq.padding.bottom) + widget.navRoom;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: Material(
+        color: DS.base,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Padding(
+              padding: EdgeInsets.only(top: mq.padding.top),
+              child: _NavInset(
+                bottom: bottom,
+                child: SheetSearchScope(
+                  onActive: (_) {},
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ValueListenableBuilder<int>(
+                        valueListenable: _depth,
+                        builder: (context, pages, _) => AnimatedSize(
+                          duration: Motion.snapDuration,
+                          curve: Curves.easeOutCubic,
+                          alignment: Alignment.topLeft,
+                          child: pages > 1
+                              ? SizedBox(
+                                  height: 52,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(left: DS.s12),
+                                      child: IconButton(
+                                        tooltip: 'Back',
+                                        icon: Icon(Icons.arrow_back_rounded, color: DS.ink),
+                                        onPressed: _back,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(width: double.infinity, height: DS.s16),
+                        ),
+                      ),
+                      Expanded(
+                        child: SheetHost._(
+                          nav: _nav,
+                          sheet: context,
+                          onClose: widget.close,
+                          child: Navigator(
+                            key: _nav,
+                            observers: [_observer],
+                            onGenerateInitialRoutes: (_, _) => [SheetHost._route(widget.builder, scrollable: widget.scrollable, underNav: widget.underNav)],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Fade under the nav (as on home), so it reads as floating over the page.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: bottom + DS.s24,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [DS.base.withValues(alpha: 0), DS.base.withValues(alpha: .9)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// How much of a page's bottom the floating nav covers (0 outside nav tab pages).
+class _NavInset extends InheritedWidget {
+  const _NavInset({required this.bottom, required super.child});
+  final double bottom;
+
+  static double of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_NavInset>()?.bottom ?? 0;
+
+  /// On a nav tab's page at all.
+  static bool within(BuildContext context) => context.getInheritedWidgetOfExactType<_NavInset>() != null;
+
+  @override
+  bool updateShouldNotify(_NavInset old) => old.bottom != bottom;
 }
 
 class _DepthObserver extends NavigatorObserver {

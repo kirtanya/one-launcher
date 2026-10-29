@@ -16,6 +16,7 @@ import 'ui/perf.dart';
 import 'ui/glass.dart';
 import 'search.dart';
 import 'search_dock.dart';
+import 'google_suggest.dart';
 import 'search_history.dart';
 import 'system_settings.dart';
 import 'quick_chips.dart';
@@ -206,10 +207,13 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
   double _glideFrom = 0;
 
   /// Opening search: the cards slide out sideways (0 → 1); closing it brings them back.
-  late final AnimationController _away = AnimationController(vsync: this, duration: awayDuration, value: widget.leaving ? 1 : 0);
+  late final AnimationController _away = AnimationController(vsync: this, duration: awayDuration, reverseDuration: backDuration, value: widget.leaving ? 1 : 0);
 
   /// How long the cards take to clear before the results come in.
-  static const awayDuration = Duration(milliseconds: 560);
+  static const awayDuration = Duration(milliseconds: 448);
+
+  /// …and how long they take to come back when search closes (quicker: out of the way).
+  static const backDuration = Duration(milliseconds: 311);
 
   @override
   void initState() {
@@ -238,31 +242,15 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// The list is showing search results (not the cards) this frame.
+  bool _resultsShown = false;
+
+  /// How far the cards have gone for search (0–1): the pull while pulling, else opening /
+  /// closing search on its own. Linear, so it moves evenly with the finger.
+  double get _gone => _resultsShown ? 0 : (widget.leaving || _away.isAnimating ? _away.value : _pulled);
+
   /// How far the pull has got towards opening search (0–1).
   double get _pulled => (widget.pull.value / pullToOpen).clamp(0.0, 1.0);
-
-  /// Card [i] (0 = the green card, then the folders) on its way out: alternately off the left and
-  /// the right edge, each a beat after the one above it. Pulling down scrubs it with the finger
-  /// (all gone by the "Release to search" line, back again as the finger goes back); opening or
-  /// closing search plays it on its own.
-  Widget _slideAway(int i, Widget child) {
-    if (Perf.lite.value) return child;
-    final start = (i * .1).clamp(0.0, .4);
-    final curve = Interval(start, start + .6, curve: Curves.easeInOutCubic);
-    final dir = i.isEven ? -1.0 : 1.0;
-    return AnimatedBuilder(
-      animation: Listenable.merge([_away, widget.pull]),
-      child: child,
-      builder: (context, child) {
-        final t = curve.transform(widget.leaving || _away.isAnimating ? _away.value : _pulled);
-        if (t == 0) return child!;
-        return Transform.translate(
-          offset: Offset(dir * MediaQuery.sizeOf(context).width * 1.05 * t, 0),
-          child: Opacity(opacity: (1 - t * .6).clamp(0.0, 1.0), child: child),
-        );
-      },
-    );
-  }
 
   /// Accordion: opening one folder closes the other. The sheet expands, the folder opens and
   /// it glides to the middle — all in one motion. A folder taller than the screen stops with
@@ -505,16 +493,19 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     // (so opening search never swaps the screen out from under the motion) — or, with search
     // history, shows the recent searches card.
     final q = widget.query.trim();
-    final history = widget.searching && q.isEmpty && RecentSearches.shows(prefs);
+    // With the bar at the bottom the recent searches are pills above it (the home draws them).
+    final history = widget.searching && q.isEmpty && RecentSearches.shows(prefs) && widget.searchBar != null;
     final showResults = (widget.searching && q.isNotEmpty) || history;
     // Bar at the bottom → results grow upward from it (best match nearest the bar).
     final upward = showResults && widget.searchBar == null;
+    _resultsShown = showResults;
     final List<Widget> content;
     if (showResults) {
       final sources = prefs.searchIn;
       if (sources.contains('shortcuts')) _loadShortcuts();
       final Widget found = history
-          ? RecentSearches(prefs: prefs, upward: upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent)
+          // With the bar at the bottom the home already brought this card in above the bar.
+          ? RecentSearches(prefs: prefs, upward: upward, animate: !upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent)
           : _SearchResults(
               query: q,
               apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
@@ -537,11 +528,14 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
               onTap: widget.onLaunch,
               onLongPress: _longPress,
               onWebSearch: widget.onWebSearch,
+              onFill: widget.onFillRecent,
               onRun: widget.onRun,
             );
       // Enters rising out of the bar (or dropping from the top bar), fading in — once when the
       // recent searches appear and once when typing turns them into results, not per keystroke.
-      final Widget results = SearchEnter(key: ValueKey(history ? 'history' : 'results'), upward: upward, child: found);
+      final Widget results = history && upward
+          ? KeyedSubtree(key: const ValueKey('history'), child: found)
+          : SearchEnter(key: ValueKey(history ? 'history' : 'results'), upward: upward, child: found);
       content = [
         if (upward)
           // Their own scroll area, reversed: it starts at the bottom (best match just above the
@@ -563,7 +557,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
       ];
     } else {
       content = [
-        box(_slideAway(0, edge(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero)))),
+        box(edge(PopIn(offset: const Offset(0, 24), fromScale: .97, child: hero))),
         for (final (i, (folder, list)) in groups.indexed) ...[
           // Gap above the folder; its key marks where the folder starts.
           SliverToBoxAdapter(
@@ -577,24 +571,21 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
               slivers: [
                 // Open folder: header pins to the top while its apps scroll under it.
                 if (_openId == folder.id)
-                  PinnedHeaderSliver(child: _slideAway(i + 1, folderHeader(i, folder, list)))
+                  PinnedHeaderSliver(child: folderHeader(i, folder, list))
                 else
-                  SliverToBoxAdapter(child: _slideAway(i + 1, edge(folderHeader(i, folder, list)))), // closed folders scale at the edges
+                  SliverToBoxAdapter(child: edge(folderHeader(i, folder, list))), // closed folders scale at the edges
                 SliverToBoxAdapter(
-                  child: _slideAway(
-                    i + 1,
-                    RepaintBoundary(
-                      child: _FolderBody(
-                        key: _body(folder.id),
-                        apps: list,
-                        open: _openId == folder.id,
-                        tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
-                        maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
-                        outer: widget.scroll,
-                        onHandoff: (on) => _handoff = on,
-                        onLaunch: widget.onLaunch,
-                        onLongPress: _longPress,
-                      ),
+                  child: RepaintBoundary(
+                    child: _FolderBody(
+                      key: _body(folder.id),
+                      apps: list,
+                      open: _openId == folder.id,
+                      tone: i == groups.length - 1 && groups.length > 1 ? CardTone.muted : CardTone.white,
+                      maxHeight: _maxBodyHeight(MediaQuery.sizeOf(context), padding),
+                      outer: widget.scroll,
+                      onHandoff: (on) => _handoff = on,
+                      onLaunch: widget.onLaunch,
+                      onLongPress: _longPress,
                     ),
                   ),
                 ),
@@ -608,19 +599,39 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     // Glass: the whole drawer is one frosted pane over the wallpaper (cards inside are tints).
     final glass = Glass.classic && Glass.blur > 0 && !Perf.lite.value;
     final drawer = Material(
-      color: Glass.classic ? Glass.tinted(DS.canvas) : DS.canvas,
+      color: Glass.classic ? Glass.tinted(DS.sheet) : DS.sheet,
       borderRadius: BorderRadius.vertical(top: Radius.circular(DS.rSheet)),
       clipBehavior: Clip.antiAlias,
       // Pull-to-search: the list slides down with the pull and a search pill grows in the gap.
       child: ListenableBuilder(
-        listenable: Listenable.merge([widget.pull, widget.pullOpening]),
+        listenable: Listenable.merge([widget.pull, widget.pullOpening, _away]),
         builder: (context, list) {
           final p = widget.pull.value;
-          final y = pullOffset(p);
           final t = (p / pullToOpen).clamp(0.0, 1.0);
+          // Going for search, the cards move down, shrink a little and fade, all together and
+          // evenly (the same wrappers always, so the list never rebuilds).
+          // Also with lighter effects: it's how search opens (a short fade, only while it moves).
+          final gone = _gone;
+          final y = math.max(pullOffset(p), 96 * gone);
           return Stack(
             children: [
-              Transform.translate(offset: Offset(0, y), child: list),
+              Transform.translate(
+                offset: Offset(0, y),
+                child: IgnorePointer(
+                  ignoring: gone > .5, // on their way out for search: not tappable
+                  child: Opacity(
+                    // Glass sheet (see-through): a real fade. Solid sheet: the veil below does it.
+                    opacity: Glass.classic ? 1 - gone : 1,
+                    child: Transform.scale(scale: 1 - .1 * gone, alignment: Alignment.topCenter, child: list),
+                  ),
+                ),
+              ),
+              // The fade, in step with the shrink (gone just as it ends): the sheet's own colour
+              // drawn over the cards. An opacity layer over the whole list didn't fade on the phone.
+              if (!Glass.classic && gone > 0)
+                Positioned.fill(
+                  child: IgnorePointer(child: ColoredBox(color: DS.sheet.withValues(alpha: gone))),
+                ),
               if (p > 0)
                 Positioned(
                   top: DS.s8 + math.max(0.0, (y - 44) / 2),
@@ -661,7 +672,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
                           valueListenable: widget.expanded,
                           builder: (context, e, _) => SizedBox(
                             height: DS.gutter + statusBar * e,
-                            child: ColoredBox(color: DS.canvas),
+                            child: ColoredBox(color: DS.sheet),
                           ),
                         ),
                       ),
@@ -1240,6 +1251,7 @@ Widget searchResults({
   required ValueChanged<AppEntry> onLongPress,
   required void Function(String query, {bool play}) onWebSearch,
   required void Function(Future<void> Function() action) onRun,
+  ValueChanged<String>? onFill,
 }) {
   final q = query.trim();
   final sources = prefs.searchIn;
@@ -1266,6 +1278,7 @@ Widget searchResults({
     onLongPress: onLongPress,
     onWebSearch: onWebSearch,
     onRun: onRun,
+    onFill: onFill,
   );
 }
 
@@ -1289,6 +1302,7 @@ class _SearchResults extends StatelessWidget {
     required this.onLongPress,
     required this.onWebSearch,
     required this.onRun,
+    this.onFill,
   });
   final String query;
   final List<AppEntry> apps;
@@ -1301,6 +1315,7 @@ class _SearchResults extends StatelessWidget {
   final ValueChanged<AppEntry> onTap, onLongPress;
   final void Function(String query, {bool play}) onWebSearch;
   final void Function(Future<void> Function() action) onRun;
+  final ValueChanged<String>? onFill; // put a suggestion in the bar to keep typing
 
   String _where(AppEntry a) => '${a.work ? 'Work · ' : ''}${prefs.folderName(folderFor(a, prefs.folderOverrides))}';
 
@@ -1436,6 +1451,19 @@ class _SearchResults extends StatelessWidget {
           gap: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
           onOpen: () => prefs.addSearch(query), // a poster opened: the search was used
         ),
+      // Google's suggestions for what's typed (with Search Google on): tap to search one in
+      // Google, the arrow to put it in the bar. Shows nothing until it has some.
+      if (web)
+        GoogleSuggestions(
+          key: const ValueKey('suggest'),
+          query: query,
+          builder: (context, list) => Padding(
+            padding: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
+            child: _rowsCard(google ? 'Google' : 'Suggestions', [
+              for (final s in list) _SuggestRow(text: s, onTap: () => onWebSearch(s), onFill: onFill == null ? null : () => onFill!(s)),
+            ]),
+          ),
+        ),
       // The web, like the Pixel search bar: hands the query to Google / the Play Store.
       if (web || play)
         OneCard(
@@ -1457,8 +1485,54 @@ class _SearchResults extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (i, w) in ordered.indexed) ...[if (i > 0 && w.child is! OneStreamSearchRow) const SizedBox(height: DS.stack), w],
+        for (final (i, w) in ordered.indexed) ...[
+          if (i > 0 && w.child is! OneStreamSearchRow && w.child is! GoogleSuggestions) const SizedBox(height: DS.stack),
+          w,
+        ],
       ],
+    );
+  }
+}
+
+/// One Google suggestion: tap to search it in Google; the arrow puts it in the bar.
+class _SuggestRow extends StatelessWidget {
+  const _SuggestRow({required this.text, required this.onTap, this.onFill});
+  final String text;
+  final VoidCallback onTap;
+  final VoidCallback? onFill;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(left: DS.s16, right: DS.s4),
+        child: Row(
+          children: [
+            Icon(Icons.search_rounded, size: 22, color: DS.inkFaint),
+            const SizedBox(width: DS.s16),
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500),
+              ),
+            ),
+            if (onFill != null)
+              IconButton(
+                tooltip: 'Fill in “$text”',
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  onFill!();
+                },
+                icon: Icon(Icons.north_west_rounded, size: 18, color: DS.inkFaint),
+              )
+            else
+              const SizedBox(height: 48, width: DS.s12),
+          ],
+        ),
+      ),
     );
   }
 }

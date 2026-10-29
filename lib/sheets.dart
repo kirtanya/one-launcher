@@ -579,10 +579,13 @@ Future<Object?> showCustomiseTop(BuildContext context, {required Prefs prefs, bo
                 () => _showClockStyle(ctx, prefs: prefs),
               ),
             ]),
-            label('Size & spacing'),
-            _SplitSlider(prefs: prefs),
-            _PaddingSlider(prefs: prefs),
             _Group('Around it', [
+              _NavRow(
+                Icons.dashboard_outlined,
+                'Size & spacing',
+                'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
+                () => _showLayoutSheet(ctx, prefs: prefs),
+              ),
               _NavRow(
                 Icons.wallpaper_rounded,
                 'Wallpaper',
@@ -1527,27 +1530,434 @@ class _SwatchPainter extends CustomPainter {
 /// Height of the app drawer at rest: Settings sheets match it, so the top widgets stay in view.
 double drawerHeight(BuildContext context, Prefs prefs) => MediaQuery.sizeOf(context).height * (1 - prefs.topShare);
 
-/// One row of Settings: shown in its section, and found by the settings search.
+/// One setting: where it lives (category, group on that page) and how it's set — a page to open,
+/// a switch ([value]), a choice ([choices]) or an action ([action]). Rows say what's set now.
 class _Setting {
-  const _Setting(this.section, this.icon, this.title, this.subtitle, {this.keywords = '', this.open, this.value, this.onChanged, this.external = false});
-  final String section, title, subtitle, keywords;
+  const _Setting(
+    this.category,
+    this.group,
+    this.icon,
+    this.title,
+    this.subtitle, {
+    this.keywords = '',
+    this.open,
+    this.value,
+    this.onChanged,
+    this.choices,
+    this.choice,
+    this.onChoice,
+    this.action,
+    this.external = false,
+  });
+  final _Category category;
+  final String group, title, subtitle, keywords;
   final IconData icon;
   final void Function(BuildContext ctx)? open; // opens its page (or a system screen)
   final bool? value; // a switch row
   final ValueChanged<bool>? onChanged;
+  final List<(String, String)>? choices; // a choice row: (id, label)
+  final String? choice;
+  final ValueChanged<String>? onChoice;
+  final void Function(BuildContext ctx)? action; // a one-off action (asks first when it removes things)
   final bool external;
 
-  bool matches(String q) => matchesQuery(q, [title, subtitle, keywords, section]);
+  bool matches(String q) => matchesQuery(q, [title, subtitle, keywords, group, category.name]);
 
-  Widget row(BuildContext ctx) =>
-      value != null ? _SwitchRow(icon, title, subtitle, value!, onChanged!) : _NavRow(icon, title, subtitle, () => open!(ctx), external: external);
+  Widget row(BuildContext ctx) {
+    if (choices != null) return _ChoiceRow(icon, title, subtitle, choices!, choice!, onChoice!);
+    if (value != null) return _SwitchRow(icon, title, subtitle, value!, onChanged!);
+    if (action != null) return _NavRow(icon, title, subtitle, () => action!(ctx), chevron: false);
+    return _NavRow(icon, title, subtitle, () => open!(ctx), external: external);
+  }
 }
 
-/// Settings: one sheet (as tall as the app drawer, so the home stays in view above) whose
-/// pages slide in and out — tap a row for its page, back to return. A search box finds any
-/// setting. Rows say what's set right now.
+/// Where search looks (Settings → Search → Search in).
+List<(String, IconData, String, String)> get _searchSources => [
+  ('apps', Icons.apps_rounded, 'Apps', 'Everything installed, work apps too'),
+  ('shortcuts', Icons.bolt_rounded, 'App shortcuts', 'Actions apps offer, like Scan QR or New message'),
+  ('settings', Icons.settings_rounded, 'Phone settings', 'Wi-Fi, Bluetooth, Battery, Display…'),
+  ('google', Icons.travel_explore_rounded, 'Google', 'Search the web, with Google’s suggestions as you type'),
+  ('play', Icons.shop_outlined, 'Play Store', 'Find new apps'),
+  // Only when One Stream is installed (and answers us).
+  if (OneStream.instance.available.value) ('onestream', Icons.movie_outlined, 'Movies & shows', 'From One Stream, as you type'),
+];
+
+/// Settings: a search box over six categories (cards, two to a row). Each category is one page
+/// with its settings in groups — switches and choices right there, a page only for editors
+/// (with a live preview) and long lists. Every setting has one home; other places link to it.
+/// The search finds any setting, under its category.
 Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, required List<AppEntry> apps, required OneTheme theme}) {
   var query = '';
+
+  /// Every setting, with what's set now (built afresh as prefs change).
+  List<_Setting> settingsNow() {
+    final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
+    final source = const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours';
+    final style = OneTheme.styles[prefs.themeStyle]?.$1 ?? 'Tonal';
+    final cards = const {'light': 'light cards', 'dark': 'dark cards', 'auto': 'auto cards'}[prefs.cardStyle] ?? 'light cards';
+    final top = prefs.topPages.map((id) => topWidgetFor(id, prefs.widgetLabels).name).join(', ');
+    final dim = (prefs.wallpaperDim * 100).round();
+    final chips = prefs.quickChips.length;
+    final preset = clockPresets.where((p) => isClockPreset(p, prefs)).firstOrNull?.$1 ?? 'Custom';
+    final tiles = prefs.homeView == 'tiles';
+    final tv = prefs.tvHost != null;
+    const look = _Category.look, home = _Category.home, appsCat = _Category.apps, search = _Category.search, remote = _Category.tv, launcher = _Category.launcher;
+    return <_Setting>[
+      // ---- Look: colour, wallpaper, motion ----
+      _Setting(
+        look,
+        'Theme',
+        Icons.palette_outlined,
+        'Colours & style',
+        '$source · $style · $cards',
+        keywords: 'theme material you dark light cards accent themed icons',
+        open: (c) => showColoursSheet(c, prefs: prefs, theme: theme),
+      ),
+      _Setting(
+        look,
+        'Wallpaper',
+        Icons.wallpaper_rounded,
+        'Wallpaper',
+        '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · ${dim == 0 ? 'dim off' : 'dim $dim%'}',
+        keywords: 'background photo dim blur zoom',
+        open: (c) => _showWallpaperSheet(c, prefs: prefs),
+      ),
+      _Setting(
+        look,
+        'Motion',
+        Icons.speed_rounded,
+        'Lighter effects',
+        switch (prefs.effects) {
+          'lite' => 'Fewer animations and blurs: smoothest on any phone',
+          'full' => 'Every animation and blur',
+          _ => Perf.autoSlow ? 'Automatic · on for this phone' : 'Automatic · on only if this phone is slow',
+        },
+        keywords: 'performance smooth animations battery blur',
+        choices: const [('auto', 'Automatic'), ('lite', 'On'), ('full', 'Off')],
+        choice: prefs.effects,
+        onChoice: prefs.setEffects,
+      ),
+
+      // ---- Home screen: its view, what's on top, the side panel ----
+      _Setting(
+        home,
+        'View',
+        Icons.space_dashboard_outlined,
+        'Home view',
+        switch (prefs.homeView) {
+          'tiles' => 'Tiles · Start + all apps A–Z',
+          'third' => 'New view · being designed',
+          _ => 'Classic · clock on top, apps below',
+        },
+        keywords: 'tiles lumia windows start grid classic layout view face glass motion interactions',
+        open: (c) {
+          // A full-screen editor with your home screen live in the middle.
+          SheetHost.close(c);
+          showHomeEditor(context, prefs: prefs, theme: theme);
+        },
+      ),
+      _Setting(
+        home,
+        'Top of home',
+        Icons.view_carousel_outlined,
+        'Top widgets',
+        top.isEmpty ? 'None' : top,
+        keywords: 'pages widgets clock screen time battery calendar now playing',
+        open: (c) => showCustomiseTop(c, prefs: prefs),
+      ),
+      _Setting(
+        home,
+        'Top of home',
+        Icons.text_fields_rounded,
+        'Clock style',
+        tiles ? '$preset · Classic home’s clock (Start’s is in Home view)' : preset,
+        keywords: 'font weight width slant roundness rounded outline',
+        open: (c) => _showClockStyle(c, prefs: prefs),
+      ),
+      _Setting(
+        home,
+        'Top of home',
+        Icons.bolt_rounded,
+        'Quick actions',
+        chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
+        keywords: 'chips shortcuts pills look',
+        open: (c) => showCustomiseChips(c, prefs: prefs),
+      ),
+      _Setting(
+        home,
+        'Top of home',
+        Icons.dashboard_outlined,
+        'Size & spacing',
+        'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
+        keywords: 'size split padding spacing layout',
+        open: (c) => _showLayoutSheet(c, prefs: prefs),
+      ),
+      _Setting(
+        home,
+        'Side panel',
+        Icons.view_sidebar_outlined,
+        'Today panel',
+        tiles
+            ? '${prefs.todayLayout == 'list' ? 'List' : 'Tiles'} · swipe right from Start'
+            : (prefs.classicToday ? '${prefs.todayLayout == 'list' ? 'List' : 'Cards'} · swipe right on home' : 'Off'),
+        keywords: 'today side panel left swipe widgets your day week notes calendar music',
+        open: (c) => _showTodaySettings(c, prefs: prefs),
+      ),
+
+      // ---- Apps: folders, pins, hidden ----
+      _Setting(
+        appsCat,
+        'Folders',
+        Icons.unfold_more_rounded,
+        'Open folders as you scroll',
+        'The folder that stops in the middle opens',
+        keywords: 'folders auto',
+        value: prefs.autoOpenFolders,
+        onChanged: prefs.setAutoOpenFolders,
+      ),
+      _Setting(
+        appsCat,
+        'Folders',
+        Icons.new_releases_outlined,
+        'Recently installed',
+        prefs.recentInstalls ? 'Folder on · last ${recentPeriodName(prefs.recentDays)}' : 'Folder hidden',
+        keywords: 'new apps installed folder dot week',
+        open: (c) => _showRecentSettings(c, prefs: prefs),
+      ),
+      _Setting(
+        appsCat,
+        'Pinned & most used',
+        Icons.push_pin_outlined,
+        'Unpin all',
+        prefs.favourites.isEmpty ? 'Nothing pinned' : '${prefs.favourites.length} pinned',
+        keywords: 'pins favourites green card',
+        action: (c) async {
+          if (prefs.favourites.isEmpty) return;
+          if (!await confirmReset(c, title: 'Unpin all apps?', body: 'The green card fills with your most used apps instead.', action: 'Unpin')) return;
+          HapticFeedback.mediumImpact();
+          prefs.unpinAll();
+        },
+      ),
+      _Setting(
+        appsCat,
+        'Pinned & most used',
+        Icons.history_toggle_off_rounded,
+        'Clear most-used history',
+        'Start learning what you open from scratch',
+        keywords: 'launch counts reset most used',
+        action: (c) async {
+          if (!await confirmReset(c, title: 'Clear most-used history?', body: 'The green card relearns your most used apps as you open them.', action: 'Clear')) return;
+          HapticFeedback.mediumImpact();
+          prefs.clearLaunches();
+        },
+      ),
+      _Setting(
+        appsCat,
+        'Hidden',
+        Icons.visibility_off_outlined,
+        'Hidden apps',
+        hidden == 0 ? 'None · long-press an app to hide it' : '$hidden hidden',
+        keywords: 'hide',
+        open: (c) => _showHiddenApps(c, prefs: prefs, apps: apps),
+      ),
+
+      // ---- Search: the bar, where it looks, history ----
+      _Setting(
+        search,
+        'Search bar',
+        Icons.vertical_align_bottom_rounded,
+        'Search bar',
+        prefs.searchPosition == 'top' ? 'Above your pinned apps, next to the settings button' : 'Floats under your thumb, in the bottom bar',
+        keywords: 'position top bottom dock',
+        choices: const [('bottom', 'At the bottom'), ('top', 'Top of the app drawer')],
+        choice: prefs.searchPosition,
+        onChoice: prefs.setSearchPosition,
+      ),
+      _Setting(
+        search,
+        'Search bar',
+        Icons.swipe_down_alt_rounded,
+        'Pull down to search',
+        'Drag the app drawer down at its top',
+        keywords: 'gesture swipe',
+        value: prefs.pullToSearch,
+        onChanged: prefs.setPullToSearch,
+      ),
+      _Setting(
+        search,
+        'Search bar',
+        Icons.bolt_rounded,
+        'Open the only match',
+        'When search finds just one app',
+        keywords: 'auto launch',
+        value: prefs.autoOpenSingleMatch,
+        onChanged: prefs.setAutoOpenSingleMatch,
+      ),
+      for (final (id, icon, title, sub) in _searchSources)
+        _Setting(
+          search,
+          'Search in',
+          icon,
+          title,
+          sub,
+          keywords: 'search sources results',
+          value: prefs.searchIn.contains(id),
+          onChanged: (v) => prefs.setSearchIn(id, v),
+        ),
+      _Setting(
+        search,
+        'History',
+        Icons.history_rounded,
+        'Save search history',
+        'Recent searches show as pills above the bar',
+        keywords: 'recent searches',
+        value: prefs.saveSearchHistory,
+        onChanged: (v) async {
+          // Off: asks first, since the saved searches go too.
+          if (!v && !await confirmReset(context, title: 'Stop saving searches?', body: 'Your recent searches are cleared too.', action: 'Turn off')) return;
+          prefs.setSaveSearchHistory(v);
+        },
+      ),
+      _Setting(
+        search,
+        'History',
+        Icons.delete_sweep_outlined,
+        'Clear search history',
+        prefs.searchHistory.isEmpty ? 'Nothing saved' : '${prefs.searchHistory.length} recent ${prefs.searchHistory.length == 1 ? 'search' : 'searches'}',
+        keywords: 'recent searches remove',
+        action: (c) async {
+          if (prefs.searchHistory.isEmpty) return;
+          if (!await confirmReset(c, title: 'Clear search history?', body: 'Your recent searches are removed from this phone.', action: 'Clear')) return;
+          HapticFeedback.mediumImpact();
+          prefs.clearSearchHistory();
+        },
+      ),
+
+      // ---- TV remote: the tab, the TV, the remote itself ----
+      _Setting(
+        remote,
+        'Bottom bar',
+        Icons.settings_remote_rounded,
+        'Remote tab',
+        prefs.remoteButton ? 'In the bottom bar, between Search and Settings' : 'Hidden',
+        keywords: 'tv television google tv control nav',
+        value: prefs.remoteButton,
+        onChanged: prefs.setRemoteButton,
+      ),
+      _Setting(
+        remote,
+        'Your TV',
+        Icons.tv_rounded,
+        tv ? prefs.tvName : 'Set up a TV',
+        tv ? '${prefs.tvHost} · forget or pair another' : 'Pair once with the code on your TV',
+        keywords: 'your tv pair forget television',
+        open: (c) => _showTvSettings(c, prefs: prefs, home: context),
+      ),
+      _Setting(
+        remote,
+        'Your TV',
+        Icons.power_settings_new_rounded,
+        'Turn on from phone',
+        prefs.tvMac == null ? 'Off · needs the TV’s network address' : 'On · wakes the TV over Wi-Fi',
+        keywords: 'wake on lan power mac',
+        open: (c) => showWakeSetup(c, prefs: prefs),
+      ),
+      _Setting(
+        remote,
+        'Your TV',
+        Icons.notifications_none_rounded,
+        'In notifications',
+        prefs.remoteNotification ? 'Play / pause and volume while the TV is connected' : 'Off',
+        keywords: 'tv remote notification shade play pause volume quick settings tile',
+        value: prefs.remoteNotification,
+        onChanged: prefs.setRemoteNotification,
+      ),
+      _Setting(
+        remote,
+        'The remote',
+        Icons.view_agenda_outlined,
+        'Arrange remote',
+        '${prefs.remoteGroups.where((g) => !prefs.remoteHidden.contains(g)).length} groups shown',
+        keywords: 'order groups hide dpad volume brightness',
+        open: (c) => showRemoteArrange(c, prefs: prefs),
+      ),
+      _Setting(
+        remote,
+        'The remote',
+        Icons.apps_rounded,
+        'Quick apps',
+        prefs.remoteApps.isEmpty ? 'None' : '${prefs.remoteApps.length} apps to open on the TV',
+        keywords: 'netflix youtube launch tv apps',
+        open: (c) => showRemoteAppsEditor(c, prefs: prefs),
+      ),
+
+      // ---- Launcher ----
+      _Setting(
+        launcher,
+        'This launcher',
+        Icons.home_outlined,
+        'Default home app',
+        'Opens your phone’s settings',
+        keywords: 'launcher default',
+        external: true,
+        open: (c) {
+          SheetHost.close(c);
+          Apps.instance.openHomeSettings();
+        },
+      ),
+      _Setting(
+        launcher,
+        'This launcher',
+        Icons.settings_backup_restore_rounded,
+        'Backup & restore',
+        'Save all settings to a file, or bring them back',
+        keywords: 'export import save',
+        open: (c) => showBackupSheet(c, prefs: prefs),
+      ),
+    ];
+  }
+
+  /// What a category's card says is set (its main values, shortest first).
+  String summaryOf(_Category cat) {
+    final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
+    return switch (cat) {
+      _Category.look => '${const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours'} · '
+          '${prefs.wallpaperPhoto != null ? 'your photo' : 'phone wallpaper'}',
+      _Category.home =>
+        '${const {'tiles': 'Tiles', 'third': 'New view'}[prefs.homeView] ?? 'Classic'} · ${prefs.topPages.length} top ${prefs.topPages.length == 1 ? 'widget' : 'widgets'}',
+      _Category.apps => hidden == 0 ? 'Folders, pins, hidden apps' : '$hidden hidden · folders, pins',
+      _Category.search => '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · ${prefs.searchIn.length} sources',
+      _Category.tv => prefs.tvHost == null ? 'Not set up' : prefs.tvName,
+      _Category.launcher => 'Default home app, backup',
+    };
+  }
+
+  /// A category's page: its settings in their groups, live.
+  void openCategory(BuildContext c, _Category cat) {
+    showOneSheetWith(
+      c,
+      builder: (c) => ListenableBuilder(
+        listenable: prefs,
+        builder: (c, _) {
+          final mine = settingsNow().where((x) => x.category == cat).toList();
+          final groups = <String>{for (final x in mine) x.group}; // in order of first appearance
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
+                child: SheetHeader(title: cat.name, subtitle: cat.about),
+              ),
+              for (final g in groups) _Group(g, [for (final x in mine.where((x) => x.group == g)) x.row(c)]),
+              const SizedBox(height: DS.s16),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   return showOneSheetWith(
     context,
     height: MediaQuery.sizeOf(context).height, // full screen (its pages too)
@@ -1556,189 +1966,8 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       builder: (ctx, setQuery) => ListenableBuilder(
         listenable: prefs,
         builder: (ctx, _) {
-          final hidden = apps.where((a) => prefs.hidden.contains(a.package)).length;
-          final source = const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours';
-          final style = OneTheme.styles[prefs.themeStyle]?.$1 ?? 'Tonal';
-          final cards = const {'light': 'light cards', 'dark': 'dark cards', 'auto': 'auto cards'}[prefs.cardStyle] ?? 'light cards';
-          final top = prefs.topPages.map((id) => topWidgetFor(id, prefs.widgetLabels).name).join(', ');
-          final dim = (prefs.wallpaperDim * 100).round();
-          final chips = prefs.quickChips.length;
-          final preset = clockPresets.where((p) => isClockPreset(p, prefs)).firstOrNull?.$1 ?? 'Custom';
-          final all = <_Setting>[
-            // Look
-            _Setting(
-              'Look',
-              Icons.space_dashboard_outlined,
-              'Home view',
-              prefs.homeView == 'tiles' ? 'Tiles · Start + all apps A–Z' : 'Classic · clock on top, apps below',
-              keywords: 'tiles lumia windows start grid classic layout view face',
-              open: (c) {
-                // A full-screen editor with your home screen live in the middle.
-                SheetHost.close(c);
-                showHomeEditor(context, prefs: prefs, theme: theme);
-              },
-            ),
-            _Setting(
-              'Look',
-              Icons.palette_outlined,
-              'Colours & style',
-              '$source · $style · $cards',
-              keywords: 'theme material you dark light cards accent',
-              open: (c) => showColoursSheet(c, prefs: prefs, theme: theme),
-            ),
-            _Setting(
-              'Look',
-              Icons.wallpaper_rounded,
-              'Wallpaper',
-              '${prefs.wallpaperPhoto != null ? 'Your photo' : 'Phone wallpaper'} · ${dim == 0 ? 'dim off' : 'dim $dim%'}',
-              keywords: 'background photo dim blur zoom',
-              open: (c) => _showWallpaperSheet(c, prefs: prefs),
-            ),
-            _Setting(
-              'Look',
-              Icons.text_fields_rounded,
-              'Clock style',
-              preset,
-              keywords: 'font weight width slant roundness rounded',
-              open: (c) => _showClockStyle(c, prefs: prefs),
-            ),
-            // Home screen
-            _Setting(
-              'Home screen',
-              Icons.view_carousel_outlined,
-              'Top widgets',
-              top.isEmpty ? 'None' : top,
-              keywords: 'pages widgets clock screen time battery calendar now playing',
-              open: (c) => showCustomiseTop(c, prefs: prefs),
-            ),
-            _Setting(
-              'Home screen',
-              Icons.dashboard_outlined,
-              'Layout',
-              'Top ${(prefs.topShare * 100).round()}% · padding ${prefs.topPadding == 0 ? 'none' : '${prefs.topPadding.round()} pt'}',
-              keywords: 'size split padding spacing',
-              open: (c) => _showLayoutSheet(c, prefs: prefs),
-            ),
-            _Setting(
-              'Home screen',
-              Icons.view_sidebar_outlined,
-              'Today panel',
-              prefs.homeView == 'tiles'
-                  ? '${prefs.todayLayout == 'list' ? 'List' : 'Tiles'} · swipe right from Start'
-                  : (prefs.classicToday ? '${prefs.todayLayout == 'list' ? 'List' : 'Cards'} · swipe right on home' : 'Off'),
-              keywords: 'today side panel left swipe widgets your day week notes calendar music',
-              open: (c) => _showTodaySettings(c, prefs: prefs),
-            ),
-            _Setting(
-              'Home screen',
-              Icons.bolt_rounded,
-              'Quick chips',
-              chips == 0 ? 'None' : '$chips ${chips == 1 ? 'chip' : 'chips'} above the apps',
-              keywords: 'actions shortcuts pills look',
-              open: (c) => showCustomiseChips(c, prefs: prefs),
-            ),
-            // Apps & search
-            _Setting(
-              'Apps & search',
-              Icons.search_rounded,
-              'Search',
-              '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · pull down ${prefs.pullToSearch ? 'on' : 'off'}',
-              keywords: 'google play store settings shortcuts pull',
-              open: (c) => _showSearchSettings(c, prefs: prefs),
-            ),
-            _Setting(
-              'Apps & search',
-              Icons.new_releases_outlined,
-              'Recently installed',
-              prefs.recentInstalls ? 'Folder on · last ${recentPeriodName(prefs.recentDays)}' : 'Folder hidden',
-              keywords: 'new apps installed folder dot week',
-              open: (c) => _showRecentSettings(c, prefs: prefs),
-            ),
-            _Setting(
-              'Apps & search',
-              Icons.unfold_more_rounded,
-              'Open folders as you scroll',
-              'The folder that stops in the middle opens',
-              keywords: 'folders auto',
-              value: prefs.autoOpenFolders,
-              onChanged: prefs.setAutoOpenFolders,
-            ),
-            _Setting(
-              'Apps & search',
-              Icons.visibility_off_outlined,
-              'Hidden apps',
-              hidden == 0 ? 'None' : '$hidden hidden',
-              keywords: 'hide',
-              open: (c) => _showHiddenApps(c, prefs: prefs, apps: apps),
-            ),
-            // TV
-            _Setting(
-              'TV remote',
-              Icons.settings_remote_rounded,
-              'Remote tab',
-              prefs.remoteButton ? 'In the bottom bar' : 'Hidden',
-              keywords: 'tv television google tv control',
-              value: prefs.remoteButton,
-              onChanged: prefs.setRemoteButton,
-            ),
-            _Setting(
-              'TV remote',
-              Icons.notifications_none_rounded,
-              'In notifications',
-              prefs.remoteNotification ? 'While the TV is connected' : 'Off',
-              keywords: 'tv remote notification shade play pause volume',
-              value: prefs.remoteNotification,
-              onChanged: prefs.setRemoteNotification,
-            ),
-            _Setting(
-              'TV remote',
-              Icons.tv_rounded,
-              'Your TV',
-              prefs.tvHost == null ? 'Not set up yet' : '${prefs.tvName} · ${prefs.tvHost}',
-              keywords: 'pair forget television',
-              open: (c) => _showTvSettings(c, prefs: prefs, home: context),
-            ),
-            // Launcher
-            _Setting(
-              'Launcher',
-              Icons.speed_rounded,
-              'Lighter effects',
-              switch (prefs.effects) {
-                'lite' => 'On · smoothest on any phone',
-                'full' => 'Off · all animations',
-                _ => Perf.autoSlow ? 'On for this phone (automatic)' : 'Automatic · on if this phone is slow',
-              },
-              keywords: 'performance smooth animations battery',
-              value: Perf.lite.value,
-              onChanged: (v) => prefs.setEffects(v ? 'lite' : 'full'),
-            ),
-            _Setting(
-              'Launcher',
-              Icons.settings_backup_restore_rounded,
-              'Backup & restore',
-              'Save all settings to a file',
-              keywords: 'export import save',
-              open: (c) => showBackupSheet(c, prefs: prefs),
-            ),
-            _Setting(
-              'Launcher',
-              Icons.home_outlined,
-              'Default home app',
-              'Opens your phone’s settings',
-              keywords: 'launcher default',
-              external: true,
-              open: (c) {
-                SheetHost.close(c);
-                Apps.instance.openHomeSettings();
-              },
-            ),
-          ];
           final q = query.trim();
-          final found = q.isEmpty ? const <_Setting>[] : all.where((x) => x.matches(q)).toList();
-          final sections = <String>[];
-          for (final x in all) {
-            if (!sections.contains(x.section)) sections.add(x.section);
-          }
+          final found = q.isEmpty ? const <_Setting>[] : settingsNow().where((x) => x.matches(q)).toList();
           return Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1756,9 +1985,17 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
                     child: Text('No setting matches “$q”', style: DS.rowSub),
                   )
                 else
-                  _Group(null, [for (final x in found) x.row(ctx)]),
+                  // Found settings, working right here, under their categories.
+                  for (final cat in _Category.values)
+                    if (found.any((x) => x.category == cat)) _Group(cat.name, [for (final x in found.where((x) => x.category == cat)) x.row(ctx)]),
               ] else
-                for (final sec in sections) _Group(sec, [for (final x in all.where((x) => x.section == sec)) x.row(ctx)]),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s16, 0),
+                  child: _CategoryGrid(
+                    cards: [for (final cat in _Category.values) (cat, summaryOf(cat))],
+                    onOpen: (cat) => openCategory(ctx, cat),
+                  ),
+                ),
               const SizedBox(height: DS.s16),
             ],
           );
@@ -1766,6 +2003,130 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       ),
     ),
   );
+}
+
+/// The settings' categories (each its own page), in order.
+enum _Category {
+  look('Look', Icons.palette_outlined, 'Colours, wallpaper and motion'),
+  home('Home screen', Icons.home_outlined, 'Its view, what’s on top, the side panel'),
+  apps('Apps', Icons.apps_rounded, 'Folders, pins and hidden apps'),
+  search('Search', Icons.search_rounded, 'The bar, where it looks, your history'),
+  tv('TV remote', Icons.settings_remote_rounded, 'The Remote tab, your TV and the remote'),
+  launcher('Launcher', Icons.tune_rounded, 'Default home app and backup');
+
+  const _Category(this.name, this.icon, this.about);
+  final String name, about;
+  final IconData icon;
+}
+
+/// Settings' home: the categories as cards, two to a row — icon, name, what's set.
+class _CategoryGrid extends StatelessWidget {
+  const _CategoryGrid({required this.cards, required this.onOpen});
+  final List<(_Category, String)> cards;
+  final ValueChanged<_Category> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    const gap = DS.s12;
+    Widget card(_Category cat, String summary) => Material(
+      color: DS.metro ? Colors.transparent : DS.cardMuted,
+      borderRadius: BorderRadius.circular(DS.rMedia),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onOpen(cat);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(DS.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IconDisc(cat.icon),
+              const SizedBox(height: DS.s16),
+              Text(DS.cased(cat.name), maxLines: 1, overflow: TextOverflow.ellipsis, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(summary, maxLines: 2, overflow: TextOverflow.ellipsis, style: DS.rowSub.copyWith(fontSize: 13, height: 1.3)),
+            ],
+          ),
+        ),
+      ),
+    );
+    return Column(
+      children: [
+        for (var i = 0; i < cards.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: gap),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: card(cards[i].$1, cards[i].$2)),
+                const SizedBox(width: gap),
+                Expanded(child: i + 1 < cards.length ? card(cards[i + 1].$1, cards[i + 1].$2) : const SizedBox.shrink()),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// A choice setting: its row, then the options as chips under the title.
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow(this.icon, this.title, this.subtitle, this.choices, this.choice, this.onChoice);
+  final IconData icon;
+  final String title, subtitle;
+  final List<(String, String)> choices;
+  final String choice;
+  final ValueChanged<String> onChoice;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s12, DS.s16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _IconDisc(icon),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: DS.rowSub.copyWith(fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: DS.s12),
+          Padding(
+            padding: const EdgeInsets.only(left: 56),
+            child: Wrap(
+              spacing: DS.s8,
+              runSpacing: DS.s8,
+              children: [
+                for (final (id, label) in choices)
+                  _Chip(
+                    label: label,
+                    selected: choice == id,
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onChoice(id);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Settings → Look → Home view: a full-screen editor (like Pixel's wallpaper & style): your
@@ -1877,30 +2238,37 @@ class _HomeEditorState extends State<_HomeEditor> {
     child: Text(t, style: DS.rowSub.copyWith(fontSize: 13)),
   );
 
+  /// One home view to pick: a full-width card (icon, name, what it is), the chosen one filled.
   Widget _viewCard(String id, IconData icon, String title, String sub) {
     final on = prefs.homeView == id;
-    return Expanded(
-      child: Material(
-        color: on ? DS.hero : DS.cardMuted,
-        borderRadius: BorderRadius.circular(DS.rMedia),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            prefs.setHomeView(id);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(DS.s16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, size: 32, color: on ? DS.heroInk : DS.ink),
-                const SizedBox(height: DS.s12),
-                Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
-                const SizedBox(height: 2),
-                Text(sub, style: DS.rowSub.copyWith(fontSize: 12, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
-              ],
-            ),
+    return Material(
+      color: on ? DS.hero : DS.cardMuted,
+      borderRadius: BorderRadius.circular(DS.rMedia),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          prefs.setHomeView(id);
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(DS.s16, DS.s16, DS.s12, DS.s16),
+          child: Row(
+            children: [
+              Icon(icon, size: 28, color: on ? DS.heroInk : DS.ink),
+              const SizedBox(width: DS.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
+                    const SizedBox(height: 2),
+                    Text(sub, style: DS.rowSub.copyWith(fontSize: 13, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: DS.s8),
+              Icon(on ? Icons.check_circle_rounded : Icons.circle_outlined, size: 22, color: on ? DS.heroInk : DS.inkFaint),
+            ],
           ),
         ),
       ),
@@ -1939,30 +2307,21 @@ class _HomeEditorState extends State<_HomeEditor> {
 
   List<Widget> _section(BuildContext context) => switch (_tab) {
     'view' => [
+      // The views, one above the other (three don't fit side by side).
       Padding(
         padding: const EdgeInsets.fromLTRB(DS.s16, DS.s8, DS.s16, 0),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _viewCard('classic', Icons.view_agenda_outlined, 'Classic', 'Clock on top, app drawer with folders below'),
-              const SizedBox(width: DS.s12),
-              _viewCard('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _viewCard('classic', Icons.view_agenda_outlined, 'Classic', 'Clock on top, app drawer with folders below'),
+            const SizedBox(height: DS.s8),
+            _viewCard('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
+            const SizedBox(height: DS.s8),
+            _viewCard('third', Icons.auto_awesome_outlined, 'New view', 'Being designed'),
+          ],
         ),
       ),
-      _Group(null, [
-        _SwitchRow(
-          Icons.format_color_fill_rounded,
-          'Themed icons',
-          'One-colour icons in your theme’s colours, like Pixel',
-          prefs.themedIcons,
-          prefs.setThemedIcons,
-        ),
-        // Classic: the today panel left of home (Tiles always has its today page).
-        if (!_tiles) _SwitchRow(Icons.view_sidebar_outlined, 'Today panel', 'Your widgets · swipe right on home', prefs.classicToday, prefs.setClassicToday),
-      ]),
+      // Themed icons live in Colours & style, the today panel's switch in Today panel.
     ],
     'layout' => [
       _label('Columns'),
@@ -2292,7 +2651,7 @@ class _HomePreview extends StatelessWidget {
   }
 }
 
-/// Settings → Your TV (page): remote button on/off, the paired TV, forget it, open the remote.
+/// Settings → TV remote → Your TV (page): the paired TV (open the remote), forget it, or set one up.
 Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, required BuildContext home}) => showOneSheetWith(
   context,
   height: drawerHeight(context, prefs),
@@ -2304,19 +2663,9 @@ Future<Object?> _showTvSettings(BuildContext context, {required Prefs prefs, req
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, 0),
-          child: SheetHeader(title: 'TV remote', subtitle: 'Control your Google TV from the dock'),
+          child: SheetHeader(title: 'Your TV', subtitle: 'The TV this phone controls'),
         ),
         _Group(null, [
-          _SwitchRow(Icons.settings_remote_rounded, 'Remote tab', 'In the bottom bar, between Search and Settings', prefs.remoteButton, prefs.setRemoteButton),
-          _SwitchRow(
-            Icons.notifications_none_rounded,
-            'In notifications',
-            'Play / pause and volume while the TV is connected',
-            prefs.remoteNotification,
-            prefs.setRemoteNotification,
-          ),
-        ]),
-        _Group('Your TV', [
           if (prefs.tvHost == null)
             _NavRow(Icons.add_link_rounded, 'Set up a TV', 'Pair once with the code on your TV', () {
               SheetHost.close(ctx);
@@ -2607,80 +2956,6 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
   ),
 );
 
-/// Settings → Search (2nd level): where the bar sits, pull-down gesture, open the only match.
-Future<Object?> _showSearchSettings(BuildContext context, {required Prefs prefs}) => showEditor(
-  context,
-  title: 'Search',
-  prefs: prefs,
-  view: 'classic',
-  builder: (ctx) => ListenableBuilder(
-    listenable: prefs,
-    builder: (ctx, _) => Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s4),
-          child: SheetHeader(title: 'Search', subtitle: 'Find apps, or search the web'),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s16, DS.s24, DS.s8),
-          child: Text('Search bar', style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: DS.s24),
-          child: Wrap(
-            spacing: DS.s8,
-            runSpacing: DS.s8,
-            children: [
-              for (final (id, label) in const [('bottom', 'At the bottom'), ('top', 'Top of the app drawer')])
-                _Chip(
-                  label: label,
-                  selected: prefs.searchPosition == id,
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    prefs.setSearchPosition(id);
-                  },
-                ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, 0),
-          child: Text(
-            prefs.searchPosition == 'top'
-                ? 'Sits above your pinned apps, next to the settings button.'
-                : 'Floats under your thumb; shrinks to a circle while you scroll.',
-            style: DS.rowSub.copyWith(fontSize: 13),
-          ),
-        ),
-        _Group(null, [
-          _SwitchRow(Icons.swipe_down_alt_rounded, 'Pull down to search', 'Drag the app drawer down at its top', prefs.pullToSearch, prefs.setPullToSearch),
-          _SwitchRow(Icons.bolt_rounded, 'Open the only match', 'When search finds just one app', prefs.autoOpenSingleMatch, prefs.setAutoOpenSingleMatch),
-          // Off: asks first, since the saved searches go too.
-          _SwitchRow(Icons.history_rounded, 'Save search history', 'Recent searches show when search opens', prefs.saveSearchHistory, (v) async {
-            if (!v && !await confirmReset(ctx, title: 'Stop saving searches?', body: 'Your recent searches are cleared too.', action: 'Turn off')) return;
-            prefs.setSaveSearchHistory(v);
-          }),
-        ]),
-        _Group('Search in', [
-          for (final (id, icon, title, sub) in [
-            ('apps', Icons.apps_rounded, 'Apps', 'Everything installed, work apps too'),
-            ('shortcuts', Icons.bolt_rounded, 'App shortcuts', 'Actions apps offer, like Scan QR or New message'),
-            ('settings', Icons.settings_rounded, 'Phone settings', 'Wi-Fi, Bluetooth, Battery, Display…'),
-            ('google', Icons.travel_explore_rounded, 'Google', 'Search the web for what you type'),
-            ('play', Icons.shop_outlined, 'Play Store', 'Find new apps'),
-            // Only when One Stream is installed (and answers us).
-            if (OneStream.instance.available.value) ('onestream', Icons.movie_outlined, 'Movies & shows', 'From One Stream, as you type'),
-          ])
-            _SwitchRow(icon, title, sub, prefs.searchIn.contains(id), (v) => prefs.setSearchIn(id, v)),
-        ]),
-        const SizedBox(height: DS.s8),
-      ],
-    ),
-  ),
-);
-
 /// Settings → Hidden apps (2nd level).
 Future<Object?> _showHiddenApps(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) => showOneSheetWith(
   context,
@@ -2768,11 +3043,12 @@ class _Group extends StatelessWidget {
 
 /// Icon disc + title + one-line summary of the current value; chevron (or ↗ for system screens).
 class _NavRow extends StatelessWidget {
-  const _NavRow(this.icon, this.title, this.subtitle, this.onTap, {this.external = false});
+  const _NavRow(this.icon, this.title, this.subtitle, this.onTap, {this.external = false, this.chevron = true});
   final IconData icon;
   final String title, subtitle;
   final VoidCallback onTap;
   final bool external;
+  final bool chevron; // false: an action row (no page behind it)
 
   @override
   Widget build(BuildContext context) {
@@ -2796,8 +3072,10 @@ class _NavRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: DS.s8),
-              Icon(external ? Icons.open_in_new_rounded : Icons.chevron_right_rounded, size: external ? 18 : 22, color: DS.inkFaint),
+              if (chevron || external) ...[
+                const SizedBox(width: DS.s8),
+                Icon(external ? Icons.open_in_new_rounded : Icons.chevron_right_rounded, size: external ? 18 : 22, color: DS.inkFaint),
+              ],
             ],
           ),
         ),

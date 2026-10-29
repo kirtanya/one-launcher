@@ -43,6 +43,15 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
   final Prefs prefs;
   CorePalette? _system;
 
+  /// Dark cards whatever the setting, for now (the TV remote's page is always dark).
+  bool get forceDark => _forceDark;
+  bool _forceDark = false;
+  set forceDark(bool on) {
+    if (on == _forceDark) return;
+    _forceDark = on;
+    _apply();
+  }
+
   /// Material You available on this phone (Android 12+)?
   bool get hasSystem => _system != null;
   Color? get systemSeed => _system == null ? null : Color(_system!.primary.get(40));
@@ -147,17 +156,21 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
 
   void _apply() {
     final source = prefs.themeSource == 'system' && !hasSystem ? 'original' : prefs.themeSource;
-    final dark = darkCards;
-    final metro = prefs.homeView == 'tiles';
-    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$metro|${prefs.tileRadius}';
+    final dark = darkCards || _forceDark;
+    final lang = DesignLanguage.of(prefs.homeView);
+    final key = '$source|${prefs.themeSeed}|${prefs.themeStyle}|${systemSeed?.toARGB32()}|$dark|$lang|${prefs.tileRadius}';
     if (key == _key) return;
     _key = key;
     final palette = paletteFor(source, seed: prefs.themeSeed, style: prefs.themeStyle, darkCards: dark);
     // The Tiles view speaks Metro everywhere (docs/DESIGN_LANGUAGES.md): its own palette from
     // the theme's colour, corners from the tile setting.
-    DS.metro = metro;
+    DS.lang = lang;
     DS.metroRadius = prefs.tileRadius;
-    DS.palette = metro ? OnePalette.metro(metroAccent(palette.hero)) : palette;
+    DS.palette = switch (lang) {
+      DesignLanguage.metro => OnePalette.metro(metroAccent(palette.hero)),
+      DesignLanguage.third => OnePalette.third(palette),
+      DesignLanguage.classic => palette,
+    };
     notifyListeners();
   }
 

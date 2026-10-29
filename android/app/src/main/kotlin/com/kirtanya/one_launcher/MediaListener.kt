@@ -9,10 +9,10 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
 /**
- * Exists so Android lets One Launcher see media sessions (Notification access). It never reads
- * notification content: it only counts each app's clearable notifications for the badges on
- * Start tiles (on-device, nothing is stored). On the TV app it also keeps the watch history
- * ([MediaHistory]) while you watch, even when the launcher isn't on screen.
+ * Notification access: lets One Launcher see media sessions, count each app's clearable
+ * notifications for the badges on Start tiles, and feed the launcher's own notification centre
+ * ([NotificationFeed]) — all on the phone, nothing is stored or sent. On the TV app it also keeps
+ * the watch history ([MediaHistory]) while you watch, even when the launcher isn't on screen.
  */
 class MediaListener : NotificationListenerService() {
     companion object {
@@ -20,6 +20,9 @@ class MediaListener : NotificationListenerService() {
 
         /** Called with fresh counts (app id → count) whenever notifications come or go. */
         @Volatile var onCounts: ((Map<String, Int>) -> Unit)? = null
+
+        /** Called (on this service's thread) whenever any notification comes or goes. */
+        @Volatile var onAny: (() -> Unit)? = null
     }
 
     private var history: MediaHistory? = null
@@ -42,8 +45,15 @@ class MediaListener : NotificationListenerService() {
         super.onListenerDisconnected()
     }
 
-    override fun onNotificationPosted(sbn: StatusBarNotification?) = publish()
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) = publish()
+    override fun onNotificationPosted(sbn: StatusBarNotification?) {
+        publish()
+        onAny?.invoke()
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        publish()
+        onAny?.invoke()
+    }
 
     /** Clearable notifications per app ("pkg", or "pkg@serial" for the work profile). */
     fun counts(): Map<String, Int> = try {
