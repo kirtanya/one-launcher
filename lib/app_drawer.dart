@@ -783,7 +783,7 @@ class _HeroCardState extends State<_HeroCard> {
                     delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
                     child: _GridApp(
                       app: a,
-                      labelColor: DS.heroInk,
+                      label: false,
                       pinned: widget.pinned.contains(a.package),
                       onTap: () => widget.onLaunch(a),
                       onLongPress: () => widget.onLongPress(a),
@@ -794,7 +794,7 @@ class _HeroCardState extends State<_HeroCard> {
                   delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
                   child: _GridApp(
                     app: a,
-                    labelColor: DS.heroInk,
+                    label: false,
                     pinned: widget.pinned.contains(a.package),
                     onTap: () => widget.onLaunch(a),
                     onLongPress: () => widget.onLongPress(a),
@@ -809,8 +809,8 @@ class _HeroCardState extends State<_HeroCard> {
     final apps = widget.apps;
     const per = _HeroCard.perPage;
     final pages = [for (var p = 0; p < apps.length && p < 2 * per; p += per) apps.sublist(p, (p + per).clamp(0, apps.length))];
-    // One grid cell: padding 8+8, icon 48, gap 6, one line of 12pt label.
-    final cellH = 16 + DS.appIcon + 6 + MediaQuery.textScalerOf(context).scale(12) * 1.2 + 2;
+    // One grid cell: padding 8+8 and the icon; the hero card shows no app names.
+    const cellH = 16 + DS.appIcon;
     final rows = pages.isEmpty ? 0 : (pages.first.length / 4).ceil(); // height follows page 1
     return OneCard(
       tone: CardTone.hero,
@@ -1206,9 +1206,9 @@ class _FolderBodyState extends State<_FolderBody> {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.labelColor, this.pinned = false});
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.label = true, this.pinned = false});
   final AppEntry app;
-  final Color? labelColor; // defaults to DS.ink (themed, so resolved at build time)
+  final bool label; // the app name under the icon (off in the hero card: icons only)
   final bool pinned;
   final VoidCallback onTap, onLongPress;
 
@@ -1242,14 +1242,16 @@ class _GridApp extends StatelessWidget {
                     : icon!,
                 child: AppIcon(app, size: DS.appIcon),
               ),
-              const SizedBox(height: 6),
-              Text(
-                app.label,
-                style: DS.iconLabel.copyWith(color: labelColor ?? DS.ink),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
+              if (label) ...[
+                const SizedBox(height: 6),
+                Text(
+                  app.label,
+                  style: DS.iconLabel.copyWith(color: DS.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ],
           ),
         ),
