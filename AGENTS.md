@@ -98,6 +98,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `notifications/`: `notification_center.dart` (model, `NotifTier` priority rules, channel),
   `notifications_page.dart` (centre UI; temporary bell tab). Work-profile notifications are
   blocked by the org's policy (`permittedNotificationListeners=[]`); don't try to bypass it.
+- `top/now_page.dart`: the **Now page**, always page 0 of the top carousel (home opens on page 1).
+  Reads the system from notifications (music via `Apps.media` for now); `NowStage` in home hides the
+  wallpaper edge to edge (blurred cover art) and slides with `nowAway`. Future: alarms, events.
 - `quick_chips.dart` (chips row + look), `quick_actions.dart`, `folders.dart`, `search.dart`,
   `system_settings.dart`, `photo_wallpaper.dart`, `one_stream*.dart` (One Stream integration),
   `top/` (top carousel pages, clock fonts), `tiles/` (Tiles/Metro home, today panel, landing).

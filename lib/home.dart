@@ -19,6 +19,7 @@ import 'notifications/notifications_page.dart';
 import 'search_history.dart';
 import 'widgets.dart';
 import 'top/top_carousel.dart';
+import 'top/now_page.dart';
 import 'ui/theme.dart';
 import 'photo_wallpaper.dart';
 import 'sheets.dart';
@@ -767,7 +768,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                       ),
                                       child: RepaintBoundary(
                                         // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
-                                        child: _TopArea(
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            // Page 0 (Now) hides the wallpaper edge to edge.
+                                            const IgnorePointer(child: NowStage()),
+                                            _TopArea(
                                           chipsHeight: QuickChipsRow.heightOf(prefs),
                                           carousel: NotificationListener<ScrollNotification>(
                                             onNotification: _onCarouselScroll, // past its first page → the today panel
@@ -787,6 +793,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                           padding: prefs.topPadding,
                                           onSwipeUp: _expand,
                                           onSwipeDown: Apps.instance.openNotifications,
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ),

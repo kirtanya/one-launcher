@@ -7,10 +7,12 @@ import '../ui/ds.dart';
 import '../ui/motion.dart';
 import '../ui/perf.dart';
 import 'header_fonts.dart';
+import 'now_page.dart';
 import 'pages.dart';
 
 /// The swipeable top half: Clock, Screen time, Battery, Up next — whichever the user
 /// switched on, in their order. Pages snap; neighbours fade and shrink a little as you swipe.
+/// Page 0 is always the Now page (now_page.dart); home opens on page 1.
 class TopCarousel extends StatefulWidget {
   const TopCarousel({super.key, required this.prefs, required this.refresh, required this.onTapClock, required this.onTapDate, this.onBlank});
   final Prefs prefs;
@@ -23,22 +25,34 @@ class TopCarousel extends StatefulWidget {
 }
 
 class _TopCarouselState extends State<TopCarousel> {
-  final _pages = PageController();
-  int _index = 0;
+  final _pages = PageController(initialPage: 1);
+  int _index = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages.addListener(_track);
+  }
+
+  void _track() {
+    if (_pages.position.haveDimensions) nowAway.value = (_pages.page ?? 1).clamp(0.0, 1.0);
+  }
 
   @override
   void dispose() {
+    nowAway.value = 1;
     _pages.dispose();
     super.dispose();
   }
 
-  Widget _page(String id) => id == 'blank' || id.startsWith('widget:') ? _content(id) : _FitMin(child: _content(id));
+  Widget _page(String id) => id == 'now' || id == 'blank' || id.startsWith('widget:') ? _content(id) : _FitMin(child: _content(id));
 
   Widget _content(String id) => switch (id) {
     'screen_time' => ScreenTimePage(refresh: widget.refresh),
     'battery' => BatteryPage(refresh: widget.refresh),
     'up_next' => UpNextPage(refresh: widget.refresh),
     'now_playing' => const NowPlayingPage(),
+    'now' => const NowPage(),
     'tv_remote' => TvRemotePage(prefs: widget.prefs),
     'blank' => const SizedBox.expand(), // only the wallpaper
     _ when id.startsWith('widget:') => AppWidgetPage(widgetId: int.parse(id.substring(7)), label: widget.prefs.widgetLabels[id] ?? 'Widget'),
@@ -47,7 +61,7 @@ class _TopCarouselState extends State<TopCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final ids = widget.prefs.topPages;
+    final ids = ['now', ...widget.prefs.topPages];
     final index = _index.clamp(0, ids.length - 1);
     // A tight top area (small split, big padding, tall quick chips row) gives the pages all of it.
     return LayoutBuilder(
