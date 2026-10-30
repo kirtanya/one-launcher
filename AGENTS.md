@@ -125,6 +125,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - Haptics: Real parts use `TactileFeel`; elsewhere `HapticFeedback.*`.
 - A widget's explicit `style:` / `color:` beats the theme. For stock buttons, pass
   `style: DS.third ? null : …` so Real's theme applies; for surfaces use `RoleSurface`.
+- A phone build without `PinShortcutActivity` (CONFIRM_PIN_SHORTCUT, in `AndroidManifest.xml` +
+  `PinnedShortcuts.kt`) makes Chrome hide "Add to Home screen" / "Install app" while One Launcher is
+  the home app. Never install a build that lacks it.
 - Wide `dart format` reformats other sessions' code: format only your own files.
 - Work laptop: network goes through a corporate proxy; downloads work (Google Fonts CSS API),
   raw.githubusercontent can 502.
