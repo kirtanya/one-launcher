@@ -63,23 +63,48 @@ class _SpotlightState extends State<_Spotlight> {
     _landWhenReady();
   }
 
+  Timer? _landLater;
+
   @override
   void didUpdateWidget(_Spotlight old) {
     super.didUpdateWidget(old);
-    _landWhenReady();
-    // The rows changed under us (an app opened, the catalog refreshed): keep the column in range.
+    // Columns arrive / change as things load: stay on the same column (by name, not position).
+    if (old.rows.isNotEmpty) {
+      final was = old.rows[_col.clamp(0, old.rows.length - 1)].id;
+      final now = _rows.indexWhere((r) => r.id == was);
+      if (now >= 0) _col = now;
+    }
     if (_col >= _rows.length && _rows.isNotEmpty) _col = _rows.length - 1;
+    _landWhenReady();
+    // The focused card went away with the change: focus the column's card again.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_landed) return;
+      final f = FocusManager.instance.primaryFocus;
+      if (f == null || !(_nodes.containsValue(f) || _top.containsValue(f))) _focusCard(_at[_row?.id] ?? 0, animate: false);
+    });
   }
 
-  /// The rows load after the first frame: land on the first card as soon as there is one.
+  /// The rows load after the first frame: land on the first content card as soon as there is one
+  /// (quick actions are ready before the rest; they alone only after a moment).
   void _landWhenReady() {
     if (_landed || _rows.isEmpty) return;
+    if (_rows.every((r) => r.id == 'quick')) {
+      _landLater ??= Timer(const Duration(seconds: 4), () {
+        if (mounted && !_landed) {
+          _landed = true;
+          land();
+        }
+      });
+      return;
+    }
     _landed = true;
+    _landLater?.cancel();
     WidgetsBinding.instance.addPostFrameCallback((_) => land());
   }
 
   @override
   void dispose() {
+    _landLater?.cancel();
     for (final n in [..._nodes.values, ..._top.values]) {
       n.dispose();
     }

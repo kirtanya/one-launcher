@@ -859,6 +859,7 @@ class _TvHomeState extends State<TvHome> {
             () => prefs.setTvQuickActions([...prefs.tvQuickActions]..remove(item.key)),
           ),
           TvAction(Icons.edit_outlined, 'Edit quick actions', _editQuick),
+          _customiseRow(row),
         ],
       );
       return;
@@ -881,6 +882,7 @@ class _TvHomeState extends State<TvHome> {
             }),
           if (item.package.isNotEmpty) TvAction(Icons.apps_rounded, 'Open ${item.appName ?? 'app'}', () => tv.launch(item.package)),
           if (item.package.isNotEmpty) TvAction(Icons.info_outline_rounded, 'App info', () => tv.appInfo(item.package)),
+          _customiseRow(row),
         ],
       );
       return;
@@ -914,6 +916,7 @@ class _TvHomeState extends State<TvHome> {
           TvAction(Icons.bolt_rounded, 'Add to quick actions', () => prefs.setTvQuickActions([...prefs.tvQuickActions, 'a:${a.package}'])),
         TvAction(Icons.visibility_off_outlined, 'Hide', () => prefs.toggleHidden(a.package)),
         TvAction(Icons.info_outline_rounded, 'App info', () => tv.appInfo(a.package)),
+        _customiseRow(row),
         if (!a.system) TvAction(Icons.delete_outline_rounded, 'Uninstall', () => tv.uninstall(a.package), danger: true),
       ],
     );
@@ -1074,22 +1077,33 @@ class _TvHomeState extends State<TvHome> {
         danger: true,
       ),
     ];
+    showTvCustomise(context, prefs: prefs, extras: _customiseExtras());
+  }
+
+  /// Customise's rows that live in the home screen (apps, quick actions, colours…).
+  List<TvAction> _customiseExtras() {
     final hidden = [
       for (final a in _apps)
         if (prefs.hidden.contains(a.package)) a,
     ];
     final mediaOff = tv.media.value?['granted'] == false;
-    showTvCustomise(
-      context,
-      prefs: prefs,
-      extras: [
-        TvAction(Icons.apps_rounded, 'All apps', _allApps),
-        TvAction(Icons.bolt_rounded, 'Edit quick actions', () => _editQuick(back: _customise)),
-        if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', () => _colours(back: _customise)),
-        if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
-        for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
-        TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
-      ],
+    return [
+      TvAction(Icons.apps_rounded, 'All apps', _allApps),
+      TvAction(Icons.bolt_rounded, 'Edit quick actions', () => _editQuick(back: _customise)),
+      if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', () => _colours(back: _customise)),
+      if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
+      for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
+      TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
+    ];
+  }
+
+  /// Hold OK → "Customise …": that row's own settings (its section in Customise).
+  TvAction _customiseRow(TvRow row) {
+    final quick = row.chips;
+    return TvAction(
+      Icons.tune_rounded,
+      quick ? (row.id == 'quick' ? 'Customise quick actions' : 'Customise Resume') : 'Customise “${row.title}”',
+      () => showTvSection(context, prefs: prefs, section: quick ? 'Resume & quick actions' : 'Rows', extras: _customiseExtras()),
     );
   }
 
@@ -1428,7 +1442,7 @@ class _Backdrop extends StatelessWidget {
       ),
     );
     if (it.art != null) {
-      return settle(Image(image: it.art!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true, errorBuilder: (_, _, _) => _wash(it)));
+      return settle(_Wide(image: it.art!, onError: () => _wash(it)));
     }
     if (it.image != null) {
       // Customise → Picture quality: the size asked of the host, and how wide it's kept.
@@ -1436,7 +1450,7 @@ class _Backdrop extends StatelessWidget {
       final ready = TvApps.instance.imageNow(src, width: w);
       return FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(src, width: w),
-        builder: (context, s) => s.data == null ? _wash(it) : settle(Image(image: s.data!, fit: BoxFit.cover, alignment: _focusPoint, gaplessPlayback: true)),
+        builder: (context, s) => s.data == null ? _wash(it) : settle(_Wide(image: s.data!)),
       );
     }
     // Streaming apps: what's popular on them now, one picture after another (their own art until
@@ -1452,7 +1466,7 @@ class _Backdrop extends StatelessWidget {
       Widget wash(MemoryImage img) => settle(
         Opacity(
           opacity: .75,
-          child: Image(image: img, fit: BoxFit.cover, filterQuality: FilterQuality.medium, gaplessPlayback: true),
+          child: _Wide(image: img),
         ),
       );
       final ready = TvApps.instance.backdropNow(it.package);
@@ -1524,7 +1538,13 @@ class _TrendingShowState extends State<_TrendingShow> {
   @override
   void dispose() {
     _timer?.cancel();
-    if (AppTrending.instance.showing.value?.package == widget.package) AppTrending.instance.showing.value = null;
+    // After this frame: the caption listens to it, and the tree is locked while widgets go away.
+    final mine = AppTrending.instance.showing.value;
+    if (mine?.package == widget.package) {
+      scheduleMicrotask(() {
+        if (identical(AppTrending.instance.showing.value, mine)) AppTrending.instance.showing.value = null;
+      });
+    }
     super.dispose();
   }
 
@@ -1543,12 +1563,54 @@ class _TrendingShowState extends State<_TrendingShow> {
                   tween: Tween(begin: widget.still || !widget.drift ? 1.0 : 1.04, end: 1.0), // eases back while it shows
                   duration: every + fade,
                   builder: (context, s, child) => Transform.scale(scale: s, alignment: _Backdrop._focusPoint, child: child),
-                  child: Image(image: img, fit: BoxFit.cover, alignment: _Backdrop._focusPoint, gaplessPlayback: true),
+                  child: _Wide(image: img),
                 ),
               ),
             ),
     );
   }
+}
+
+/// A full-screen backdrop picture: the picture on the left 70% (so the rows and column on the
+/// right don't cut into it), then the same picture flipped, carrying on from its right edge —
+/// one continuous image, the mirrored part sunk under black so it reads as shade, not a copy.
+class _Wide extends StatelessWidget {
+  const _Wide({required this.image, this.onError});
+  final ImageProvider image;
+  final Widget Function()? onError;
+
+  static const share = .7;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final w = c.maxWidth * share;
+      Widget pic() => Image(
+        image: image,
+        fit: BoxFit.cover,
+        alignment: _Backdrop._focusPoint,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: onError == null ? null : (_, _, _) => onError!(),
+      );
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(left: 0, top: 0, bottom: 0, width: w, child: pic()),
+          Positioned(left: w, top: 0, bottom: 0, width: w, child: Transform.flip(flipX: true, child: pic())),
+          // Black rises over the seam into the mirrored part: no edge, just the picture falling away.
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0x00000000), Color(0x00000000), Color(0x8C000000), Color(0xD9000000)],
+                stops: [0, .5, share, 1],
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 // ---- Title block ---------------------------------------------------------------
@@ -1617,7 +1679,7 @@ class _HeroInfo extends StatelessWidget {
                       key: ValueKey(now!.title),
                       padding: const EdgeInsets.only(top: DS.s8),
                       child: Text(
-                        'Popular on ${AppTrending.providers[it.package]!.$2} · ${now.title}',
+                        '${AppTrending.label(it.package)} · ${now.title}',
                         style: TvDS.heroMeta,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1885,9 +1947,10 @@ class _ClockState extends State<_Clock> {
         crossAxisAlignment: CrossAxisAlignment.baseline,
         textBaseline: TextBaseline.alphabetic,
         children: [
-          if (TvLook.on('date')) Text('${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', style: TvDS.date.copyWith(fontSize: 15)),
-          if (TvLook.on('date') && TvLook.on('clock')) const SizedBox(width: DS.s12),
+          // The time first, the date after it.
           if (TvLook.on('clock')) Text(time, style: TvDS.topClock.copyWith(fontSize: 22)),
+          if (TvLook.on('date') && TvLook.on('clock')) const SizedBox(width: DS.s12),
+          if (TvLook.on('date')) Text('${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', style: TvDS.date.copyWith(fontSize: 15)),
         ],
       ),
     );

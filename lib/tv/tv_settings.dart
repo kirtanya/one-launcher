@@ -47,7 +47,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     'Cards & motion',
     Icons.view_carousel_outlined,
     [
-      TvOption('cardScale', 'Card size', [(.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
+      TvOption('cardScale', 'Card size', [(.7, 'Extra small'), (.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
       // Circles keep apps apart from shows and films at a glance.
       TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
       TvOption('focus', 'Focused card', [('glow', 'Outline + glow'), ('outline', 'Outline only')], 'glow'), // never scales
@@ -359,7 +359,7 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
   }
   if (view != 'spotlight') return tvSections;
   const skip = {'rowsAt', 'cardScale', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
-  const names = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions', 'Cards & motion': 'Focus & motion'};
+  const names = _spotlightNames;
   return [
     for (final (name, icon, opts) in tvSections)
       if (opts.any((o) => !skip.contains(o.key)))
@@ -372,6 +372,19 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
           ],
         ),
   ];
+}
+
+const _spotlightNames = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions', 'Cards & motion': 'Focus & motion'};
+
+/// Straight to one Customise section (Hold OK → "Customise …" on a row): [section] is its
+/// Cinematic name ('Rows', 'Resume & quick actions'); the home view's own name and options are
+/// used. Back returns to Customise.
+void showTvSection(BuildContext context, {required Prefs prefs, required String section, required List<TvAction> extras}) {
+  final view = prefs.homeView;
+  final name = view == 'spotlight' ? (_spotlightNames[section] ?? section) : section;
+  final match = tvSectionsFor(view).where((s) => s.$1 == name).firstOrNull;
+  if (match == null) return showTvCustomise(context, prefs: prefs, extras: extras);
+  _section(context, prefs, match.$1, match.$3, extras);
 }
 
 /// Extra rows at the end of Customise → Tiles (Add a tile, Reset Start), set by the home screen.
