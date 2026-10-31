@@ -49,6 +49,21 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+        <!-- One Launcher keyboard: an alphabetical grid made for the remote, with suggestions from
+             what was typed before, One Stream and app names. Off until chosen in Settings → System →
+             Keyboard. Own process: every app's text field binds it, and that must not start (or die
+             with) the launcher's Flutter engine. See keyboard/OneKeyboardService.kt. -->
+        <service
+            android:name=".keyboard.OneKeyboardService"
+            android:label="One Launcher keyboard"
+            android:process=":keyboard"
+            android:exported="true"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod"/>
+            </intent-filter>
+            <meta-data android:name="android.view.im" android:resource="@xml/one_keyboard"/>
+        </service>
         <!-- Read show names (Customise → Remote & behaviour): off until switched on in
              Accessibility settings. See ShowNameService.kt. -->
         <service

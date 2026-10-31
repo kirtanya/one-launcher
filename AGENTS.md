@@ -59,6 +59,13 @@ Flutter Android launcher, two flavours from one codebase:
   opens Google search itself. In-app mic on the TV = phone-as-mic. Gboard's voice typing crashes that
   remote service ("Failed to register audio policy").
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
+  **TV keyboard** (1.47.0, `android/app/src/tv/kotlin/.../keyboard/`): a system keyboard (IME) for every
+  app, chosen by the user in Settings → System → Keyboard. Native Canvas view, own process `:keyboard`
+  (no Flutter engine: every app's text field binds it). `KeyGrid` = alphabetical 6×5 letters + an
+  action column (Delete, Space, Shift, 123/abc, Done/Search), Left/Right wrap. `Suggest` = strip above:
+  typed history (prefs "keyboard", never from password fields) → One Stream continue/watchlist titles +
+  app names → One Stream `/search` (3+ letters, 350 ms debounce). A suggestion replaces the whole field.
+  Netflix / YouTube / Prime draw their own keyboards, so it never shows there.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 
 ## Build · install · test (phone)
