@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   final _pages = <_TabPage>[];
   int _pageSeq = 0;
   double _pageFrom = 1; // the side the next page comes in from (1 = right)
-  static const _navOrder = ['home', 'smart', 'remote', 'search', 'settings'];
+  static const _navOrder = ['settings', 'home', 'smart', 'remote', 'search'];
   bool get _pageOpen => _pages.any((p) => !p.leaving);
 
   /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
@@ -251,11 +251,101 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // The nav's Smart home tab (it took the remote's place; the remote is its first tile).
     onRemote: prefs.remoteButton ? _openSmart : null,
     onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
-    // At the bottom the dock is the nav (Home · Smart home · Search · Settings); in the drawer, just search.
+    // At the bottom the dock is the nav (Home · Smart home · Search; Settings = long-press Home); in the drawer, just search.
     tab: _tab,
     onHome: inline ? null : _navHome,
     pull: _pull, // pull-to-search drives the nav → search morph
     pullFull: pullToOpen,
+  );
+
+  /// Swiping between the nav's places, in the nav's order: Today ← Home ↔ Smart home ↔ Search.
+  /// Settings (long-press Home) counts as Home; the remote as Smart home.
+  static const _swipeOrder = ['today', 'home', 'smart', 'search'];
+  String get _here => _searching
+      ? 'search'
+      : !_pageOpen
+      ? (_onPanel ? 'today' : 'home')
+      : switch (_tab) {
+          'remote' || 'smart' => 'smart',
+          _ => 'home',
+        };
+
+  /// Goes one place along the nav: [step] 1 = the next (finger moved right-to-left), -1 = back.
+  void _swipeNav(int step) {
+    var i = _swipeOrder.indexOf(_here);
+    // From Settings (it sits under Home), back = Home itself.
+    if (_pageOpen && _tab == 'settings' && step < 0) {
+      HapticFeedback.selectionClick();
+      _navHome();
+      return;
+    }
+    while (true) {
+      i += step;
+      if (i < 0 || i >= _swipeOrder.length) return;
+      final to = _swipeOrder[i];
+      if (to == 'smart' && !prefs.remoteButton) continue;
+      if (to == 'today' && !_sidePanel) return;
+      HapticFeedback.selectionClick();
+      switch (to) {
+        case 'today':
+          _openToday();
+        case 'home':
+          _navHome();
+        case 'smart':
+          if (_searching) {
+            _stopSearch();
+            _openTab('smart', _smartPage, from: 1);
+          } else {
+            _openSmart();
+          }
+        case 'search':
+          _startSearch();
+      }
+      return;
+    }
+  }
+
+  /// A tab page following the finger sideways (px); let go past a quarter of the screen (or
+  /// flick) and it carries on to the next place, else springs back.
+  final _dragX = ValueNotifier<double>(0);
+  late final AnimationController _dragBack = AnimationController(vsync: this, duration: Motion.snapDuration)
+    ..addListener(() => _dragX.value = _dragFrom * (1 - Curves.easeOutCubic.transform(_dragBack.value)));
+  double _dragFrom = 0;
+
+  void _onDragUpdate(DragUpdateDetails d) {
+    if (_dragBack.isAnimating) _dragBack.stop();
+    final next = _dragX.value + d.delta.dx;
+    // Nowhere to go that way: it only gives a little.
+    final i = _swipeOrder.indexOf(_here);
+    final canNext = i + 1 < _swipeOrder.length, canBack = _tab == 'settings' || i > 0;
+    _dragX.value = (next < 0 && !canNext) || (next > 0 && !canBack) ? next.sign * math.sqrt(next.abs()) * 3 : next;
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    final w = MediaQuery.sizeOf(context).width;
+    final v = d.primaryVelocity ?? 0, dx = _dragX.value;
+    final go = dx.abs() > w * .22 || (v.abs() > 500 && v.sign == dx.sign && dx.abs() > 12);
+    if (go && _pageOpen) {
+      final step = dx < 0 ? 1 : -1;
+      for (final p in _pages) {
+        if (!p.leaving) p.dx = dx; // carries on from where the finger left it
+      }
+      _dragX.value = 0;
+      _swipeNav(step);
+    } else if (go) {
+      _dragX.value = 0;
+      _swipeNav(dx < 0 ? 1 : -1);
+    } else {
+      _dragFrom = dx;
+      _dragBack.forward(from: 0);
+    }
+  }
+
+  /// The tab pages' backdrop: it stays put and fades in / out while only their content slides.
+  late final AnimationController _backdrop = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+    reverseDuration: const Duration(milliseconds: 340),
   );
 
   /// Pages scrolling under the nav: it shrinks once one has left its top, and grows back there.
@@ -273,14 +363,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       if (n is OverscrollNotification && n.dragDetails != null && n.overscroll > 0) _edgePull += n.overscroll;
       if (n is ScrollEndNotification) {
         final v = n.dragDetails?.primaryVelocity ?? 0;
-        if (!_pageOpen && !_searching && prefs.remoteButton && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _openSmart();
+        if (!_pageOpen && !_searching && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _swipeNav(1);
         _edgePull = 0;
       }
     }
     return false;
   }
 
-  void _openSmart() => _openTab('smart', () => showSmartHome(context, onRemote: () => _openTab('remote', () => showTvRemote(context, prefs: prefs))));
+  Future<void> _smartPage() => showSmartHome(context, onRemote: () => _openTab('remote', () => showTvRemote(context, prefs: prefs)));
+  void _openSmart() => _openTab('smart', _smartPage);
 
   void _openRemote() {
     if (prefs.tvHost == null && !prefs.remoteButton) return;
@@ -299,9 +390,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// With the nav at the bottom it's a page under the nav: the page you're on slides out one way
   /// and fades as the new one slides in from the other, by the tabs' order (Home · Search ·
   /// Remote · Settings).
-  Future<void> _openTab(String tab, Future<void> Function() open) async {
+  Future<void> _openTab(String tab, Future<void> Function() open, {double? from}) async {
     if (_tab == tab && _pageOpen) return;
-    final forward = _navOrder.indexOf(tab) > _navOrder.indexOf(_tab);
+    final forward = from != null ? from > 0 : _navOrder.indexOf(tab) > _navOrder.indexOf(_tab);
     setState(() => _tab = tab);
     SearchDock.shrunk.value = false; // a new page starts at its top
     _closePages(toward: forward ? -1 : 1, replaced: true);
@@ -320,20 +411,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
     page.body = build(() => _closePages(toward: 1)); // closed from inside (back): towards Home
     setState(() => _pages.add(page));
-    page.motion.forward().whenComplete(() {
-      // The page it replaced stayed solid underneath (no wallpaper showing through): gone now.
-      final under = _pages.where((p) => p.replaced).toList();
-      for (final p in under) {
-        p.motion.dispose();
-      }
-      if (mounted && under.isNotEmpty) setState(() => _pages.removeWhere(under.contains));
-    });
+    _backdrop.forward();
+    page.motion.forward();
     return page.done.future;
   }
 
   /// [page] leaves, sliding towards [toward] (-1 left, 1 right) as it fades.
-  /// [replaced]: another tab's page is coming in over it — it stays as it is underneath until
-  /// that one is in, so nothing behind shows through in between.
+  /// [replaced]: another tab's page is coming in (the backdrop stays for it).
   void _dismissPage(_TabPage page, {required double toward, bool replaced = false}) {
     if (page.leaving) return;
     page
@@ -341,10 +425,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       ..side = toward
       ..replaced = replaced;
     if (!page.done.isCompleted) page.done.complete(null);
-    if (replaced) {
-      if (mounted) setState(() {});
-      return;
-    }
     page.motion.reverse().whenComplete(() {
       page.motion.dispose();
       if (mounted) setState(() => _pages.remove(page));
@@ -353,14 +433,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   void _closePages({required double toward, bool replaced = false}) {
-    if (!replaced) {
-      // Leaving the tabs altogether: a page still waiting under an incoming one goes at once.
-      final under = _pages.where((p) => p.replaced).toList();
-      for (final p in under) {
-        p.motion.dispose();
-      }
-      _pages.removeWhere(under.contains);
-    }
+    // Leaving the tabs altogether: the backdrop fades as the content slides out. Another tab's
+    // page coming in: it stays put under both.
+    if (!replaced && _pages.isNotEmpty) _backdrop.reverse();
     for (final p in [..._pages]) {
       _dismissPage(p, toward: toward, replaced: replaced);
     }
@@ -453,6 +528,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _reveal.dispose();
     _query.removeListener(_syncPills);
     _pillsIn.dispose();
+    _backdrop.dispose();
+    _dragBack.dispose();
+    _dragX.dispose();
     _pull.dispose();
     _pullOpening.dispose();
     _query.dispose();
@@ -755,27 +833,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                       ),
                     ),
 
+                    // ---- The Today panel's backdrop: still, fading in as the panel slides over (its look's
+                    // plain / black, else a dim that lets the wallpaper through). ----
+                    if (_sidePanel)
+                      IgnorePointer(
+                        child: AnimatedBuilder(
+                          animation: _panel,
+                          builder: (context, _) {
+                            final page = _panel.hasClients && _panel.position.haveDimensions ? _panel.page ?? 1 : 1.0;
+                            final t = Curves.easeOut.transform((1 - page).clamp(0.0, 1.0));
+                            if (t == 0) return const SizedBox.shrink();
+                            final c = todayBackdrop(prefs);
+                            return ColoredBox(color: c.a > 0 ? c.withValues(alpha: c.a * t) : Colors.black.withValues(alpha: .3 * t));
+                          },
+                        ),
+                      ),
+
                     // ---- Today panel ← home: one pager over the wallpaper (it stays put). No
                     // stretch on the pager itself; the pages keep their own. ----
                     ScrollConfiguration(
                       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
                       child: NotificationListener<ScrollNotification>(
                         onNotification: _onPagesScroll,
-                        // No Today panel: the pager doesn't scroll, so the swipe to Smart home is caught here.
+                        // Swipes between the nav's places wherever the pager doesn't take them: on a tab
+                        // page (it follows the finger), in search, and on home without a Today panel.
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
-                          onHorizontalDragStart: _sidePanel || _pageOpen ? null : (_) => _edgePull = 0,
-                          onHorizontalDragUpdate: _sidePanel || _pageOpen ? null : (d) => _edgePull -= d.delta.dx,
-                          onHorizontalDragEnd: _sidePanel || _pageOpen
-                              ? null
-                              : (d) {
-                                  final v = d.primaryVelocity ?? 0;
-                                  if (!_searching && prefs.remoteButton && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _openSmart();
-                                  _edgePull = 0;
-                                },
+                          onHorizontalDragUpdate: _sidePanel && !_pageOpen && !_searching ? null : _onDragUpdate,
+                          onHorizontalDragEnd: _sidePanel && !_pageOpen && !_searching ? null : _onDragEnd,
                           child: PageView(
                         controller: _panel,
-                        physics: _sidePanel && !_pageOpen ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(), // a tab page keeps its own swipes
+                        physics: _sidePanel && !_pageOpen && !_searching ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(), // a tab page / search: swipes go along the nav
                         onPageChanged: (i) {
                           if (i == 0) {
                             HapticFeedback.selectionClick();
@@ -785,7 +873,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         children: [
                           ScrollConfiguration(
                             behavior: ScrollConfiguration.of(context),
-                            child: _sidePanel ? TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch) : const SizedBox.shrink(),
+                            child: _sidePanel ? TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch, backdrop: false) : const SizedBox.shrink(),
                           ),
                           _KeepAlive(
                             child: ScrollConfiguration(
@@ -937,7 +1025,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                                       child: Padding(
                                                         padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
                                                         child: Container(
-                                                          padding: const EdgeInsets.fromLTRB(DS.s12, DS.s4, DS.s4, DS.s8),
+                                                          padding: const EdgeInsets.symmetric(vertical: DS.s8),
                                                           decoration: ShapeDecoration(
                                                             color: DS.card,
                                                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: DS.hairline)),
@@ -959,12 +1047,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                     ),
 
                                   // ---- Remote / Settings: pages under the nav. ----
+                                  // Their backdrop stays put and fades; only the content slides.
+                                  Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: FadeTransition(
+                                        opacity: CurvedAnimation(parent: _backdrop, curve: Curves.easeOut),
+                                        child: ColoredBox(color: DS.base),
+                                      ),
+                                    ),
+                                  ),
                                   for (final p in _pages)
                                     Positioned.fill(
                                       key: ValueKey(p.id),
                                       child: IgnorePointer(
                                         ignoring: p.leaving,
-                                        child: _TabPageMotion(page: p),
+                                        child: _TabPageMotion(page: p, drag: _dragX),
                                       ),
                                     ),
 
@@ -1007,29 +1104,32 @@ class _TabPage {
   final AnimationController motion; // 0 → 1 coming in; back to 0 leaving
   double side; // where it slides from (coming in) or to (leaving): -1 left, 1 right
   bool leaving = false;
-  bool replaced = false; // leaving under the next tab's page (stays solid until that's in)
+  bool replaced = false; // leaving for the next tab's page
+  double dx = 0; // where a swipe let go of it: it carries on from there
   late final Widget body;
   final done = Completer<Object?>();
 }
 
-/// A tab page coming in or leaving: a short slide from (or to) its side while it dissolves.
+/// A tab page's content coming in or leaving: it slides from (or to) its side while it
+/// dissolves, and follows the finger ([drag]) while swiped. Its backdrop is drawn apart, still.
 class _TabPageMotion extends StatelessWidget {
-  const _TabPageMotion({required this.page});
+  const _TabPageMotion({required this.page, required this.drag});
   final _TabPage page;
+  final ValueListenable<double> drag;
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     return AnimatedBuilder(
-      animation: page.motion,
+      animation: Listenable.merge([page.motion, drag]),
       child: RepaintBoundary(child: page.body),
       builder: (context, child) {
-        if (page.replaced) return child!;
         final v = page.motion.value;
         final t = (page.leaving ? Curves.easeInCubic : Curves.easeOutCubic).transform(v);
+        final dx = page.leaving ? page.dx : drag.value;
         return Opacity(
-          opacity: t,
-          child: Transform.translate(offset: Offset(page.side * w * .18 * (1 - t), 0), child: child),
+          opacity: (t * (1 - (dx.abs() / w) * .7)).clamp(0.0, 1.0),
+          child: Transform.translate(offset: Offset(dx + page.side * w * .32 * (1 - t), 0), child: child),
         );
       },
     );

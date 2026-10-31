@@ -211,7 +211,7 @@ void main() {
     // Settings → Layout: drag the split to 50% → the sheet rests at half the screen.
     final screenH = tester.view.physicalSize.height / tester.view.devicePixelRatio;
     final before = tester.getTopLeft(find.text('WhatsApp').first).dy;
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     // Settings is full screen (its title right under the status bar).
     expect(tester.getTopLeft(find.text('Settings')).dy, lessThan(screenH * .12), reason: 'full screen');

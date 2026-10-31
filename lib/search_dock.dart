@@ -118,13 +118,13 @@ class SearchDock extends StatelessWidget {
           child: onHome != null && !inline
               ? _NavSearch(
                   active: active,
-                  selected: tab == 'remote' ? 'smart' : tab, // the remote lives in Smart home
+                  selected: tab == 'remote' ? 'smart' : (tab == 'settings' ? 'home' : tab), // the remote lives in Smart home; Settings under Home
                   tabs: [
-                    _NavTab('home', Icons.home_rounded, 'Home', onHome!, tooltip: 'Home screen'),
+                    // Settings has no tab: long-press Home.
+                    _NavTab('home', Icons.home_rounded, 'Home', onHome!, onLongPress: onSettings, tooltip: 'Home screen · hold for Settings'),
                     if (onRemote != null)
                       _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),
                     _NavTab('search', Icons.search_rounded, 'Search', onActivate),
-                    _NavTab('settings', Icons.tune_rounded, 'Settings', onSettings, tooltip: 'Launcher settings'),
                   ],
                   controller: controller,
                   focus: focus,

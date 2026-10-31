@@ -96,7 +96,7 @@ void main() {
     expect(view.creationParams, {'id': 7}, reason: 'shows widget 7 on its carousel page');
 
     // Remove it again (Settings → Top widgets).
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Top widgets'));
     await tester.pumpAndSettle();

@@ -39,7 +39,7 @@ void main() {
     // No Material You in tests → falls back to One's original look.
     expect(DS.palette.hero, OnePalette.original.hero);
 
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Colours & style'));
     await tester.pumpAndSettle();

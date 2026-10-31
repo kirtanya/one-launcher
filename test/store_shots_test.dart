@@ -115,7 +115,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Colours: basic purple, vibrant.
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await shot('5_settings');
     await tester.tap(find.text('Colours & style'));

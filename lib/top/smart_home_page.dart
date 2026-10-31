@@ -41,7 +41,7 @@ class _SmartHomePageState extends State<SmartHomePage> {
               alignment: Alignment.topLeft,
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(DS.s12, DS.s4, DS.s4, DS.s8),
+                padding: const EdgeInsets.symmetric(vertical: DS.s8),
                 decoration: ShapeDecoration(
                   color: const Color(0x59000000), // black ~35%: darker glass
                   shape: RoundedRectangleBorder(

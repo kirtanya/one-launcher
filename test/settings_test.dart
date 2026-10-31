@@ -27,7 +27,7 @@ void main() {
 
   testWidgets('settings: pages slide inside one sheet; back returns; search finds any setting', (tester) async {
     await launch(tester);
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     final sheetTop = tester.getTopLeft(find.text('Settings')).dy;
     expect(find.byTooltip('Back'), findsNothing, reason: 'first page: no back arrow');
@@ -62,7 +62,7 @@ void main() {
     expect(find.byTooltip('TV remote'), findsOneWidget, reason: 'shown by default, between search and settings');
     final remote = tester.getCenter(find.byTooltip('TV remote')).dx;
     expect(remote, lessThan(tester.getCenter(find.byTooltip('Launcher settings')).dx));
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Remote tab'));
     await tester.pumpAndSettle();

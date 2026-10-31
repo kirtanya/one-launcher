@@ -186,7 +186,7 @@ class _QuickLightsCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(_tileRadius),
     ),
     child: Padding(
-      padding: const EdgeInsets.all(DS.s16),
+      padding: const EdgeInsets.symmetric(vertical: DS.s12),
       child: QuickLights(
         ink: DS.ink,
         soft: DS.inkMuted,

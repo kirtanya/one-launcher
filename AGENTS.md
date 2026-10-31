@@ -151,9 +151,13 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `home.dart`: Classic/Real home. Top area + app sheet (`DraggableScrollableSheet`), pull-to-search
   (`_pull`, `_reveal`, `_onPull/_onPullEnd`), search state (`_searching`, `_showResults`),
   tab pages under the nav (`_TabPage`, `_presentPage`, `_openTab`, `_navOrder`), status-bar style.
-  Nav order: Home · Smart home · Search · Settings (no Notifications tab). `_onPagesScroll` (around the home pager):
-  vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons unchanged; back at the top / on tab change),
-  and a right-to-left swipe past home's edge opens Smart home (no Today panel: a GestureDetector catches it).
+  Nav order: Home · Smart home · Search (no Settings or Notifications tab: long-press Home opens Settings).
+  `_onPagesScroll` (around the home pager): vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons
+  unchanged; back at the top / on tab change). Horizontal swipes walk `_swipeOrder` (Today ← Home ↔ Smart home ↔
+  Search; Settings counts as Home, the remote as Smart home) via `_swipeNav`: the Today pager takes them on home,
+  elsewhere `_onDragUpdate`/`_onDragEnd` (the open page follows the finger via `_dragX`, rubber-bands at the ends).
+  Backdrops stay still and fade while content slides (like NowStage): `_backdrop` (DS.base under tab pages, whose
+  `_TabPageBody` is transparent) and the Today panel's (`todayBackdrop`, `TodayPanel(backdrop: false)`, follows `_panel.page`).
 - `app_drawer.dart`: the sheet's list: hero card (pinned + most used), folders, search results
   (`_SearchResults`, `searchResults()`), pull veil (fade via a sheet-coloured overlay, not
   Opacity), `_PullPill`.

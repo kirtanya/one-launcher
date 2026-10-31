@@ -36,7 +36,7 @@ void main() {
     // No decorative layers: the landing animation and pop-ins are skipped.
     expect(find.byType(TweenAnimationBuilder<double>), findsNothing, reason: 'no pop-ins');
 
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Lighter effects'));
     await tester.pumpAndSettle();

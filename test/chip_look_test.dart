@@ -29,7 +29,7 @@ void main() {
     // Default: the original dark see-through pill.
     expect(chipMaterial().color, const Color(0xFF141414).withValues(alpha: .4));
 
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Quick chips'));
     await tester.pumpAndSettle();

@@ -268,7 +268,7 @@ void main() {
 
   testWidgets('Classic: Settings → Today panel — off stops the swipe, on again, open from Settings', (tester) async {
     final prefs = await _setUp(tester, {});
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Today panel'));
     await tester.pumpAndSettle();
@@ -292,7 +292,7 @@ void main() {
 
     // On again, and open it straight from Settings.
     await prefs.setClassicToday(true);
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Today panel'));
     await tester.pumpAndSettle();

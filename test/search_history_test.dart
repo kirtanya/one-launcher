@@ -190,7 +190,7 @@ void main() {
 
   testWidgets('Settings → Search → Save search history: off asks, clears and hides the card', (tester) async {
     final prefs = await launch(tester, stored: {'searchHistory': history});
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Search'));
     await tester.tap(find.text('Search'));

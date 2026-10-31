@@ -36,9 +36,16 @@ import 'tiles_home.dart';
 ///  · list: sections with accent headers and accent-square rows.
 /// Edit (✎) to add, remove, resize, recolour and reorder widgets and to change the layout and
 /// background — all in place.
+/// The Today panel's background: plain / black, or none (the wallpaper shows).
+Color todayBackdrop(Prefs prefs) => prefs.todayBg == 'black' ? (!DS.metro ? DS.canvas : Colors.black) : Colors.transparent;
+
 class TodayPanel extends StatefulWidget {
-  const TodayPanel({super.key, required this.prefs, required this.apps, required this.onLaunch});
+  const TodayPanel({super.key, required this.prefs, required this.apps, required this.onLaunch, this.backdrop = true});
   final Prefs prefs;
+
+  /// Paints its own background (Today look → Plain / Black). Off when the host draws it still
+  /// behind the sliding panel and fades it with the swipe ([todayBackdrop]).
+  final bool backdrop;
   final List<AppEntry> apps;
   final ValueChanged<AppEntry> onLaunch;
 
@@ -594,7 +601,7 @@ class _TodayPanelState extends State<TodayPanel> {
           'remote',
         );
       case 'smart':
-        return pad(QuickLights(ink: _white, soft: _soft, full: big, onOpen: () => showSmartHome(context)));
+        return pad(QuickLights(ink: _white, soft: _soft, full: big, inset: 0, onOpen: () => showSmartHome(context)));
       case 'day':
         final radius = _classic ? DS.rMedia : prefs.tileRadius;
         return Padding(
@@ -957,7 +964,7 @@ class _TodayPanelState extends State<TodayPanel> {
         return [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
-            child: QuickLights(ink: _white, soft: _soft, full: t.size == 'l', onOpen: () => showSmartHome(context)),
+            child: QuickLights(ink: _white, soft: _soft, full: t.size == 'l', inset: 0, onOpen: () => showSmartHome(context)),
           ),
         ];
       case 'day':
@@ -1634,7 +1641,7 @@ class _TodayPanelState extends State<TodayPanel> {
             if (!didPop && _editing) setState(() => _editing = false);
           },
           child: ColoredBox(
-            color: prefs.todayBg == 'black' ? (_classic ? DS.canvas : Colors.black) : Colors.transparent,
+            color: widget.backdrop ? todayBackdrop(prefs) : Colors.transparent,
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(), // pull down to search even when it fits
               padding: _classic

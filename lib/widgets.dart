@@ -411,8 +411,9 @@ class _TabPageBodyState extends State<_TabPageBody> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
+      // Transparent: home draws the still backdrop under it, so only the content slides.
       child: Material(
-        color: DS.base,
+        type: MaterialType.transparency,
         child: Stack(
           fit: StackFit.expand,
           children: [

@@ -41,7 +41,7 @@ void main() {
     await tester.pumpWidget(OneLauncher(prefs: prefs));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Phone wallpaper · dim 20%'), findsOneWidget);
     await tester.tap(find.text('Wallpaper'));

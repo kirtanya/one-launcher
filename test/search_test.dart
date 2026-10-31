@@ -228,7 +228,7 @@ void main() {
 
   testWidgets('Settings → Search: position + pull-down switch', (tester) async {
     final prefs = await launch(tester);
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Search'));
     await tester.tap(find.text('Search'));

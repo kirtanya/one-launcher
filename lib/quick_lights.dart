@@ -14,7 +14,13 @@ class QuickLights extends StatefulWidget {
     required this.soft,
     required this.onOpen,
     this.full,
+    this.inset = 16,
   });
+
+  /// Left/right inset of the header, brightness bar and the start/end of the scrolling rows
+  /// (the rows run edge to edge of the host and fade out under its edges). The host card
+  /// should then pad only top and bottom (14–16); pass 0 when the host pads the sides itself.
+  final double inset;
 
   /// Words and icons, and the quieter words (it sits on the wallpaper or a card).
   final Color ink, soft;
@@ -46,11 +52,46 @@ class _QuickLightsState extends State<QuickLights> {
     isSelected: _row == row,
     onPressed: () => setState(() => _row = _row == row ? 0 : row),
     visualDensity: VisualDensity.compact,
-    icon: Icon(icon, color: ink.withValues(alpha: _row == row ? 1 : .7)),
+    padding: EdgeInsets.zero,
+    constraints: const BoxConstraints.tightFor(width: _ctl, height: _ctl),
+    icon: Icon(icon, size: 22, color: ink.withValues(alpha: _row == row ? 1 : .7)),
     style: IconButton.styleFrom(
+      minimumSize: const Size(_ctl, _ctl),
+      fixedSize: const Size(_ctl, _ctl),
+      padding: EdgeInsets.zero,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       backgroundColor: _row == row ? ink.withValues(alpha: .2) : null,
     ),
   );
+
+  /// A horizontally scrolling row that runs edge to edge: [left]/[right] padding lines its
+  /// first/last item up with the header, and it fades under the host's edges.
+  Widget _strip(Key key, List<Widget> children, {double? left, double? right, bool fadeLeft = true}) {
+    final l = left ?? widget.inset, rt = right ?? widget.inset;
+    final list = SizedBox(
+      height: _rowH,
+      child: ListView(
+        key: key,
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.only(left: l, right: rt),
+        children: children,
+      ),
+    );
+    final fl = fadeLeft ? l.clamp(0, 24).toDouble() : 0.0, fr = rt.clamp(0, 24).toDouble();
+    if (fl == 0 && fr == 0) return list;
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (r) {
+        final w = r.width <= 0 ? 1.0 : r.width;
+        return LinearGradient(
+          colors: const [Color(0x00FFFFFF), Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+          stops: [0, fl / w, 1 - fr / w, 1],
+        ).createShader(r);
+      },
+      child: list,
+    );
+  }
+
   DateTime _sent = DateTime(0);
 
   SmartHome get _home => SmartHome.instance;
@@ -94,11 +135,12 @@ class _QuickLightsState extends State<QuickLights> {
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<SmartHomeState>(
     valueListenable: _home.state,
-    builder: (context, s, _) {
+    builder: (context, s, _) => LayoutBuilder(builder: (context, c) {
       final ink = widget.ink, soft = widget.soft;
       final ready = s.status == SmartHomeStatus.ready || s.all.isNotEmpty;
       if (!ready || s.lights.isEmpty) {
         return _Line(
+          inset: widget.inset,
           ink: ink,
           soft: soft,
           title: ready ? 'No lights here' : 'Smart home',
@@ -159,14 +201,17 @@ class _QuickLightsState extends State<QuickLights> {
                 _brightness(live, v, end: true);
               },
             );
+      final wide = c.maxWidth >= _wideW;
+      final wideBoth = wide &&
+          live.any((d) => d.dimmable) &&
+          (canColour || canWhite);
       final swatches = !(canColour || canWhite)
           ? null
-          : SizedBox(
-              height: 40,
-              child: ListView(
-                key: const ValueKey('swatches'),
-                scrollDirection: Axis.horizontal,
-                children: [
+          : _strip(
+                const ValueKey('swatches'),
+                left: wideBoth ? 0 : (widget.inset - 6).clamp(0, 99).toDouble(),
+                fadeLeft: !wideBoth,
+                [
                   if (canWhite)
                     for (final k in _swatchWhites)
                       _Swatch(
@@ -201,17 +246,20 @@ class _QuickLightsState extends State<QuickLights> {
                           _home.setLights(live, 'color', {'h': h, 's': 1.0});
                         },
                       ),
-                ],
-              ),
-            );
+                ]);
 
-      Widget header(bool showModes) => SizedBox(height: _headerH, child: Row(
+      Widget header(bool showModes) => Padding(
+        padding: EdgeInsets.symmetric(horizontal: widget.inset),
+        child: SizedBox(height: _headerH, child: Row(
         children: [
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: widget.onOpen,
-              child: Column(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
@@ -233,11 +281,14 @@ class _QuickLightsState extends State<QuickLights> {
                   ),
                 ],
               ),
+              ),
             ),
           ),
           if (s.homes.length > 1)
             PopupMenuButton<String>(
               tooltip: 'Change home',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: _ctl, height: _ctl),
               icon: Icon(Icons.home_work_outlined, color: ink),
               onSelected: (id) {
                 setState(() => _pick = null);
@@ -258,6 +309,7 @@ class _QuickLightsState extends State<QuickLights> {
             if (slider != null)
               _mode(2, Icons.brightness_6_outlined, 'Brightness', ink),
           ],
+          if (s.homes.length > 1 || showModes) const SizedBox(width: DS.s4),
           _Power(
             ink: ink,
             on: on.isNotEmpty,
@@ -268,16 +320,12 @@ class _QuickLightsState extends State<QuickLights> {
             },
           ),
         ],
-      ));
+      )));
 
-      final chips = SizedBox(
-        height: 40,
-        child: ListView(
-          key: const ValueKey(
-            'chips',
-          ), // compact swaps rows: each keeps its own scroll
-          scrollDirection: Axis.horizontal,
-          children: [
+      // compact swaps rows: each keeps its own scroll (hence the keys)
+      final chips = _strip(
+          const ValueKey('chips'),
+          [
             _Chip(
               ink: ink,
               label: 'All',
@@ -307,19 +355,24 @@ class _QuickLightsState extends State<QuickLights> {
                   selected: _pick == 'room:$r',
                   onTap: () => setState(() => _pick = 'room:$r'),
                 ),
-          ],
-        ),
-      );
+          ]);
 
       final both = slider != null && swatches != null;
-      return LayoutBuilder(
-        builder: (context, c) {
-          final wide = c.maxWidth >= 480;
+      final bar = slider == null
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(
+                left: widget.inset,
+                right: wideBoth ? 0 : widget.inset,
+              ),
+              child: slider,
+            );
+      {
           final extra = both
               ? (wide ? _gap + _rowH : 2 * (_gap + _rowH))
               : (slider != null || swatches != null ? _gap + _rowH : 0.0);
-          final fullH = _headerH + DS.s8 + _rowH + extra;
-          final compactH = _headerH + DS.s4 + _rowH;
+          final fullH = _headerH + _gap + _rowH + extra;
+          final compactH = _headerH + _cgap + _rowH;
           final mode =
               widget.full ??
               (c.maxHeight.isInfinite || c.maxHeight >= fullH
@@ -334,12 +387,15 @@ class _QuickLightsState extends State<QuickLights> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 header(true),
-                const SizedBox(height: DS.s4),
+                const SizedBox(height: _cgap),
                 switch (_row) {
                   1 when swatches != null => swatches,
-                  2 when slider != null => SizedBox(
+                  2 when bar != null => SizedBox(
                     height: _rowH,
-                    child: slider,
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: widget.inset),
+                      child: slider,
+                    ),
                   ),
                   _ => chips,
                 },
@@ -351,19 +407,19 @@ class _QuickLightsState extends State<QuickLights> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               header(false),
-              const SizedBox(height: DS.s8),
+              const SizedBox(height: _gap),
               chips,
               if (both && wide) ...[
                 const SizedBox(height: _gap),
                 Row(
                   children: [
-                    Expanded(flex: 5, child: slider),
+                    Expanded(flex: 5, child: bar!),
                     const SizedBox(width: DS.s12),
                     Expanded(flex: 6, child: swatches),
                   ],
                 ),
               ] else ...[
-                if (slider != null) ...[const SizedBox(height: _gap), slider],
+                if (bar != null) ...[const SizedBox(height: _gap), bar],
                 if (swatches != null) ...[
                   const SizedBox(height: _gap),
                   swatches,
@@ -371,13 +427,12 @@ class _QuickLightsState extends State<QuickLights> {
               ],
             ],
           );
-        },
-      );
-    },
+      }
+    }),
   );
 }
 
-const _headerH = 48.0, _rowH = 40.0, _gap = 4.0;
+const _headerH = 44.0, _rowH = 40.0, _gap = 12.0, _cgap = 8.0, _ctl = 40.0, _wideW = 480.0;
 
 /// Brightness as a 40 px stadium bar: the fill is the level, tinted with the lights' colour;
 /// tap or drag anywhere on it.
@@ -490,12 +545,14 @@ class _Part extends CustomClipper<Rect> {
 
 class _Line extends StatelessWidget {
   const _Line({
+    required this.inset,
     required this.ink,
     required this.soft,
     required this.title,
     required this.sub,
     required this.onTap,
   });
+  final double inset;
   final Color ink, soft;
   final String title, sub;
   final VoidCallback onTap;
@@ -504,7 +561,9 @@ class _Line extends StatelessWidget {
   Widget build(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.opaque,
     onTap: onTap,
-    child: Row(
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: inset),
+      child: Row(
       children: [
         Icon(Icons.lightbulb_outline_rounded, color: ink),
         const SizedBox(width: DS.s12),
@@ -524,7 +583,7 @@ class _Line extends StatelessWidget {
           ),
         ),
       ],
-    ),
+    )),
   );
 }
 
@@ -548,12 +607,12 @@ class _Power extends StatelessWidget {
     child: GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 48,
-        height: 48,
+        width: _ctl,
+        height: _ctl,
         alignment: Alignment.center,
         child: Container(
-          width: 40,
-          height: 40,
+          width: _ctl,
+          height: _ctl,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: on ? ink : Colors.transparent,

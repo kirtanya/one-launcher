@@ -40,7 +40,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Settings → Backup & restore → Save.
-    await tester.tap(find.byTooltip('Launcher settings'));
+    await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Backup & restore')); // last group: may sit below the fold
     await tester.pumpAndSettle();
