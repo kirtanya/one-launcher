@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -1588,39 +1589,63 @@ class _Wide extends StatelessWidget {
   final Widget Function()? onError;
   final double opacity;
 
-  static const share = .7;
+  /// The whole picture at 75% of the screen (top-left, nothing cropped on a 16:9 picture), and
+  /// flipped copies filling the rest: beside it, below it, and both ways in the corner, each
+  /// starting at its edge like a reflection (user's mockup, 2026-10-31).
+  static const share = .75;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
-      final w = c.maxWidth * share;
-      Widget pic() => Image(
-        image: image,
-        fit: BoxFit.cover,
-        alignment: _Backdrop._focusPoint,
-        gaplessPlayback: true,
-        filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
-        opacity: opacity < 1 ? AlwaysStoppedAnimation(opacity) : null,
-        errorBuilder: onError == null ? null : (_, _, _) => onError!(),
-      );
+      final w = c.maxWidth * share, h = c.maxHeight * share;
+      Widget pic({bool x = false, bool y = false}) {
+        final img = Image(
+          image: image,
+          fit: BoxFit.cover,
+          alignment: _Backdrop._focusPoint,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
+          opacity: opacity < 1 ? AlwaysStoppedAnimation(opacity) : null,
+          errorBuilder: onError == null ? null : (_, _, _) => onError!(),
+        );
+        return x || y ? Transform.flip(flipX: x, flipY: y, child: img) : img;
+      }
+
       return Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(left: 0, top: 0, bottom: 0, width: w, child: pic()),
-          Positioned(left: w, top: 0, bottom: 0, width: w, child: Transform.flip(flipX: true, child: pic())),
-          // Black rises over the seam into the mirrored part: no edge, just the picture falling away.
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0x00000000), Color(0x00000000), Color(0x8C000000), Color(0xD9000000)],
-                stops: [0, .5, share, 1],
-              ),
-            ),
-          ),
+          Positioned(left: 0, top: 0, width: w, height: h, child: pic()),
+          Positioned(left: w, top: 0, width: w, height: h, child: pic(x: true)),
+          Positioned(left: 0, top: h, width: w, height: h, child: pic(y: true)),
+          Positioned(left: w, top: h, width: w, height: h, child: pic(x: true, y: true)),
+          CustomPaint(painter: _MirrorShade(w, h)),
         ],
       );
     },
   );
+}
+
+/// Darkens the flipped copies (50%), clear at the picture's edge and full 9% of the screen width
+/// further out, so nothing marks where they begin. Both fades go into one layer before it's
+/// darkened, so the corner (where they meet) is no darker than the strips.
+class _MirrorShade extends CustomPainter {
+  const _MirrorShade(this.w, this.h);
+  final double w, h;
+
+  static const dark = .5, fade = .09;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final all = Offset.zero & size, f = size.width * fade;
+    const ramp = [Color(0x00000000), Color(0xFF000000)];
+    canvas.saveLayer(all, Paint()..color = const Color(0xFF000000).withValues(alpha: dark));
+    canvas.drawRect(Rect.fromLTRB(w, 0, size.width, size.height), Paint()..shader = ui.Gradient.linear(Offset(w, 0), Offset(w + f, 0), ramp));
+    canvas.drawRect(Rect.fromLTRB(0, h, size.width, size.height), Paint()..shader = ui.Gradient.linear(Offset(0, h), Offset(0, h + f), ramp));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MirrorShade old) => old.w != w || old.h != h;
 }
 
 // ---- Title block ---------------------------------------------------------------

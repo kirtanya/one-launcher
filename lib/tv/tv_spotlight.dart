@@ -245,7 +245,8 @@ class _SpotlightState extends State<_Spotlight> {
           // ---- Title block: only to read ----
           Positioned(
             left: TvDS.safe.left,
-            bottom: TvDS.safe.bottom + DS.s48,
+            // The same gap below the last line as from the left (the block ends in a spacer meant for the hints row).
+            bottom: TvDS.safe.left - (TvLook.on('hints') ? 0 : DS.s16),
             width: math.min(TvDS.heroW + 60, c.maxWidth - _colW - TvDS.safe.horizontal - DS.s48),
             child: ExcludeFocus(
               child: _HeroInfo(item: TvLook.on('hero') ? widget.hero : null, chip: null, rowTitle: row?.title),
