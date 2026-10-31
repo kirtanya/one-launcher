@@ -72,7 +72,17 @@ class ShowNameService : AccessibilityService() {
 
     /** Google's search is up: look for the words now and every 250 ms for 15 s (the headline can
      *  appear after its last event — a single look missed the first real press). */
+    private var listening = false
+
     private fun takeVoiceSearch(event: AccessibilityEvent) {
+        // Hands off while Google listens (VoicePlateActivity): the remote's audio is being set up then.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            listening = event.className?.toString()?.contains("VoicePlate") == true
+        }
+        if (listening) {
+            lookUntil = 0L
+            return
+        }
         val running = SystemClock.uptimeMillis() < lookUntil
         lookUntil = SystemClock.uptimeMillis() + 15_000 // a slow results page took ~15 s to show the words
         if (!running) look()
@@ -80,7 +90,7 @@ class ShowNameService : AccessibilityService() {
 
     private fun look() {
         val now = SystemClock.uptimeMillis()
-        if (now > lookUntil || now < googleUntil || !wanted(this)) return
+        if (listening || now > lookUntil || now < googleUntil || !wanted(this)) return
         val root = try { rootInActiveWindow } catch (e: Exception) { null }
         // The results page's headline is what was said (the listening screen has none); when Google
         // jumps straight to one title's page ("dune" → Dune: Prophecy), that title.
