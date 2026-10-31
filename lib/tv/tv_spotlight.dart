@@ -429,7 +429,7 @@ class _SpotlightState extends State<_Spotlight> {
 
 /// Spotlight's shading: a long fall-off from the bottom-left (the title) and from the right (the
 /// column), plus a band under the top bar — the picture stays clear in the upper middle.
-/// The launcher's shading in Spotlight at 70% of its first strength (user's pick, 2026-10-31):
+/// The launcher's shading in Spotlight at 95% of its first strength (user's pick, 2026-10-31):
 /// behind the column, behind the title, behind the clock.
 class _SpotlightScrims extends StatelessWidget {
   const _SpotlightScrims();
@@ -444,7 +444,7 @@ class _SpotlightScrims extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.centerRight,
               end: Alignment.centerLeft,
-              colors: [Color(0xAB000000), Color(0x74000000), Color(0x00000000)],
+              colors: [Color(0xE9000000), Color(0x9E000000), Color(0x00000000)],
               stops: [0, .36, .66],
             ),
           ),
@@ -454,14 +454,14 @@ class _SpotlightScrims extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [Color(0xB3000000), Color(0x86000000), Color(0x00000000)],
+              colors: [Color(0xF2000000), Color(0xB6000000), Color(0x00000000)],
               stops: [0, .3, .62],
             ),
           ),
         ),
         DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x6B000000), Color(0x00000000)], stops: [0, .22]),
+            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x91000000), Color(0x00000000)], stops: [0, .22]),
           ),
         ),
       ],

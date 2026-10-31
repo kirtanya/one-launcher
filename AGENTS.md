@@ -35,8 +35,8 @@ Flutter Android launcher, two flavours from one codebase:
   crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
   48 MB / 80, media updates rebuild the home only when more than the position changed.
   **Backdrop picture** (`_Wide`, Cinematic + Spotlight): the whole picture, its own shape, as big as fits
-  in 75% × 75% (top-left; posters / 4:3 / 21:9 never cropped) + flipped copies tiled out to fill; `_MirrorShade` darkens them to black, clear at the picture's edge and
-  full 2% of the width out; Spotlight's own shading at 70% (one layer, so the corner isn't darker). Mockup the user tuned:
+  in 75% × 75% (top-left; posters / 4:3 / 21:9 never cropped) + flipped copies tiled out to fill; `_MirrorShade` darkens them 35%, clear at the picture's edge and
+  full 7% of the width out; Spotlight's own shading at 95% (one layer, so the corner isn't darker). Mockup the user tuned:
   claude.ai/artifact/SJRv1UZt2X55XkkvCNqEs6.
   `io.flutter.embedding.android.ImpellerBackend=opengles` had no effect on Flutter 3.47.
   **Alexa** ("Alexa, ask One TV to search … / to open …"): skill in `alexa/` (Alexa-hosted; setup
