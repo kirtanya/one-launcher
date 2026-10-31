@@ -26,6 +26,7 @@ import java.util.concurrent.Executors
  * that only have LAUNCHER are listed too (they open fine, just with their icon).
  */
 private const val REQUEST_CLEAR_CACHE = 7101
+private const val REQUEST_LISTEN = 7102
 
 class TvActivity : FlutterActivity() {
     companion object {
@@ -33,6 +34,7 @@ class TvActivity : FlutterActivity() {
     }
 
     private lateinit var channel: MethodChannel
+    private var listening: MethodChannel.Result? = null // Search's mic: waiting for the words
     private val worker = Executors.newSingleThreadExecutor()
     private val images = Executors.newFixedThreadPool(3) // artwork downloads in parallel
     private val net = Executors.newFixedThreadPool(4) // catalog / details requests (artwork keeps its own threads)
@@ -184,6 +186,21 @@ class TvActivity : FlutterActivity() {
                 // Where the shows & films catalog is saved.
                 "filesDir" -> result.success(filesDir.absolutePath)
                 // Google TV's own search: shows films & shows from every streaming app.
+                // Search's mic: the TV's speech recogniser → the words ("" if cancelled), or null
+                // when the TV has none (Search then opens the Assistant instead).
+                "listen" -> {
+                    val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
+                        .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search")
+                    try {
+                        listening?.success("")
+                        listening = result
+                        startActivityForResult(intent, REQUEST_LISTEN)
+                    } catch (e: Exception) {
+                        listening = null
+                        result.success(null)
+                    }
+                }
                 "searchEverywhere" -> {
                     val q = call.argument<String>("query") ?: ""
                     result.success(
@@ -554,5 +571,17 @@ class TvActivity : FlutterActivity() {
         true
     } catch (e: Exception) {
         false
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_LISTEN) {
+            val words = data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            listening?.success(if (resultCode == RESULT_OK) words ?: "" else "")
+            listening = null
+            return
+        }
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
     }
 }

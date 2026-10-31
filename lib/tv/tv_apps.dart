@@ -231,6 +231,9 @@ class TvApps {
   Future<void> openUri(String uri, {String? package}) => _call('openUri', {'uri': uri, 'package': package});
   Future<void> searchEverywhere(String query) => _call('searchEverywhere', {'query': query});
 
+  /// Search's mic: the TV's speech recogniser → the words ('' if cancelled), null if it has none.
+  Future<String?> listen() async => demo ? null : await _ch.invokeMethod<String>('listen');
+
   /// GET through Android's network stack (TvActivity "httpGet") → (status, body). Status -1 =
   /// no connection (body says why).
   Future<(int, String)> httpGet(String url, {Map<String, String> headers = const {}}) async {

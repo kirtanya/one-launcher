@@ -911,6 +911,7 @@ class _TvHomeState extends State<TvHome> {
     Navigator.of(context).push(
       tvFade(
         TvSearch(
+          prefs: prefs,
           query: q,
           apps: [
             for (final a in _apps)
@@ -926,6 +927,7 @@ class _TvHomeState extends State<TvHome> {
     'search' => Navigator.of(context).push(
       tvFade(
         TvSearch(
+          prefs: prefs,
           apps: [
             for (final a in _apps)
               if (!prefs.hidden.contains(a.package)) a,
@@ -1683,7 +1685,10 @@ class _TopBar extends StatelessWidget {
         for (final (i, b) in buttons.indexed) ...[if (i > 0) const SizedBox(width: DS.s8), b],
         const Spacer(),
         // Centred on the buttons' 40-pt line (their labels hang below it).
-        SizedBox(height: 40, child: Center(child: _Clock(prefs: prefs))),
+        SizedBox(
+          height: 40,
+          child: Center(child: _Clock(prefs: prefs)),
+        ),
       ],
     );
   }

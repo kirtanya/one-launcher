@@ -228,11 +228,22 @@ class _TvReviewPageState extends State<TvReviewPage> {
 
 /// "Season 2": a tab over the episode row. OK shows that season; the chosen one stays marked.
 class TvSeasonTab extends StatelessWidget {
-  const TvSeasonTab({super.key, required this.label, required this.selected, required this.onSelect, this.focusNode, this.leading});
-  final String label;
+  const TvSeasonTab({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelect,
+    this.focusNode,
+    this.leading,
+    this.iconOnly = false,
+    this.onLongSelect,
+  });
+  final String label; // also what screen readers say when [iconOnly]
   final Widget? leading; // e.g. a service's app icon
+  final bool iconOnly; // just [leading], in a round chip
   final bool selected;
   final VoidCallback onSelect;
+  final VoidCallback? onLongSelect;
   final FocusNode? focusNode;
 
   @override
@@ -243,10 +254,12 @@ class TvSeasonTab extends StatelessWidget {
     child: TvFocusable(
       focusNode: focusNode,
       onSelect: onSelect,
+      onLongSelect: onLongSelect,
       builder: (context, f) => AnimatedContainer(
         duration: Motion.pressIn * 2,
         height: 40,
-        padding: EdgeInsets.only(left: leading != null ? DS.s8 : DS.s16, right: DS.s16),
+        width: iconOnly && leading != null ? 56 : null,
+        padding: iconOnly && leading != null ? EdgeInsets.zero : EdgeInsets.only(left: leading != null ? DS.s12 : DS.s16, right: DS.s16),
         alignment: Alignment.center,
         // Classic: white when focused, a soft fill + ring when chosen. Tiles: the accent when
         // chosen, the Metro frame for focus.
@@ -261,15 +274,17 @@ class TvSeasonTab extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (leading != null) ...[leading!, const SizedBox(width: DS.s8)],
-            Text(
-              TvMetro.cased(label),
-              style: TvDS.panelRow.copyWith(
-                fontSize: 15,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: !TvMetro.on && f ? TvDS.onLight : (selected || f ? TvDS.ink : TvDS.inkMuted),
+            ?leading,
+            if (leading != null && !iconOnly) const SizedBox(width: DS.s8),
+            if (!iconOnly || leading == null)
+              Text(
+                TvMetro.cased(label),
+                style: TvDS.panelRow.copyWith(
+                  fontSize: 15,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: !TvMetro.on && f ? TvDS.onLight : (selected || f ? TvDS.ink : TvDS.inkMuted),
+                ),
               ),
-            ),
           ],
         ),
       ),

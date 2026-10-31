@@ -321,8 +321,8 @@ void main() {
     final streamRow = find.textContaining(RegExp(r'^One Stream · '));
     final ytRow = find.textContaining(RegExp(r'^YouTube · ')); // the demo's videos
     expect(streamRow, findsOneWidget);
-    expect(find.text('One Stream'), findsOneWidget, reason: 'its filter chip');
-    expect(find.text('YouTube'), findsOneWidget, reason: 'its filter chip');
+    expect(find.byKey(const ValueKey('chip:stream')), findsOneWidget, reason: 'its filter chip');
+    expect(find.byKey(const ValueKey('chip:youtube')), findsOneWidget, reason: 'its filter chip');
     expect(tester.getTopLeft(streamRow).dy, lessThan(tester.getTopLeft(ytRow).dy), reason: 'One Stream leads, then YouTube');
     expect(find.text('Dune: Part Two'), findsWidgets);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_15_one_stream_search.png'));
@@ -330,6 +330,20 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'chip:all');
+    // ↑ from the chips goes back to the field (no history here).
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'search field');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'chip:all');
+    // Back away from the field returns to it, without leaving Search.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'search field');
+    expect(find.byType(TvSearch), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>()?.title.title, 'Dune: Part Two');
