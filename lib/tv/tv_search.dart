@@ -87,6 +87,10 @@ class _TvSearchState extends State<TvSearch> {
       if (widget.query case final q? when mounted) {
         _q.text = q;
         _onType(q);
+        // Words from Alexa / the phone: show results, not the keyboard (the field keeps focus).
+        for (final ms in const [0, 400]) {
+          Future.delayed(Duration(milliseconds: ms), () => SystemChannels.textInput.invokeMethod('TextInput.hide'));
+        }
       }
     });
   }

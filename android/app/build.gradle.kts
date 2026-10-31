@@ -39,6 +39,10 @@ android {
 
     // Two apps from one codebase: the phone launcher, and One Launcher TV (lib/main_tv.dart,
     // android/app/src/tv). They install side by side (different ids) and share the Dart code.
+    buildFeatures {
+        resValues = true // the TV's Alexa topic (below)
+    }
+
     flavorDimensions += "device"
     productFlavors {
         create("phone") {
@@ -47,6 +51,9 @@ android {
         create("tv") {
             dimension = "device"
             applicationIdSuffix = ".tv"
+            // "Alexa, ask One TV…" (AlexaRelay.kt): the secret ntfy topic, from ./alexa.topic (gitignored).
+            val topic = rootProject.file("../alexa.topic").takeIf { it.exists() }?.readText()?.trim() ?: ""
+            resValue("string", "alexa_topic", topic)
         }
     }
 

@@ -35,6 +35,12 @@ Flutter Android launcher, two flavours from one codebase:
   crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
   48 MB / 80, media updates rebuild the home only when more than the position changed.
   `io.flutter.embedding.android.ImpellerBackend=opengles` had no effect on Flutter 3.47.
+  **Alexa** ("Alexa, ask One TV to search … / to open …"): skill in `alexa/` (Alexa-hosted; setup
+  in alexa/README.md) posts to a secret ntfy.sh topic (`./alexa.topic`, gitignored, Gradle →
+  `R.string.alexa_topic`; empty = off); `AlexaRelay.kt` streams that topic (started by TvActivity
+  and ShowNameService, which keeps the process up) → search via TvActivity EXTRA_SEARCH, open =
+  best label match. Cold start: TvActivity holds EXTRA_SEARCH for Dart's `takeSearch` (the channel
+  exists before Dart listens). Incoming searches hide the keyboard.
   **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
   accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service
   opens Google search itself. In-app mic on the TV = phone-as-mic. Gboard's voice typing crashes that

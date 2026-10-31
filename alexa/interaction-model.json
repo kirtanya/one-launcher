@@ -1,0 +1,45 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "one tv",
+      "intents": [
+        {
+          "name": "SearchIntent",
+          "slots": [{ "name": "query", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "search {query}",
+            "search for {query}",
+            "to search {query}",
+            "to search for {query}",
+            "find {query}",
+            "to find {query}",
+            "look for {query}",
+            "to look for {query}",
+            "show me {query}",
+            "to show me {query}",
+            "show {query}",
+            "to show {query}"
+          ]
+        },
+        {
+          "name": "OpenIntent",
+          "slots": [{ "name": "app", "type": "AMAZON.SearchQuery" }],
+          "samples": [
+            "open {app}",
+            "to open {app}",
+            "launch {app}",
+            "to launch {app}",
+            "start {app}",
+            "to start {app}"
+          ]
+        },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] }
+      ],
+      "types": []
+    }
+  }
+}

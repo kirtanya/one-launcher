@@ -30,6 +30,9 @@ class ShowNameService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    // Bound by the system, so the process (and Alexa's relay) stays up while other apps play.
+    override fun onServiceConnected() = AlexaRelay.start(this)
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return

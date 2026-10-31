@@ -55,3 +55,7 @@ tmdb.key
 # Stremio addon manifests for the TV catalog (may contain personal tokens; never commit)
 catalog_sources.txt
 omdb.key
+
+# Alexa skill relay topic (a secret: whoever knows it can search on the TV) and the filled-in skill code
+alexa.topic
+alexa/out/

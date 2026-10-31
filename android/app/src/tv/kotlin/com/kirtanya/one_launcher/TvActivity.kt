@@ -261,16 +261,18 @@ class TvActivity : FlutterActivity() {
     /** Words from the phone's voice search (BrightnessActivity), until the TV home takes them. */
     private var pendingSearch: String? = null
 
-    private fun takeSearch(intent: Intent?) {
+    // Cold start: the channel exists before Dart listens on it, so the words wait for "takeSearch".
+    private fun takeSearch(intent: Intent?, cold: Boolean = false) {
         val q = intent?.getStringExtra(EXTRA_SEARCH) ?: return
         intent.removeExtra(EXTRA_SEARCH)
-        if (::channel.isInitialized) channel.invokeMethod("searchFor", q) else pendingSearch = q
+        if (::channel.isInitialized && !cold) channel.invokeMethod("searchFor", q) else pendingSearch = q
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         NowPlayingServer.start(this) // the phone remote's Now playing card
-        takeSearch(intent)
+        AlexaRelay.start(this) // "Alexa, ask One TV to search …"
+        takeSearch(intent, cold = true)
         ShowNameService.onChange = { if (::channel.isInitialized) channel.invokeMethod("showNamesChanged", null) }
         registerReceiver(packageReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
