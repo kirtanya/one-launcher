@@ -162,7 +162,7 @@ class _TvSearchState extends State<TvSearch> {
   /// One Stream's search, once typing pauses (it goes to the network inside One Stream).
   void _searchStream(String q) {
     _streamWait?.cancel();
-    if (q.length < 2 || !OneStream.instance.available.value) {
+    if (q.isEmpty || !OneStream.instance.available.value) {
       if (_stream.isNotEmpty) setState(() => _stream = const []);
       return;
     }
@@ -178,7 +178,7 @@ class _TvSearchState extends State<TvSearch> {
   /// YouTube's search, once typing pauses.
   void _searchYouTube(String q) {
     _ytWait?.cancel();
-    if (q.length < 2 || !_hasYouTube) {
+    if (q.isEmpty || !_hasYouTube) {
       if (_yt.isNotEmpty) setState(() => _yt = const []);
       return;
     }
@@ -290,7 +290,11 @@ class _TvSearchState extends State<TvSearch> {
     'svc:Apple TV+': 'com.apple.atve.androidtv.appletv',
     'svc:ZEE5': 'com.graymatrix.did',
     'svc:Sony LIV': 'com.sonyliv',
+    'svc:Crunchyroll': 'com.crunchyroll.crunchyroid',
   };
+
+  /// The services the sidebar offers (user's list, 2026-10-31), in order, when installed.
+  static const _sideServices = ['Netflix', 'Prime Video', 'JioHotstar', 'Crunchyroll'];
 
   /// …else its website's icon, fetched once (Google's site-icon service).
   static const _chipSites = {
@@ -349,8 +353,9 @@ class _TvSearchState extends State<TvSearch> {
     final targets = [for (final p in _targets) ?byPkg[p]];
     final searchOn = Catalog.enabled;
     final posters = !searchOn ? const <ShowTitle>[] : (q.isEmpty ? _catalog.trending(40) : combineResults(raw, _local, _searched == raw ? _live : const []));
-    final stream = raw.length >= 2 ? _stream : const <(OneStreamTitle, ShowTitle)>[];
-    final yt = raw.length >= 2 ? _yt : const <YtVideo>[];
+    // One Stream and YouTube search from the first letter (they lead the page).
+    final stream = raw.isNotEmpty ? _stream : const <(OneStreamTitle, ShowTitle)>[];
+    final yt = raw.isNotEmpty ? _yt : const <YtVideo>[];
 
     // Shows & films by service; the ones on no service row go to "More shows & films".
     final bySvc = <String, List<ShowTitle>>{};
@@ -372,13 +377,15 @@ class _TvSearchState extends State<TvSearch> {
         if (!onRows.contains(t.key)) t,
     ];
 
-    // The sidebar: All, then each source that has something.
+    // The sidebar: All, One Stream and YouTube always (when installed; they lead), then each other
+    // source that has something. (Hidden while empty, they looked removed on a one-letter search.)
     final chips = <(String, String)>[
       ('all', 'All'),
-      if (stream.isNotEmpty) ('stream', 'One Stream'),
-      if (yt.isNotEmpty) ('youtube', 'YouTube'),
-      for (final s in services) ('svc:$s', s),
-      if (apps.isNotEmpty) ('apps', 'Apps'),
+      if (OneStream.instance.available.value) ('stream', 'One Stream'),
+      if (_hasYouTube) ('youtube', 'YouTube'),
+      // Then only the user's own services, installed on this TV (even before they have results).
+      for (final s in _sideServices)
+        if (byPkg.containsKey(_chipApps['svc:$s'])) ('svc:$s', s),
     ];
     final filter = chips.any((c) => c.$1 == _filter) ? _filter : 'all';
 
@@ -465,13 +472,19 @@ class _TvSearchState extends State<TvSearch> {
 
     // ---- What the sidebar's choice shows ----
     final List<Widget> body;
+    // One Stream / YouTube picked with nothing to show yet: say why instead of an empty page.
+    Widget none(String where) => Padding(
+      padding: const EdgeInsets.only(top: DS.s24),
+      child: Text(raw.isEmpty ? 'Type a name to search $where' : 'Nothing in $where for “$raw” yet', style: TvDS.heroBody),
+    );
     if (filter == 'stream') {
-      body = [header('One Stream', stream.length), grid(streamCards('stream', 24))];
+      body = stream.isEmpty ? [none('One Stream')] : [header('One Stream', stream.length), grid(streamCards('stream', 24))];
     } else if (filter == 'youtube') {
-      body = [header('YouTube', yt.length), grid(ytCards('youtube', 24), gap: DS.s20)];
+      body = yt.isEmpty ? [none('YouTube')] : [header('YouTube', yt.length), grid(ytCards('youtube', 24), gap: DS.s20)];
     } else if (filter.startsWith('svc:')) {
       final s = filter.substring(4);
-      body = [header(q.isEmpty ? 'Popular on $s' : 'On $s', bySvc[s]!.length), grid(posterCards(filter, bySvc[s]!, 40))];
+      final list = bySvc[s] ?? const <ShowTitle>[];
+      body = list.isEmpty ? [none(s)] : [header(q.isEmpty ? 'Popular on $s' : 'On $s', list.length), grid(posterCards(filter, list, 40))];
     } else if (filter == 'apps') {
       body = [header('Apps', apps.length), grid(appCards(), gap: TvDS.gap)];
     } else {
