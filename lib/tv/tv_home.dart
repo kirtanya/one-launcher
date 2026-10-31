@@ -201,7 +201,7 @@ class _TvHomeState extends State<TvHome> {
 
   Future<void> _loadContent() async {
     final results = await Future.wait([tv.watchNext(), tv.channels(), tv.history()]);
-    final stream = await OneStream.instance.continueWatching();
+    final stream = await OneStream.instance.continueWatching(limit: 12);
     await tv.refreshMedia();
     if (!mounted) return;
     _watchNext = results[0];
@@ -225,7 +225,8 @@ class _TvHomeState extends State<TvHome> {
     String appName(String pkg) => byPkg[pkg]?.label ?? '';
     TvItem appItem(AppEntry a) => TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a, appName: a.label);
 
-    // Continue watching: what's playing / paused right now, then the apps' Watch Next.
+    // Continue watching: what's playing / paused right now, then One Stream's own list, then the TV's
+    // watch history (other apps), then the apps' Watch Next.
     final cont = <TvItem>[];
     final m = tv.media.value;
     if (m != null && m['active'] == true && m['title'] != null) {
@@ -247,10 +248,9 @@ class _TvHomeState extends State<TvHome> {
         ),
       );
     }
-    // One Stream's own Continue watching (real progress; opens right where you left off). It has
-    // no times, so each takes the place of its entry in the TV's history (recency); the rest
-    // follow the history.
-    final stream = [..._stream];
+    // One Stream's own Continue watching leads (real progress; opens right where you left off), in
+    // its own order (most recent first). It used to be matched into the TV's history by title and
+    // the unmatched rest went to the very end, under every YouTube video (user, 2026-10-31).
     TvItem streamItem(OneStreamTitle s) => TvItem(
       key: 'os:${s.key}',
       kind: TvKind.resume,
@@ -262,9 +262,8 @@ class _TvHomeState extends State<TvHome> {
       progress: s.hasProgress ? s.progress.clamp(0, 1) : null,
       intent: s.link,
     );
-    OneStreamTitle? takeStream(String title) {
-      final i = stream.indexWhere((s) => s.title.toLowerCase() == title.toLowerCase());
-      return i < 0 ? null : stream.removeAt(i);
+    for (final s in _stream) {
+      if (!cont.any((c) => c.title.toLowerCase() == s.title.toLowerCase())) cont.add(streamItem(s));
     }
 
     // Then the watch history the TV kept (apps closed since): newest first.
@@ -272,10 +271,9 @@ class _TvHomeState extends State<TvHome> {
       final title = h['title'] as String?;
       final pkg = h['package'] as String? ?? '';
       if (title == null || cont.any((c) => c.title == title && c.package == pkg)) continue;
-      if (takeStream(title) case final s?) {
-        if (!cont.any((c) => c.title == s.title)) cont.add(streamItem(s));
-        continue;
-      }
+      // One Stream's own list above already has its titles (with real progress; its player names
+      // episodes differently, so its history entries wouldn't match them by title).
+      if (pkg == OneStream.package && _stream.isNotEmpty) continue;
       final dur = (h['duration'] as num?)?.toDouble() ?? 0;
       final pos = (h['position'] as num?)?.toDouble() ?? 0;
       final artPath = switch (h['art']) {
@@ -296,9 +294,6 @@ class _TvHomeState extends State<TvHome> {
           historyKey: h['key'] as String?,
         ),
       );
-    }
-    for (final s in stream) {
-      if (!cont.any((c) => c.title.toLowerCase() == s.title.toLowerCase())) cont.add(streamItem(s));
     }
     for (final p in _watchNext) {
       final item = _program(p, appName(p['package'] as String? ?? ''));

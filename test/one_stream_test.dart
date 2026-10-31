@@ -412,7 +412,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('TV home: One Stream’s Continue watching joins the resume row (in the history’s place), OK opens its page', (tester) async {
+  testWidgets('TV home: One Stream’s Continue watching leads the resume row (after what’s playing), OK opens its page', (tester) async {
     await tv(tester);
     SharedPreferences.setMockInitialValues({});
     final prefs = await Prefs.load();
@@ -425,14 +425,16 @@ void main() {
     expect(focused(), startsWith('continue:now:'));
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
-    expect(focused(), startsWith('continue:h:'), reason: 'Midnight City (history)');
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-    await tester.pumpAndSettle();
-    expect(focused(), 'continue:os:abc', reason: 'One Stream’s item takes its history entry’s place');
+    expect(focused(), 'continue:os:abc', reason: 'One Stream’s list comes first after what’s playing');
     expect(find.textContaining('ONE STREAM'), findsOneWidget, reason: 'the title block names it');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
     await tester.pumpAndSettle();
-    expect(focused(), 'continue:os:def', reason: 'the rest follow the history');
+    expect(focused(), 'continue:os:def', reason: 'in One Stream’s own order');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(focused(), startsWith('continue:h:'), reason: 'then the other apps’ history (Midnight City)');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.byType(TvOneStreamPage), findsOneWidget, reason: 'its page (Resume first)');
