@@ -255,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // At the bottom the dock is the nav (Home · Smart home · Search; Settings = long-press Home); in the drawer, just search.
     tab: _tab,
     onHome: inline ? null : _navHome,
-    onNow: inline ? null : _openNow,
+    onNow: inline || !_sidePanel ? null : _openNow,
     pull: _pull, // pull-to-search drives the nav → search morph
     pullFull: pullToOpen,
   );
@@ -315,6 +315,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   double _dragFrom = 0;
 
   void _onDragUpdate(DragUpdateDetails d) {
+    if (!_pageOpen && !_searching || _held != null) return _pullNext(-d.delta.dx); // home: pull the next page in
     if (_dragBack.isAnimating) _dragBack.stop();
     final next = _dragX.value + d.delta.dx;
     // Nowhere to go that way: it only gives a little.
@@ -324,14 +325,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   void _onDragEnd(DragEndDetails d) {
+    if (_held != null || _pullBy > 0 || !_pageOpen && !_searching) return _letGo(d.primaryVelocity ?? 0);
     final w = MediaQuery.sizeOf(context).width;
     final v = d.primaryVelocity ?? 0, dx = _dragX.value;
     final go = dx.abs() > w * .22 || (v.abs() > 500 && v.sign == dx.sign && dx.abs() > 12);
     if (go && _pageOpen) {
       final step = dx < 0 ? 1 : -1;
+      // Carries on from where the finger left it: the page (and home, if it's coming back) are that far along.
+      final at = (1 - dx.abs() / w).clamp(0.0, 1.0);
       for (final p in _pages) {
-        if (!p.leaving) p.dx = dx; // carries on from where the finger left it
+        if (!p.leaving && !p.rise) p.motion.value = at;
       }
+      if (_homeFollows) _backdrop.value = at;
       _dragX.value = 0;
       _swipeNav(step);
     } else if (go) {
@@ -341,6 +346,73 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       _dragFrom = dx;
       _dragBack.forward(from: 0);
     }
+  }
+
+  /// Home ↔ the next tab as one pager: pulling right-to-left on home brings Smart home in under the
+  /// finger (home's content goes off the other way, the backdrop darkens with it); let go to settle.
+  bool _holding = false; // the next page presented is held for the finger
+  _TabPage? _held;
+  double _pullBy = 0; // px pulled so far
+
+  void _pullNext(double by) {
+    final w = MediaQuery.sizeOf(context).width;
+    _pullBy = (_pullBy + by).clamp(0.0, w);
+    if (_held == null && _pullBy > 0) {
+      if (!prefs.remoteButton) {
+        _pullBy = 0;
+        return;
+      }
+      _holding = true;
+      _openTab('smart', _smartPage, from: 1);
+      _holding = false;
+    }
+    final page = _held;
+    if (page == null) return;
+    page.motion.value = _pullBy / w;
+    _backdrop.value = _pullBy / w;
+  }
+
+  void _letGo(double velocity) {
+    final page = _held, w = MediaQuery.sizeOf(context).width;
+    final at = _pullBy / w;
+    _pullBy = 0;
+    _held = null;
+    if (page == null) return;
+    setState(() {}); // the pager lets go of the page's swipes
+    if (at > .3 || (velocity < -400 && at > .02)) {
+      HapticFeedback.selectionClick();
+      page.motion.animateTo(1, curve: Curves.easeOutCubic);
+      _backdrop.animateTo(1, curve: Curves.easeOutCubic);
+    } else {
+      _closePages(toward: 1); // back where it came from
+    }
+  }
+
+  /// The Today pager at home's edge: the finger carries on into Smart home instead of overscrolling.
+  double _takeAtEdge(double delta, ScrollMetrics m) {
+    if (_searching || !prefs.remoteButton || (_pageOpen && _held == null)) return delta;
+    if (delta < 0 && m.pixels >= m.maxScrollExtent - .5) {
+      _pullNext(-delta);
+      return 0;
+    }
+    if (delta > 0 && _pullBy > 0) {
+      final used = math.min(delta, _pullBy);
+      _pullNext(-used);
+      return delta - used;
+    }
+    return delta;
+  }
+
+  /// The Today pager has the finger: on home, or while it's pulling Smart home in.
+  bool get _homePager => _sidePanel && !_searching && (!_pageOpen || _held != null);
+
+  /// A page dragged back towards home brings home along (it's right there beside it).
+  bool get _homeFollows => _pageOpen && _homeSide != 0 && _dragX.value * _homeSide < 0;
+
+  /// How far home has gone under the tab pages (0 home, 1 a page): the backdrop's darkness too.
+  double get _homeAway {
+    final w = MediaQuery.sizeOf(context).width;
+    return (_backdrop.value - (_homeFollows ? _dragX.value.abs() / w : 0)).clamp(0.0, 1.0);
   }
 
   /// The tab pages' backdrop: it stays put and fades in / out while only their content slides.
@@ -353,7 +425,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// Pages scrolling under the nav: it shrinks once one has left its top, and grows back there.
   /// And on the home itself, a swipe right-to-left past its edge opens the next tab (Smart home),
   /// the way a left-to-right one opens the Today panel.
-  double _edgePull = 0;
   bool _onPagesScroll(ScrollNotification n) {
     final m = n.metrics;
     if (m.axis == Axis.vertical && n is ScrollUpdateNotification) {
@@ -361,13 +432,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       if (SearchDock.shrunk.value != away) SearchDock.shrunk.value = away;
     }
     if (n.depth == 0 && m.axis == Axis.horizontal) {
-      if (n is ScrollStartNotification) _edgePull = 0;
-      if (n is OverscrollNotification && n.dragDetails != null && n.overscroll > 0) _edgePull += n.overscroll;
-      if (n is ScrollEndNotification) {
-        final v = n.dragDetails?.primaryVelocity ?? 0;
-        if (!_pageOpen && !_searching && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _swipeNav(1);
-        _edgePull = 0;
-      }
+      if (n is ScrollEndNotification && (_held != null || _pullBy > 0)) _letGo(n.dragDetails?.primaryVelocity ?? 0);
     }
     return false;
   }
@@ -403,7 +468,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _pageFrom = rise ? 0 : (forward ? 1 : -1);
     if (prefs.searchPosition != 'top') TabPageHost.arm(TabPageHost(present: _presentPage, navRoom: SearchDock.height + DS.s12 * 2, rise: rise));
     await open();
-    if (mounted && _tab == tab && !_pageOpen) setState(() => _tab = nowAway.value < .5 ? 'now' : 'home');
+    if (mounted && _tab == tab && !_pageOpen) setState(() => _tab = _onPanel ? 'now' : 'home');
   }
 
   Future<Object?> _presentPage(Widget Function(VoidCallback close) build) {
@@ -416,8 +481,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     );
     page.body = build(() => _closePages(toward: 1)); // closed from inside (back): towards Home
     setState(() => _pages.add(page));
-    _backdrop.forward();
-    page.motion.forward();
+    if (_holding) {
+      _held = page; // a finger is pulling it in: [_pullNext] moves it
+    } else {
+      _backdrop.animateTo(1, curve: Curves.easeOutCubic);
+      page.motion.animateTo(1, curve: Curves.easeOutCubic);
+    }
     return page.done.future;
   }
 
@@ -430,7 +499,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
       ..side = toward
       ..replaced = replaced;
     if (!page.done.isCompleted) page.done.complete(null);
-    page.motion.reverse().whenComplete(() {
+    if (_held == page) _held = null;
+    page.motion.animateBack(0, curve: Curves.easeOutCubic).whenComplete(() {
       page.motion.dispose();
       if (mounted) setState(() => _pages.remove(page));
     });
@@ -440,7 +510,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void _closePages({required double toward, bool replaced = false}) {
     // Leaving the tabs altogether: the backdrop fades as the content slides out. Another tab's
     // page coming in: it stays put under both.
-    if (!replaced && _pages.isNotEmpty) _backdrop.reverse();
+    if (!replaced && _pages.isNotEmpty) _backdrop.animateBack(0, curve: Curves.easeOutCubic);
     for (final p in [..._pages]) {
       _dismissPage(p, toward: toward, replaced: replaced);
     }
@@ -454,11 +524,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _drawerKey.currentState?.reset();
     _collapse();
     _toPanel(1);
-    if (nowAway.value < 1) jumpTop(1); // off the Now page too
     if (_tab != 'home') setState(() => _tab = 'home');
   }
 
-  /// The nav's Now (left of Home): home on the top carousel's Now page.
+  /// The nav's Now (left of Home): the Today panel.
   void _openNow() {
     HapticFeedback.selectionClick();
     SearchDock.shrunk.value = false;
@@ -466,15 +535,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _stopSearch();
     _drawerKey.currentState?.reset();
     _collapse();
-    _toPanel(1);
-    jumpTop(0);
+    _toPanel(0);
     if (_tab != 'now') setState(() => _tab = 'now');
   }
 
-  /// Home ⇄ Now follows the carousel (swiping it lights the right tab).
+  /// Home ⇄ Now follows the Today pager (swiping it lights the right tab).
   void _syncNowTab() {
     if (_pageOpen || _searching || (_tab != 'home' && _tab != 'now')) return;
-    final want = nowAway.value < .5 ? 'now' : 'home';
+    final want = _onPanel ? 'now' : 'home';
     if (_tab != want) setState(() => _tab = want);
   }
 
@@ -482,7 +550,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   void initState() {
     super.initState();
     _query.addListener(_syncPills);
-    nowAway.addListener(_syncNowTab);
+    _panel.addListener(_syncNowTab);
     prefs.addListener(_rebuild);
     if (!widget.preview) {
       openToday.addListener(_openToday);
@@ -548,7 +616,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     TvRemote.instance.status.removeListener(_syncTvNotification);
     TvRemote.instance.power.removeListener(_syncTvNotification);
     openToday.removeListener(_openToday);
-    nowAway.removeListener(_syncNowTab);
+    _panel.removeListener(_syncNowTab);
     _panel.dispose();
     _sheet.dispose();
     _land.dispose();
@@ -887,11 +955,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         // page (it follows the finger), in search, and on home without a Today panel.
                         child: GestureDetector(
                           behavior: HitTestBehavior.translucent,
-                          onHorizontalDragUpdate: _sidePanel && !_pageOpen && !_searching ? null : _onDragUpdate,
-                          onHorizontalDragEnd: _sidePanel && !_pageOpen && !_searching ? null : _onDragEnd,
+                          onHorizontalDragUpdate: _homePager ? null : _onDragUpdate,
+                          onHorizontalDragEnd: _homePager ? null : _onDragEnd,
                           child: PageView(
                         controller: _panel,
-                        physics: _sidePanel && !_pageOpen && !_searching ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(), // a tab page / search: swipes go along the nav
+                        physics: _homePager
+                            ? _HomePagerPhysics(take: _takeAtEdge, holding: () => _held != null || _pullBy > 0)
+                            : const NeverScrollableScrollPhysics(), // a tab page / search: swipes go along the nav
                         onPageChanged: (i) {
                           if (i == 0) {
                             HapticFeedback.selectionClick();
@@ -913,16 +983,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                   // so going to Smart home is a move, not an overlay. A rising page (Settings) just covers it.
                                   Positioned.fill(
                                     child: AnimatedBuilder(
-                                      animation: _backdrop,
+                                      animation: Listenable.merge([_backdrop, _dragX]),
                                       builder: (context, child) {
                                         // Same shape every frame (no state lost); at rest it's a no-op.
-                                        final t = _homeSide == 0 ? 0.0 : Curves.easeOutCubic.transform(_backdrop.value);
+                                        final t = _homeSide == 0 ? 0.0 : _homeAway;
                                         return IgnorePointer(
                                           ignoring: t > 0 && _pageOpen,
-                                          child: Opacity(
-                                            opacity: (1 - t).clamp(0.0, 1.0),
-                                            child: Transform.translate(offset: Offset(_homeSide * MediaQuery.sizeOf(context).width * .32 * t, 0), child: child),
-                                          ),
+                                          child: Transform.translate(offset: Offset(_homeSide * MediaQuery.sizeOf(context).width * t, 0), child: child),
                                         );
                                       },
                                       child: Stack(
@@ -1101,8 +1168,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                   // Their backdrop stays put and fades; only the content slides.
                                   Positioned.fill(
                                     child: IgnorePointer(
-                                      child: FadeTransition(
-                                        opacity: CurvedAnimation(parent: _backdrop, curve: Curves.easeOut),
+                                      child: AnimatedBuilder(
+                                        animation: Listenable.merge([_backdrop, _dragX]),
+                                        builder: (context, child) => Opacity(opacity: _homeAway, child: child),
                                         child: ColoredBox(color: DS.base),
                                       ),
                                     ),
@@ -1157,7 +1225,6 @@ class _TabPage {
   double side; // where it slides from (coming in) or to (leaving): -1 left, 1 right
   bool leaving = false;
   bool replaced = false; // leaving for the next tab's page
-  double dx = 0; // where a swipe let go of it: it carries on from there
   late final Widget body;
   final done = Completer<Object?>();
 }
@@ -1177,17 +1244,14 @@ class _TabPageMotion extends StatelessWidget {
       animation: Listenable.merge([page.motion, drag]),
       child: RepaintBoundary(child: page.body),
       builder: (context, child) {
-        final v = page.motion.value;
-        final t = (page.leaving ? Curves.easeInCubic : Curves.easeOutCubic).transform(v);
+        final t = page.motion.value; // a position: the controller eases, or a finger sets it
         if (page.rise) {
           // Up from the bottom like a sheet, back down when it closes.
           return Transform.translate(offset: Offset(0, size.height * (1 - t)), child: child);
         }
-        final dx = page.leaving ? page.dx : drag.value;
-        return Opacity(
-          opacity: (t * (1 - (dx.abs() / w) * .7)).clamp(0.0, 1.0),
-          child: Transform.translate(offset: Offset(dx + page.side * w * .32 * (1 - t), 0), child: child),
-        );
+        // Pager-like: a full width beside home / the next page, sliding with it.
+        final dx = page.leaving ? 0.0 : drag.value;
+        return Transform.translate(offset: Offset(dx + page.side * w * (1 - t), 0), child: child);
       },
     );
   }
@@ -1263,4 +1327,22 @@ class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMix
     super.build(context);
     return widget.child;
   }
+}
+
+/// The Today pager's physics, letting home take the finger past its last page ([take]: the part of
+/// a drag it uses goes to the Smart home pull) and not flinging back while it [holding] one.
+class _HomePagerPhysics extends PageScrollPhysics {
+  const _HomePagerPhysics({super.parent, required this.take, required this.holding});
+  final double Function(double delta, ScrollMetrics m) take;
+  final bool Function() holding;
+
+  @override
+  _HomePagerPhysics applyTo(ScrollPhysics? ancestor) => _HomePagerPhysics(parent: buildParent(ancestor), take: take, holding: holding);
+
+  @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) => super.applyPhysicsToUserOffset(position, take(offset, position));
+
+  @override
+  Simulation? createBallisticSimulation(ScrollMetrics position, double velocity) =>
+      super.createBallisticSimulation(position, holding() ? 0 : velocity);
 }

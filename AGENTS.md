@@ -153,8 +153,11 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   tab pages under the nav (`_TabPage`, `_presentPage`, `_openTab`, `_navOrder`), status-bar style.
   Nav order: Now · Home · Smart home · Search (no Settings or Notifications tab: long-press Home opens Settings,
   which rises from the bottom with Back at the top: `_openTab(rise: true)` → `TabPageHost.rise`). Now = the top
-  carousel's page 0 (`jumpTop(0)` in top_carousel.dart; `_syncNowTab` lights Now/Home as the carousel moves).
-  While a side-sliding tab page is up, home's own content slides off the other way and dims (`_homeSide`, driven by `_backdrop`).
+  Today panel (`_openNow` → `_toPanel(0)`; only with the panel on; `_syncNowTab` lights Now/Home as the pager moves).
+  Home ↔ Smart home is one pager: `_HomePagerPhysics` hands a drag past home's last page to `_pullNext`, which
+  presents Smart home held (`_holding`/`_held`) and sets its motion + `_backdrop` from the finger; `_letGo` settles.
+  Tab pages and home's content slide a full width (`_homeSide`, `_homeAway`); controllers animate with curves and
+  their values are positions, so a finger can take over mid-way. The backdrop darkens with `_homeAway`.
   `_onPagesScroll` (around the home pager): vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons
   unchanged; back at the top / on tab change). Horizontal swipes walk `_swipeOrder` (Today ← Home ↔ Smart home ↔
   Search; Settings counts as Home, the remote as Smart home) via `_swipeNav`: the Today pager takes them on home,
