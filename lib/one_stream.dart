@@ -293,6 +293,8 @@ class OneStream {
   Future<OneStreamReply> download(String token) => _act('download', {'token': token});
   Future<OneStreamReply> prepare(String token) => _act('prepare', {'token': token});
   Future<OneStreamReply> cancelDownload(String key) => _act('cancel_download', {'key': key});
+  /// Starts One Stream's engine early (it stops itself when idle), so Play doesn't wait for it.
+  Future<OneStreamReply> warmEngine() => _act('warm_engine', const {});
 
   /// Plays a source in One Stream's player.
   static String playLink(OneStreamSource s, String type, int tmdb, {int? season, int? episode}) =>

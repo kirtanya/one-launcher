@@ -43,6 +43,8 @@ class _TvOneStreamPageState extends State<TvOneStreamPage> {
   @override
   void initState() {
     super.initState();
+    // Play is likely next: One Stream's engine stops itself when idle, so wake it now.
+    os.warmEngine();
     if (widget.title.tmdb == null) {
       _detailsDone = true;
       return;
