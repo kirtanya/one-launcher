@@ -286,6 +286,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
   void dispose() {
     _everywhere.dispose();
     _firstWatch.dispose();
+    _scroll.dispose();
     for (final n in _nodes.values) {
       n.dispose();
     }
@@ -295,6 +296,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
   // ---- The rows (season tabs, episodes, reviews): ↑ / ↓ enter a row at its chosen tab or the card
   // last on, never at whichever card happens to sit nearest. ----
 
+  final _scroll = ScrollController();
   final _nodes = <String, FocusNode>{}; // 'season:2', 'episode:2:5', 'review:0'
   int? _lastEpisode; // in the season shown
   int _lastReview = 0;
@@ -356,6 +358,11 @@ class _TvTitlePageState extends State<TvTitlePage> {
     scheduleMicrotask(() {
       final now = _rowOf(FocusManager.instance.primaryFocus);
       if (mounted && now != null && now != was && rows.isNotEmpty) _enter(dir == TraversalDirection.down ? rows.first : rows.last);
+      // Up out of the first row onto the buttons: the whole top (title, scores, story) comes back —
+      // only scrolling the buttons into view left the page half up (bug, 2026-10-31).
+      if (mounted && now == null && was != null && dir == TraversalDirection.up && _scroll.hasClients) {
+        _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+      }
     });
     return KeyEventResult.handled;
   }
@@ -439,6 +446,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
             ),
             const TvScrims(),
             SingleChildScrollView(
+              controller: _scroll,
               padding: EdgeInsets.fromLTRB(TvDS.safe.left, 64, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
               child: Focus(
                 skipTraversal: true,
