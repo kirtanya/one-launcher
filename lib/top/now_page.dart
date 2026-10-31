@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,7 +8,7 @@ import 'pages.dart' show ForegroundTimer, GlassPill;
 
 /// The Now page: the top carousel's page 0 (home opens on page 1). It reads what the system is
 /// doing from notifications — music for now — and takes over the whole top area edge to edge:
-/// the wallpaper is hidden behind [NowStage] (the blurred cover art), [NowPage] sits on it.
+/// the wallpaper is hidden behind [NowStage] (the cover art, edge to edge), [NowPage] sits on it.
 ///
 /// [away]: 0 while page 0 shows, 1 once you've swiped to page 1 or beyond. The carousel writes
 /// it; home's [NowStage] dissolves with it while only the page's content slides.
@@ -25,7 +23,7 @@ class NowStage extends StatelessWidget {
     valueListenable: nowAway,
     builder: (context, away, _) {
       if (away >= 1) return const SizedBox.shrink();
-      // Stays put and dissolves while the page's content slides. The blurred backdrop is
+      // Stays put and dissolves while the page's content slides. The backdrop is
       // drawn once into its own layer, so the fade only re-composites it.
       return Opacity(
         opacity: (1 - away).clamp(0.0, 1.0),
@@ -51,20 +49,24 @@ class _Backdrop extends StatelessWidget {
             duration: const Duration(milliseconds: 600),
             child: art == null
                 ? const SizedBox.expand()
-                : ImageFiltered(
+                : Image.memory(
+                    art,
                     key: ValueKey(art.length ^ art.hashCode),
-                    imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48, tileMode: TileMode.clamp),
-                    child: Transform.scale(scale: 1.3, child: Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true)),
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    width: double.infinity,
+                    height: double.infinity,
                   ),
           ),
-          // Keep white type readable on any cover: darker at the top (status bar) and bottom.
+          // The cover edge to edge; scrims keep white type readable: darker at the top (status
+          // bar) and heavier toward the bottom, where the title and controls sit.
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0x99000000), Color(0x40000000), Color(0xB3000000)],
-                stops: [0, .45, 1],
+                colors: [Color(0x99000000), Color(0x26000000), Color(0x8C000000), Color(0xE6000000)],
+                stops: [0, .3, .6, 1],
               ),
             ),
           ),
@@ -74,7 +76,7 @@ class _Backdrop extends StatelessWidget {
   );
 }
 
-/// Page 0's content, over [NowStage]: the cover, the track in big type, progress and controls.
+/// Page 0's content, over [NowStage] (the cover): the track in big type, progress and controls.
 class NowPage extends StatefulWidget {
   const NowPage({super.key});
 
@@ -166,7 +168,6 @@ class _NowPageState extends State<NowPage> {
     // Short top areas drop the progress bar first, then the eyebrow.
     final showBar = duration > 0 && h >= 190;
     final showEyebrow = h >= 150;
-    final art = (h * .42).clamp(56.0, 120.0);
 
     // Tapping anywhere but the controls opens the player.
     return GestureDetector(
@@ -180,45 +181,15 @@ class _NowPageState extends State<NowPage> {
             if (showEyebrow)
               Text(DS.cased('NOW PLAYING · ${(m['app'] ?? '').toString().toUpperCase()}'), style: eyebrow, maxLines: 1, overflow: TextOverflow.ellipsis),
             const Spacer(),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Semantics(
-                  button: true,
-                  label: 'Open ${m['app']}',
-                  child: Container(
-                    width: art,
-                    height: art,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(art * .12),
-                      boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 24, offset: Offset(0, 8))],
-                      color: const Color(0x33FFFFFF),
-                    ),
-                    child: m['art'] is Uint8List
-                        ? Image.memory(m['art'] as Uint8List, fit: BoxFit.cover, gaplessPlayback: true)
-                        : Icon(Icons.music_note_rounded, color: DS.onWallpaper, size: art * .4),
-                  ),
-                ),
-                const SizedBox(width: DS.s16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${m['title'] ?? ''}',
-                        style: DS.wallpaperDate.copyWith(fontSize: 24, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (artist.isNotEmpty) ...[const SizedBox(height: 2), Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis)],
-                    ],
-                  ),
-                ),
-              ],
+            // The title is the hero now that the cover is the background.
+            Text(
+              '${m['title'] ?? ''}',
+              style: DS.wallpaperDate.copyWith(fontSize: 28, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-            const Spacer(),
+            if (artist.isNotEmpty) ...[const SizedBox(height: 2), Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis)],
+            const SizedBox(height: DS.s16),
             if (showBar) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(2),
