@@ -54,7 +54,7 @@ class KeyboardView(context: Context) : View(context) {
     private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF21242C.toInt() }
     private val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF353641.toInt() }
     private val focusFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
-    private val hintEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1.5f); color = 0xFFFFFFFF.toInt() }
+    private val hintEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1.5f); color = 0x61FFFFFF }
     private val letter = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); textAlign = Paint.Align.CENTER }
     private val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(12f); textAlign = Paint.Align.CENTER }
     private val chipText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(12f) }
