@@ -13,9 +13,11 @@ import '../one_stream_sheet.dart';
 import '../one_stream_widgets.dart';
 import '../prefs.dart';
 import '../quick_actions.dart';
+import '../quick_lights.dart';
 import '../quick_chips.dart' show ShortcutIcon;
 import '../remote_sheet.dart' show showTvRemote;
 import '../sheets.dart' show showWidgetPicker;
+import '../smart_home_sheet.dart' show showSmartHome;
 import '../top/header_fonts.dart';
 import '../ui/components.dart';
 import '../ui/ds.dart';
@@ -57,6 +59,7 @@ const todayKinds = <String, (String, IconData, List<String>, String)>{
   'screentime': ('Screen time', Icons.hourglass_bottom_rounded, ['m', 'w'], 'm'),
   'notes': ('Notes', Icons.sticky_note_2_outlined, ['m', 'w', 'l'], 'w'),
   'remote': ('TV remote', Icons.settings_remote_rounded, ['s', 'm'], 's'),
+  'smart': ('Smart home', Icons.lightbulb_outline_rounded, ['w', 'l'], 'l'), // lights: on/off, brightness, colour
   'actions': ('Quick actions', Icons.bolt_rounded, ['w', 'l'], 'w'),
   // One Stream's Continue watching (offered only while One Stream is installed; not a default).
   'stream': ('Continue watching', Icons.movie_outlined, ['w', 'l'], 'w'),
@@ -235,6 +238,7 @@ class _TodayPanelState extends State<TodayPanel> {
     'screentime' => _usage['granted'] == false ? Apps.instance.openUsageAccess : Apps.instance.openScreenTime,
     'notes' => () => _showNotes(context),
     'remote' => () => showTvRemote(context, prefs: prefs),
+    'smart' => () => showSmartHome(context),
     'day' => () => showDaySlots(context, prefs: prefs),
     'stream' => _watching.isEmpty ? null : () => showOneStreamTitle(context, _watching.first),
     'downloads' => _downloads.where((d) => d.done && d.playLink != null).firstOrNull == null
@@ -589,6 +593,8 @@ class _TodayPanelState extends State<TodayPanel> {
               : (prefs.tvHost == null ? (_classic ? 'TV remote' : 'tv remote') : (_classic ? prefs.tvName : prefs.tvName.toLowerCase())),
           'remote',
         );
+      case 'smart':
+        return pad(QuickLights(ink: _white, soft: _soft, full: big, onOpen: () => showSmartHome(context)));
       case 'day':
         final radius = _classic ? DS.rMedia : prefs.tileRadius;
         return Padding(
@@ -945,6 +951,13 @@ class _TodayPanelState extends State<TodayPanel> {
             title: prefs.tvHost == null ? (_classic ? 'Set up a TV' : 'set up a tv') : prefs.tvName,
             sub: _classic ? 'TV remote' : 'tv remote',
             onTap: () => showTvRemote(context, prefs: prefs),
+          ),
+        ];
+      case 'smart':
+        return [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: QuickLights(ink: _white, soft: _soft, full: t.size == 'l', onOpen: () => showSmartHome(context)),
           ),
         ];
       case 'day':

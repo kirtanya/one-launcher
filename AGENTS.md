@@ -176,11 +176,16 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `quick_chips.dart` (chips row + look), `quick_actions.dart`, `folders.dart`, `search.dart`,
   `system_settings.dart`, `photo_wallpaper.dart`, `one_stream*.dart` (One Stream integration),
   `top/` (top carousel pages, clock fonts), `tiles/` (Tiles/Metro home, today panel, landing).
-- `smart_home.dart` (model + `SmartHome` service, channel `one_launcher/home`, contract in its header) · `smart_home_sheet.dart` (sheet, detail, setup card) · `top/smart_home_page.dart`.
+- `smart_home.dart` (model + `SmartHome` service, channel `one_launcher/home`, contract in its header) · `smart_home_sheet.dart` (sheet, detail, room, home picker, setup card) · `quick_lights.dart` · `top/smart_home_page.dart`.
   Entry points: the nav's Smart home tab (id `smart`, took the Remote tab's place, same `remoteButton` pref; the TV remote is
   its first tile, and the bulb stays lit on the remote), chip `b:home` (also Tiles `qa:b:home`), top page `smart_home`.
   Lights: colour (Google `ExtendedColorControl.moveToColorHsv`, fallback Matter hue/sat), warmth (Matter mireds ↔ K),
-  sleep/wake (`LightEffects`); rooms have All on/off. The SDK needs coroutines ≥ 1.11.0 (calls static `Mutex.unlock$default`; 1.8.0 crash-loops), pinned for phone.
+  sleep/wake (`LightEffects`); rooms have All on/off, and tapping a room name opens its lights as one (`SmartDetail.room`).
+  Homes: bridge `homes` + device `homeId`; the sheet's home chips pick one (saved `smartHome.home`), "Add a home" = `connect(force: true)`
+  (re-opens Google's share screen). `quick_lights.dart` (`QuickLights`): chips All / each light (its dot = on/off) / each room, power,
+  brightness, colour; on the top page (compact: colour/brightness buttons swap in for the chips) and the side panel kind `smart`.
+  Commands: one per device+trait in flight, only the newest waits (`SmartHome.set`); sent values stay on top of device updates
+  until 4 s after they finish, so stale echoes don't snap the UI back. Bridge logs `set <trait> took N ms` (tag SmartHome). The SDK needs coroutines ≥ 1.11.0 (calls static `Mutex.unlock$default`; 1.8.0 crash-loops), pinned for phone.
   Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
   from the local maven repo `android/home-sdk/` (190 MB, gitignored; repo + `phoneImplementation` deps only added when it exists, else the phone builds without the bridge → status unavailable).
   MainActivity attaches it reflectively (`Class.forName(...SmartHomeBridge).attach`; keep rule in `app/proguard-rules.pro`). Matter units: setpoints 0.01 °C, level 0..254. Debug: long-press the setup card = fake devices.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'apps.dart';
 
@@ -31,6 +32,8 @@ import 'apps.dart';
 ///   `effect` `"sleep"|"wake"|"stop"`.
 ///   For an AC, `on` is its OnOff trait; mode `"off"` is the same as `on: false`.
 /// Kotlin → Dart (via `invokeMethod` on the same channel):
+/// - `homes` → `List<Map>` `{id, name}`: the homes shared with us; devices carry `homeId`.
+/// - `connect` takes `{force: true}` to re-open Google's screen (add or remove homes).
 /// - `homeChanged` with the same `List<Map>` as `devices`: pushed on any device change.
 enum SmartHomeStatus { unavailable, signedOut, loading, ready, error }
 
@@ -43,6 +46,7 @@ class SmartDevice {
     required this.id,
     required this.name,
     this.room = '',
+    this.homeId,
     this.type = SmartType.other,
     this.online = true,
     this.on = false,
@@ -65,6 +69,7 @@ class SmartDevice {
     id: m['id'] as String,
     name: m['name'] as String? ?? 'Device',
     room: m['room'] as String? ?? '',
+    homeId: m['homeId'] as String?,
     type: switch (m['type']) {
       'light' => SmartType.light,
       'plug' => SmartType.plug,
@@ -91,6 +96,9 @@ class SmartDevice {
   );
 
   final String id, name, room;
+
+  /// The home (Google Home structure) it's in; null when not known yet.
+  final String? homeId;
   final SmartType type;
   final bool online, on;
 
@@ -137,22 +145,27 @@ class SmartDevice {
     String? colorMode,
     String? effect,
     bool clearEffect = false,
+    bool? canColor,
+    bool? canTemp,
+    int? minK,
+    int? maxK,
   }) => SmartDevice(
     id: id,
     name: name,
     room: room,
+    homeId: homeId,
     type: type,
     online: online,
     on: on ?? this.on,
     brightness: brightness ?? this.brightness,
     colorTempK: colorTempK ?? this.colorTempK,
-    minK: minK,
-    maxK: maxK,
+    minK: minK ?? this.minK,
+    maxK: maxK ?? this.maxK,
     hue: hue ?? this.hue,
     saturation: saturation ?? this.saturation,
     colorMode: colorMode ?? this.colorMode,
-    canColor: canColor,
-    canTemp: canTemp,
+    canColor: canColor ?? this.canColor,
+    canTemp: canTemp ?? this.canTemp,
     effects: effects,
     effect: clearEffect ? null : effect ?? this.effect,
     setpoint: setpoint ?? this.setpoint,
@@ -177,14 +190,30 @@ Color kelvinColour(int k) {
 class SmartHomeState {
   const SmartHomeState({
     this.status = SmartHomeStatus.unavailable,
-    this.devices = const [],
+    List<SmartDevice> devices = const [],
     this.error,
-  });
+    this.homes = const [],
+    this.homeId,
+  }) : all = devices;
   final SmartHomeStatus status;
-  final List<SmartDevice> devices;
+
+  /// Every device in every home; [devices] is the chosen home's.
+  final List<SmartDevice> all;
 
   /// The last failure, for the `error` status and for a command that was rolled back.
   final String? error;
+
+  /// Homes shared with us (id, name) and the one shown.
+  final List<(String, String)> homes;
+  final String? homeId;
+
+  String? get homeName => homes.where((h) => h.$1 == homeId).firstOrNull?.$2;
+
+  List<SmartDevice> get devices => homeId == null || homes.length < 2
+      ? all
+      : [for (final d in all) if (d.homeId == null || d.homeId == homeId) d];
+
+  List<SmartDevice> get lights => [for (final d in devices) if (d.type == SmartType.light) d];
 
   /// Rooms in the order their first device appears; devices without a room go under "Other".
   List<String> get rooms =>
@@ -195,7 +224,15 @@ class SmartHomeState {
       if ((d.room.isEmpty ? 'Other' : d.room) == room) d,
   ];
 
-  SmartDevice? byId(String id) => devices.where((d) => d.id == id).firstOrNull;
+  SmartDevice? byId(String id) => all.where((d) => d.id == id).firstOrNull;
+
+  SmartHomeState copyWith({SmartHomeStatus? status, List<SmartDevice>? devices, String? error, bool clearError = false, List<(String, String)>? homes, String? homeId}) => SmartHomeState(
+    status: status ?? this.status,
+    devices: devices ?? all,
+    error: clearError ? null : error ?? this.error,
+    homes: homes ?? this.homes,
+    homeId: homeId ?? this.homeId,
+  );
 }
 
 class SmartHome {
@@ -204,9 +241,18 @@ class SmartHome {
 
   static const googleHomePackage = 'com.google.android.apps.chromecast.app';
   static const _ch = MethodChannel('one_launcher/home');
+  static const _homeKey = 'smartHome.home';
 
   final state = ValueNotifier<SmartHomeState>(const SmartHomeState());
   bool _listening = false, _demoLocal = false, _demo = false;
+
+  /// Changes sent but maybe not echoed back yet: id|trait → (value, kept until). A device
+  /// update that arrives meanwhile can still carry the old value, so these stay on top of it.
+  final _pending = <String, (Object, DateTime)>{};
+
+  /// One command per id|trait at a time; while one is out, only the newest value waits.
+  final _inFlight = <String>{};
+  final _queued = <String, Object>{};
 
   SmartHomeState get value => state.value;
 
@@ -219,10 +265,40 @@ class SmartHome {
   }
 
   void _apply(Object? raw) {
+    final now = DateTime.now();
+    _pending.removeWhere((_, p) => p.$2.isBefore(now));
     final list = [
-      for (final m in (raw as List? ?? const [])) SmartDevice.fromMap(m as Map),
+      for (final m in (raw as List? ?? const []))
+        _withPending(SmartDevice.fromMap(m as Map)),
     ];
-    state.value = SmartHomeState(status: SmartHomeStatus.ready, devices: list);
+    state.value = value.copyWith(status: SmartHomeStatus.ready, devices: list, clearError: true);
+  }
+
+  SmartDevice _withPending(SmartDevice d) {
+    var out = d;
+    for (final e in _pending.entries) {
+      final bar = e.key.indexOf('|');
+      if (e.key.substring(0, bar) == d.id) out = _optimistic(out, e.key.substring(bar + 1), e.value.$1);
+    }
+    return out;
+  }
+
+  Future<void> _loadHomes() async {
+    try {
+      final raw = await _ch.invokeMethod<List>('homes') ?? const [];
+      final homes = [for (final h in raw) ((h as Map)['id'] as String, h['name'] as String? ?? 'Home')];
+      final sp = await SharedPreferences.getInstance();
+      final saved = sp.getString(_homeKey);
+      final id = homes.any((h) => h.$1 == saved) ? saved : homes.firstOrNull?.$1;
+      state.value = value.copyWith(homes: homes, homeId: id);
+    } catch (_) {} // an older bridge: one home, no picker
+  }
+
+  /// Shows another home's devices (remembered).
+  Future<void> chooseHome(String id) async {
+    state.value = value.copyWith(homeId: id);
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString(_homeKey, id);
   }
 
   /// Asks the bridge where things stand and loads the devices. Safe to call often.
@@ -232,11 +308,9 @@ class SmartHome {
     try {
       final s = await _ch.invokeMethod<String>('status');
       if (s == 'ready') {
-        state.value = SmartHomeState(
-          status: SmartHomeStatus.loading,
-          devices: value.devices,
-        );
+        state.value = value.copyWith(status: SmartHomeStatus.loading);
         _apply(await _ch.invokeMethod<List>('devices'));
+        await _loadHomes();
       } else {
         state.value = const SmartHomeState(status: SmartHomeStatus.signedOut);
       }
@@ -250,24 +324,25 @@ class SmartHome {
     }
   }
 
-  /// Sign in to Google Home and grant access, then load the devices.
-  Future<void> connect() async {
+  /// Sign in to Google Home and grant access, then load the devices. [force] re-opens Google's
+  /// screen when already connected, to share more homes (a friend's) or fewer.
+  Future<void> connect({bool force = false}) async {
     _listen();
-    state.value = const SmartHomeState(status: SmartHomeStatus.loading);
+    if (!force) state.value = const SmartHomeState(status: SmartHomeStatus.loading);
     try {
-      final s = await _ch.invokeMethod<String>('connect');
+      final s = await _ch.invokeMethod<String>('connect', {'force': force});
       if (s == 'ready') {
         _apply(await _ch.invokeMethod<List>('devices'));
+        await _loadHomes();
       } else {
         state.value = const SmartHomeState(status: SmartHomeStatus.signedOut);
       }
     } on MissingPluginException {
       state.value = const SmartHomeState(status: SmartHomeStatus.unavailable);
     } catch (e) {
-      state.value = SmartHomeState(
-        status: SmartHomeStatus.error,
-        error: _msg(e),
-      );
+      state.value = force
+          ? value.copyWith(error: _msg(e))
+          : SmartHomeState(status: SmartHomeStatus.error, error: _msg(e));
     }
   }
 
@@ -275,25 +350,40 @@ class SmartHome {
       e is PlatformException ? (e.message ?? e.code) : '$e';
 
   /// Sends one change. The screen updates at once; if the bridge says no, it goes back.
+  /// Quick repeats (dragging, tapping colours) don't pile up: only the newest one is sent next.
   Future<void> set(String id, String trait, Object value) async {
     final before = this.value.byId(id);
     if (before == null) return;
-    _replace(before, _optimistic(before, trait, value));
+    final key = '$id|$trait';
+    _pending[key] = (value, DateTime.now().add(const Duration(seconds: 30)));
+    _replace(_optimistic(before, trait, value));
     if (_demoLocal) return;
+    if (_inFlight.contains(key)) {
+      _queued[key] = value;
+      return;
+    }
+    _inFlight.add(key);
+    Object? next = value;
+    var last = value;
     try {
-      await _ch.invokeMethod<void>('set', {
-        'id': id,
-        'trait': trait,
-        'value': value,
-      });
+      while (next != null) {
+        last = next;
+        _queued.remove(key);
+        await _ch.invokeMethod<void>('set', {'id': id, 'trait': trait, 'value': last});
+        next = _queued.remove(key);
+      }
+      // Done: keep it on top of stale updates a little longer, then trust the device again
+      // (the next device update after that drops it).
+      _pending[key] = (last, DateTime.now().add(const Duration(seconds: 4)));
     } on MissingPluginException {
-      _rollback(before, null);
-      state.value = SmartHomeState(
-        status: SmartHomeStatus.unavailable,
-        devices: const [],
-      );
+      _pending.remove(key);
+      state.value = const SmartHomeState(status: SmartHomeStatus.unavailable);
     } catch (e) {
+      _pending.remove(key);
+      _queued.remove(key);
       _rollback(before, _msg(e));
+    } finally {
+      _inFlight.remove(key);
     }
   }
 
@@ -303,6 +393,19 @@ class SmartHome {
   Future<void> setRoom(String room, bool on) => Future.wait([
     for (final d in value.inRoom(room))
       if (d.online && d.on != on) set(d.id, 'on', on),
+  ]);
+
+  /// One change to several lights at once (a room's, or all of them): each light that can take it.
+  Future<void> setLights(List<SmartDevice> lights, String trait, Object v) => Future.wait([
+    for (final d in lights)
+      if (d.online && switch (trait) {
+        'on' => d.on != v,
+        'brightness' => d.dimmable,
+        'color' => d.canColor,
+        'colorTempK' => d.canTemp,
+        _ => true,
+      })
+        set(d.id, trait, trait == 'colorTempK' ? (v as int).clamp(d.minK, d.maxK) : v),
   ]);
 
   static SmartDevice _optimistic(SmartDevice d, String trait, Object v) =>
@@ -336,19 +439,15 @@ class SmartHome {
         _ => d,
       };
 
-  void _replace(SmartDevice old, SmartDevice now) {
-    final s = value;
-    state.value = SmartHomeState(
-      status: s.status,
-      devices: [for (final d in s.devices) d.id == old.id ? now : d],
+  void _replace(SmartDevice now) {
+    state.value = value.copyWith(
+      devices: [for (final d in value.all) d.id == now.id ? now : d],
     );
   }
 
   void _rollback(SmartDevice before, String? error) {
-    final s = value;
-    state.value = SmartHomeState(
-      status: s.status,
-      devices: [for (final d in s.devices) d.id == before.id ? before : d],
+    state.value = value.copyWith(
+      devices: [for (final d in value.all) d.id == before.id ? before : d],
       error: error,
     );
   }
@@ -424,6 +523,9 @@ class SmartHome {
   @visibleForTesting
   void reset() {
     _demo = _demoLocal = false;
+    _pending.clear();
+    _queued.clear();
+    _inFlight.clear();
     state.value = const SmartHomeState();
   }
 }

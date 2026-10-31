@@ -82,6 +82,7 @@ class SmartHomeBody extends StatelessWidget {
                 subtitle: 'Lights, plugs and AC',
               ),
               const SizedBox(height: DS.s16),
+              if (ready) _HomePicker(state: s),
               if (onRemote != null) ...[
                 _RemoteTile(onTap: onRemote!),
                 const SizedBox(height: DS.s12),
@@ -117,6 +118,55 @@ class SmartHomeBody extends StatelessWidget {
       },
     );
   }
+}
+
+/// A room's lights as one: opened from its name in the Smart home sheet.
+Future<Object?> showSmartRoom(BuildContext context, String room) {
+  HapticFeedback.selectionClick();
+  return showOneSheetWith(
+    context,
+    height: MediaQuery.sizeOf(context).height * .8,
+    builder: (_) => SmartDetail.room(room: room),
+  );
+}
+
+/// Which home's devices show (yours, a friend's), like Google Home's home switcher, and
+/// Google's own screen to share more homes or fewer.
+class _HomePicker extends StatelessWidget {
+  const _HomePicker({required this.state});
+  final SmartHomeState state;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: DS.s12),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          if (state.homes.length > 1)
+            for (final (id, name) in state.homes) ...[
+              _ModeChip(
+                label: name,
+                selected: id == state.homeId,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  SmartHome.instance.chooseHome(id);
+                },
+              ),
+              const SizedBox(width: DS.s8),
+            ],
+          TextButton.icon(
+            onPressed: () => SmartHome.instance.connect(force: true),
+            icon: Icon(Icons.add_home_outlined, color: DS.ink, size: 20),
+            label: Text(
+              DS.cased(state.homes.length > 1 ? 'Homes' : 'Add a home'),
+              style: DS.pill.copyWith(color: DS.ink),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// The TV remote, living in Smart home since it took the remote's place in the nav.
@@ -290,8 +340,11 @@ class SmartTile extends StatelessWidget {
 
 /// Detail page inside the sheet: on/off, brightness for lights, setpoint and mode for an AC.
 class SmartDetail extends StatefulWidget {
-  const SmartDetail({super.key, required this.id});
-  final String id;
+  const SmartDetail({super.key, required String this.id}) : room = null;
+
+  /// All of a room's lights at once: power, brightness, colour; its devices below.
+  const SmartDetail.room({super.key, required String this.room}) : id = null;
+  final String? id, room;
 
   @override
   State<SmartDetail> createState() => _SmartDetailState();
@@ -299,20 +352,39 @@ class SmartDetail extends StatefulWidget {
 
 class _SmartDetailState extends State<SmartDetail> {
   double? _drag; // brightness while the thumb is down
+  final _live = _Throttle();
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<SmartHomeState>(
       valueListenable: SmartHome.instance.state,
       builder: (context, s, _) {
-        final d = s.byId(widget.id);
-        if (d == null) {
+        final room = widget.room;
+        final group = room == null
+            ? [?s.byId(widget.id!)]
+            : [for (final d in s.inRoom(room)) if (d.type == SmartType.light) d];
+        if (group.isEmpty) {
           return Padding(
             padding: const EdgeInsets.all(DS.s24),
-            child: Text('This device is gone.', style: DS.rowSub),
+            child: Text(room == null ? 'This device is gone.' : 'No lights in $room.', style: DS.rowSub),
           );
         }
         final home = SmartHome.instance;
+        // A room acts as one light: on if any is, its lit lights' brightness, the colour of the first lit.
+        final live = [for (final l in group) if (l.online) l];
+        final lit = [for (final l in live) if (l.on) l];
+        final dim = [for (final l in lit) if (l.dimmable) l];
+        final first = lit.firstOrNull ?? live.firstOrNull ?? group.first;
+        final d = room == null
+            ? first
+            : first.copyWith(
+                on: lit.isNotEmpty,
+                brightness: dim.isEmpty ? 0 : dim.fold<int>(0, (a, l) => a + l.brightness!) ~/ dim.length,
+              );
+        final online = live.isNotEmpty;
+        final dimmable = live.any((l) => l.dimmable);
+        void send(String trait, Object v) =>
+            room == null ? home.set(d.id, trait, v) : home.setLights(live, trait, v);
         return Padding(
           padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s12),
           child: Column(
@@ -320,13 +392,15 @@ class _SmartDetailState extends State<SmartDetail> {
             mainAxisSize: MainAxisSize.min,
             children: [
               SheetHeader(
-                title: d.name,
+                title: room ?? d.name,
                 yours: true,
-                subtitle: [
-                  if (d.room.isNotEmpty) d.room,
-                  smartSub(d),
-                ].join(' · '),
-                leading: Icon(smartIcon(d.type), color: DS.ink, size: 28),
+                subtitle: room != null
+                    ? (lit.isEmpty ? 'All lights off' : '${lit.length} of ${live.length} lights on')
+                    : [
+                        if (d.room.isNotEmpty) d.room,
+                        smartSub(d),
+                      ].join(' · '),
+                leading: Icon(room != null ? Icons.meeting_room_outlined : smartIcon(d.type), color: DS.ink, size: 28),
               ),
               const SizedBox(height: DS.s16),
               OneCard(
@@ -335,20 +409,18 @@ class _SmartDetailState extends State<SmartDetail> {
                   children: [
                     Expanded(
                       child: Text(
-                        d.online ? 'Power' : 'Offline',
+                        !online ? 'Offline' : room != null ? 'All lights' : 'Power',
                         style: DS.rowTitle,
                       ),
                     ),
                     Switch(
                       value: d.on,
-                      onChanged: d.online
-                          ? (v) => home.set(d.id, 'on', v)
-                          : null,
+                      onChanged: online ? (v) => send('on', v) : null,
                     ),
                   ],
                 ),
               ),
-              if (d.type == SmartType.light && d.dimmable) ...[
+              if (d.type == SmartType.light && dimmable) ...[
                 const SizedBox(height: DS.s12),
                 OneCard(
                   tone: CardTone.muted,
@@ -361,32 +433,39 @@ class _SmartDetailState extends State<SmartDetail> {
                             child: Text('Brightness', style: DS.rowTitle),
                           ),
                           Text(
-                            '${(_drag ?? d.brightness!).round()}%',
+                            '${(_drag ?? d.brightness ?? 0).round()}%',
                             style: DS.rowSub,
                           ),
                         ],
                       ),
                       Slider(
-                        value: (_drag ?? d.brightness!).toDouble(),
+                        value: (_drag ?? d.brightness ?? 0).toDouble(),
                         min: 0,
                         max: 100,
-                        onChanged: d.online
-                            ? (v) => setState(() => _drag = v)
+                        onChanged: online
+                            ? (v) {
+                                setState(() => _drag = v);
+                                if (_live.ready) send('brightness', v.round());
+                              }
                             : null,
                         onChangeEnd: (v) {
                           setState(() => _drag = null);
-                          home.set(d.id, 'brightness', v.round());
+                          send('brightness', v.round());
                         },
                       ),
                     ],
                   ),
                 ),
               ],
-              if (d.type == SmartType.light && (d.canColor || d.canTemp)) ...[
+              if (d.type == SmartType.light && live.any((l) => l.canColor || l.canTemp)) ...[
                 const SizedBox(height: DS.s12),
-                _ColourCard(d: d),
+                _ColourCard(d: d, lights: room == null ? [d] : live),
               ],
-              if (d.type == SmartType.light && d.effects) ...[
+              if (room != null) ...[
+                const SizedBox(height: DS.s16),
+                _Grid(devices: s.inRoom(room)),
+              ],
+              if (room == null && d.type == SmartType.light && d.effects) ...[
                 const SizedBox(height: DS.s12),
                 _EffectsCard(d: d),
               ],
@@ -455,7 +534,7 @@ class _SmartDetailState extends State<SmartDetail> {
   }
 }
 
-/// A room's name, with all on / all off for its devices.
+/// A room's name (tap: its lights' controls), with all on / all off for its devices.
 class _RoomHeader extends StatelessWidget {
   const _RoomHeader({required this.room, required this.devices});
   final String room;
@@ -465,11 +544,31 @@ class _RoomHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final live = devices.where((d) => d.online).toList();
     final anyOn = live.any((d) => d.on);
+    final lights = [for (final d in devices) if (d.type == SmartType.light) d];
     return Padding(
       padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s4),
       child: Row(
         children: [
-          Expanded(child: Text(DS.cased(room), style: DS.eyebrow)),
+          Expanded(
+            child: Semantics(
+              button: true,
+              label: '$room controls',
+              excludeSemantics: true,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(DS.s8),
+                onTap: lights.isEmpty ? null : () => showSmartRoom(context, room),
+                child: SizedBox(
+                  height: 48,
+                  child: Row(
+                    children: [
+                      Flexible(child: Text(DS.cased(room), style: DS.eyebrow, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      if (lights.isNotEmpty) Icon(Icons.tune_rounded, size: 18, color: DS.inkMuted),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           if (live.length > 1)
             TextButton(
               onPressed: () {
@@ -509,8 +608,11 @@ const _whites = [2700, 4000, 6500];
 
 /// Colour and white warmth: quick swatches, then a hue slider and a warm → cool slider.
 class _ColourCard extends StatefulWidget {
-  const _ColourCard({required this.d});
+  const _ColourCard({required this.d, required this.lights});
+
+  /// The light shown (or a room's first lit one); [lights] are the ones changed.
   final SmartDevice d;
+  final List<SmartDevice> lights;
 
   @override
   State<_ColourCard> createState() => _ColourCardState();
@@ -518,20 +620,27 @@ class _ColourCard extends StatefulWidget {
 
 class _ColourCardState extends State<_ColourCard> {
   double? _hue, _k; // while a thumb is down
+  final _live = _Throttle();
 
-  void _colour(double h, [double s = 1]) {
-    HapticFeedback.selectionClick();
-    SmartHome.instance.set(widget.d.id, 'color', {'h': h, 's': s});
+  void _colour(double h, [double s = 1, bool tap = true]) {
+    if (tap) HapticFeedback.selectionClick();
+    SmartHome.instance.setLights(widget.lights, 'color', {'h': h, 's': s});
   }
 
-  void _white(int k) {
-    HapticFeedback.selectionClick();
-    SmartHome.instance.set(widget.d.id, 'colorTempK', k);
+  void _white(int k, [bool tap = true]) {
+    if (tap) HapticFeedback.selectionClick();
+    SmartHome.instance.setLights(widget.lights, 'colorTempK', k);
   }
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.d;
+    final ls = widget.lights;
+    final d = widget.d.copyWith(
+      canColor: ls.any((l) => l.canColor),
+      canTemp: ls.any((l) => l.canTemp),
+      minK: ls.map((l) => l.minK).reduce(math.min),
+      maxK: ls.map((l) => l.maxK).reduce(math.max),
+    );
     final inColour = d.colorMode == 'color' || (d.colorMode == null && d.hue != null);
     final inWhite = d.colorMode == 'temp';
     final hue = _hue ?? d.hue ?? 0;
@@ -554,7 +663,7 @@ class _ColourCardState extends State<_ColourCard> {
                     colour: kelvinColour(w),
                     label: w <= 3000 ? 'Warm white' : w >= 6000 ? 'Cool white' : 'White',
                     selected: inWhite && d.colorTempK != null && (d.colorTempK! - w).abs() < 300,
-                    onTap: d.online ? () => _white(w.clamp(d.minK, d.maxK)) : null,
+                    onTap: d.online ? () => _white(w) : null,
                   ),
               if (d.canColor)
                 for (final h in _hues)
@@ -574,10 +683,15 @@ class _ColourCardState extends State<_ColourCard> {
               value: hue.clamp(0, 360),
               min: 0,
               max: 360,
-              onChanged: d.online ? (v) => setState(() => _hue = v) : null,
+              onChanged: d.online
+                  ? (v) {
+                      setState(() => _hue = v);
+                      if (_live.ready) _colour(v, _sat(d), false);
+                    }
+                  : null,
               onChangeEnd: (v) {
                 setState(() => _hue = null);
-                _colour(v, d.colorMode == 'color' ? math.max(d.saturation ?? 1, .5) : 1);
+                _colour(v, _sat(d));
               },
             ),
           ],
@@ -589,7 +703,12 @@ class _ColourCardState extends State<_ColourCard> {
               value: k,
               min: lo,
               max: hi,
-              onChanged: d.online ? (v) => setState(() => _k = v) : null,
+              onChanged: d.online
+                  ? (v) {
+                      setState(() => _k = v);
+                      if (_live.ready) _white(v.round(), false);
+                    }
+                  : null,
               onChangeEnd: (v) {
                 setState(() => _k = null);
                 _white(v.round());
@@ -599,6 +718,20 @@ class _ColourCardState extends State<_ColourCard> {
         ],
       ),
     );
+  }
+}
+
+double _sat(SmartDevice d) => d.colorMode == 'color' ? math.max(d.saturation ?? 1, .5) : 1;
+
+/// While a thumb moves: true at most every 200 ms, so the light follows the drag without a
+/// command per frame (and the bridge keeps only the newest one anyway).
+class _Throttle {
+  DateTime _last = DateTime(0);
+  bool get ready {
+    final now = DateTime.now();
+    if (now.difference(_last) < const Duration(milliseconds: 200)) return false;
+    _last = now;
+    return true;
   }
 }
 

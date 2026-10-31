@@ -76,6 +76,9 @@ object SmartHomeBridge {
     private val devices = ConcurrentHashMap<String, HomeDevice>()
     private val types = ConcurrentHashMap<String, Set<DeviceType>>()
     @Volatile private var rooms: Map<String, String> = emptyMap()
+    /** Homes (structures) the user shared with us, and which home each device is in. */
+    @Volatile private var homes: Map<String, String> = emptyMap()
+    private val homeOf = ConcurrentHashMap<String, String>()
     private val dirty = Channel<Unit>(Channel.CONFLATED)
 
     private val registry by lazy {
@@ -120,9 +123,11 @@ object SmartHomeBridge {
             .getOrNull()?.also { home = it }
     }
 
+    @Volatile internal var forceFlow = false
+
     internal suspend fun requestPermissions(client: HomeClient): String? {
         val r = try {
-            client.requestPermissions()
+            client.requestPermissions(forceLaunch = forceFlow).also { forceFlow = false }
         } catch (e: HomeException) {
             return e.message ?: "Google Home refused"
         }
@@ -163,7 +168,9 @@ object SmartHomeBridge {
                     }
                     "connect" -> {
                         val ctx = app ?: throw IllegalStateException("Smart home isn't ready")
-                        if (!permissionState()) {
+                        val force = call.argument<Boolean>("force") == true // add / remove homes
+                        if (force || !permissionState()) {
+                            forceFlow = force
                             val done = CompletableDeferred<String?>()
                             flowDone = done
                             ctx.startActivity(Intent(ctx, HomeConnectActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -187,8 +194,19 @@ object SmartHomeBridge {
                         result.success(snapshot())
                     }
                     "set" -> {
-                        set(call.argument<String>("id")!!, call.argument<String>("trait")!!, call.argument<Any>("value"))
+                        val t0 = System.currentTimeMillis()
+                        val trait = call.argument<String>("trait")!!
+                        try {
+                            set(call.argument<String>("id")!!, trait, call.argument<Any>("value"))
+                        } finally {
+                            android.util.Log.i("SmartHome", "set $trait took ${System.currentTimeMillis() - t0} ms")
+                        }
                         result.success(null)
+                    }
+                    "homes" -> {
+                        startStreaming()
+                        if (homes.isEmpty()) runCatching { homes = client()!!.structures().list().associate { it.id.id to it.name } }
+                        result.success(homes.map { (id, name) -> mapOf("id" to id, "name" to name) }.sortedBy { it["name"] })
                     }
                     else -> result.notImplemented()
                 }
@@ -207,6 +225,22 @@ object SmartHomeBridge {
         if (streaming?.isActive == true) return
         val c = client() ?: return
         streaming = sc.launch {
+            launch {
+                val watchers = HashMap<String, Job>()
+                c.structures().collect { set ->
+                    homes = set.associate { it.id.id to it.name }
+                    for (st in set) if (watchers[st.id.id]?.isActive != true) {
+                        watchers[st.id.id] = launch {
+                            st.devices().collect { ds ->
+                                for (d in ds) homeOf[d.id.id] = st.id.id
+                                dirty.trySend(Unit)
+                            }
+                        }
+                    }
+                    for (gone in watchers.keys - homes.keys) watchers.remove(gone)?.cancel()
+                    dirty.trySend(Unit)
+                }
+            }
             launch {
                 c.rooms().collect { set ->
                     rooms = set.associate { it.id.id to it.name }
@@ -294,6 +328,7 @@ object SmartHomeBridge {
             "id" to d.id.id,
             "name" to d.name,
             "room" to (d.roomId?.id?.let { rooms[it] } ?: ""),
+            "homeId" to homeOf[d.id.id],
             "type" to kind,
             "online" to (d.sourceConnectivity.connectivityState != ConnectivityState.OFFLINE),
             "on" to on,
