@@ -679,7 +679,21 @@ class _TvSearchState extends State<TvSearch> {
                 children: [
                   ColoredBox(
                     color: const Color(0xFF000000),
-                    child: Padding(padding: EdgeInsets.fromLTRB(TvDS.safe.left, TvDS.safe.top, TvDS.safe.right, 0), child: top),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(TvDS.safe.left, TvDS.safe.top, TvDS.safe.right, 0),
+                      // Back up into the header (box, history, filters): the results return to their
+                      // first place — left scrolled, the first row sat under the header's fade.
+                      child: Focus(
+                        canRequestFocus: false,
+                        skipTraversal: true,
+                        onFocusChange: (inside) {
+                          if (inside && _scroll.hasClients && _scroll.offset > 0) {
+                            _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+                          }
+                        },
+                        child: top,
+                      ),
+                    ),
                   ),
                   const IgnorePointer(
                     child: SizedBox(
