@@ -46,7 +46,8 @@ Flutter Android launcher, two flavours from one codebase:
   exists before Dart listens). Incoming searches hide the keyboard.
   **Remote's mic → our search** (`ShowNameService.takeVoiceSearch`, setting `remoteMic` ours|google):
   the mic still goes to Google; on any com.google.android.katniss event the service reads the results
-  page's headline (`id/super_header` = what was said), presses Back and opens our search with it.
+  page's headline (`id/super_header` = what was said; a single title's page: `entity_row_header_title`) and opens our search on top (never Back: it
+  hit our search on slow starts). Can't disable Google's search app: it does the speech-to-text.
   `googleUntil` (set by TvActivity "searchEverywhere") leaves Google alone when we sent the user there.
   **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
   accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service

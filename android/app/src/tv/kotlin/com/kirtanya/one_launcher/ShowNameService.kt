@@ -82,10 +82,12 @@ class ShowNameService : AccessibilityService() {
         val now = SystemClock.uptimeMillis()
         if (now > lookUntil || now < googleUntil || !wanted(this)) return
         val root = try { rootInActiveWindow } catch (e: Exception) { null }
-        // The results page's headline is what was said (the listening screen has none).
-        val words = root?.takeIf { it.packageName?.toString() == GOOGLE_SEARCH }
-            ?.findAccessibilityNodeInfosByViewId("$GOOGLE_SEARCH:id/super_header")
-            ?.firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()
+        // The results page's headline is what was said (the listening screen has none); when Google
+        // jumps straight to one title's page ("dune" → Dune: Prophecy), that title.
+        val google = root?.takeIf { it.packageName?.toString() == GOOGLE_SEARCH }
+        fun text(id: String) = google?.findAccessibilityNodeInfosByViewId("$GOOGLE_SEARCH:id/$id")
+            ?.firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        val words = text("super_header") ?: text("entity_row_header_title")
         if (words.isNullOrEmpty() || (words == lastWords && now - lastTaken < 5000)) {
             main.postDelayed(::look, 250)
             return
@@ -94,7 +96,8 @@ class ShowNameService : AccessibilityService() {
         lastWords = words
         lastTaken = now
         android.util.Log.i("OneVoice", "remote mic said '$words' → One Launcher search")
-        performGlobalAction(GLOBAL_ACTION_BACK) // closes Google's page
+        // No Back to close Google's page: on a slow start it landed on our search and closed it
+        // (home instead of results). Ours opens on top; Google's page stays behind in its own task.
         startActivity(
             android.content.Intent(this, TvActivity::class.java)
                 .putExtra(TvActivity.EXTRA_SEARCH, words)
