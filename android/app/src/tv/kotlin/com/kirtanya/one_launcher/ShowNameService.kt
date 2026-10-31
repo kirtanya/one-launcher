@@ -67,18 +67,33 @@ class ShowNameService : AccessibilityService() {
     private var lastWords: String? = null
     private var lastTaken = 0L
 
+    private val main = Handler(Looper.getMainLooper())
+    private var lookUntil = 0L
+
+    /** Google's search is up: look for the words now and every 250 ms for 5 s (the headline can
+     *  appear after its last event — a single look missed the first real press). */
     private fun takeVoiceSearch(event: AccessibilityEvent) {
+        val running = SystemClock.uptimeMillis() < lookUntil
+        lookUntil = SystemClock.uptimeMillis() + 5000
+        if (!running) look()
+    }
+
+    private fun look() {
         val now = SystemClock.uptimeMillis()
-        if (now < googleUntil || !wanted(this)) return
-        val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return
-        if (root.packageName?.toString() != GOOGLE_SEARCH) return
+        if (now > lookUntil || now < googleUntil || !wanted(this)) return
+        val root = try { rootInActiveWindow } catch (e: Exception) { null }
         // The results page's headline is what was said (the listening screen has none).
-        val words = root.findAccessibilityNodeInfosByViewId("$GOOGLE_SEARCH:id/super_header")
-            .firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()
-        if (words.isNullOrEmpty() || (words == lastWords && now - lastTaken < 5000)) return
+        val words = root?.takeIf { it.packageName?.toString() == GOOGLE_SEARCH }
+            ?.findAccessibilityNodeInfosByViewId("$GOOGLE_SEARCH:id/super_header")
+            ?.firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()
+        if (words.isNullOrEmpty() || (words == lastWords && now - lastTaken < 5000)) {
+            main.postDelayed(::look, 250)
+            return
+        }
+        lookUntil = 0L
         lastWords = words
         lastTaken = now
-        android.util.Log.i("OneVoice", "remote mic said '$words' → One Launcher search (${event.eventType})")
+        android.util.Log.i("OneVoice", "remote mic said '$words' → One Launcher search")
         performGlobalAction(GLOBAL_ACTION_BACK) // closes Google's page
         startActivity(
             android.content.Intent(this, TvActivity::class.java)
