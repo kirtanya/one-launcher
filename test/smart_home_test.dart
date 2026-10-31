@@ -98,7 +98,7 @@ void main() {
       home.debugDemo(local: false);
       showSmartHome(tester.element(find.byType(Scaffold).first));
       await tester.pumpAndSettle();
-      expect(find.text('Ceiling light'), findsOneWidget);
+      expect(find.text('Ceiling light'), findsWidgets, reason: 'its tile, and its chip in the quick lights up top');
       expect(home.value.byId('p1')!.on, isFalse);
       await tester.tap(find.text('Lamp plug'));
       await tester.pump();
@@ -270,6 +270,8 @@ void main() {
     await boot(tester);
     home.debugDemo(local: false);
     showSmartHome(tester.element(find.byType(Scaffold).first));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.bySemanticsLabel('Bedroom controls'));
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('Bedroom controls'));
     await tester.pumpAndSettle();

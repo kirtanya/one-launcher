@@ -13,7 +13,7 @@ class QuickLights extends StatefulWidget {
     required this.ink,
     required this.soft,
     required this.onOpen,
-    this.full = true,
+    this.full,
   });
 
   /// Words and icons, and the quieter words (it sits on the wallpaper or a card).
@@ -21,7 +21,10 @@ class QuickLights extends StatefulWidget {
 
   /// Opens the full Smart home sheet (setup, other devices).
   final VoidCallback onOpen;
-  final bool full;
+
+  /// true: header, chips, brightness and colour; false: header and one swappable row;
+  /// null (default): picks from the space it is given (full, compact, or header only).
+  final bool? full;
 
   @override
   State<QuickLights> createState() => _QuickLightsState();
@@ -132,32 +135,29 @@ class _QuickLightsState extends State<QuickLights> {
         for (final d in s.lights) d.room.isEmpty ? 'Other' : d.room,
       }.toList();
 
+      final tints = [for (final d in on) d.shade ?? kelvinColour(2700)];
+      final tint = tints.isEmpty
+          ? kelvinColour(2700)
+          : Color.from(
+              alpha: 1,
+              red: tints.fold<double>(0, (a, c) => a + c.r) / tints.length,
+              green: tints.fold<double>(0, (a, c) => a + c.g) / tints.length,
+              blue: tints.fold<double>(0, (a, c) => a + c.b) / tints.length,
+            );
       final slider = !live.any((d) => d.dimmable)
           ? null
-          : SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                trackHeight: 6,
-                activeTrackColor: ink,
-                inactiveTrackColor: ink.withValues(alpha: .22),
-                thumbColor: ink,
-                overlayColor: ink.withValues(alpha: .1),
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
-              ),
-              child: Semantics(
-                label: 'Brightness',
-                child: Slider(
-                  value: bright.clamp(0, 100).toDouble(),
-                  max: 100,
-                  onChanged: (v) {
-                    setState(() => _drag = v);
-                    _brightness(live, v);
-                  },
-                  onChangeEnd: (v) {
-                    setState(() => _drag = null);
-                    _brightness(live, v, end: true);
-                  },
-                ),
-              ),
+          : _BrightBar(
+              value: bright.clamp(0, 100).toDouble(),
+              ink: ink,
+              tint: tint,
+              onChanged: (v) {
+                setState(() => _drag = v);
+                _brightness(live, v);
+              },
+              onEnd: (v) {
+                setState(() => _drag = null);
+                _brightness(live, v, end: true);
+              },
             );
       final swatches = !(canColour || canWhite)
           ? null
@@ -205,7 +205,7 @@ class _QuickLightsState extends State<QuickLights> {
               ),
             );
 
-      final header = Row(
+      Widget header(bool showModes) => SizedBox(height: _headerH, child: Row(
         children: [
           Expanded(
             child: GestureDetector(
@@ -252,7 +252,7 @@ class _QuickLightsState extends State<QuickLights> {
                   ),
               ],
             ),
-          if (!widget.full) ...[
+          if (showModes) ...[
             if (swatches != null)
               _mode(1, Icons.palette_outlined, 'Colour', ink),
             if (slider != null)
@@ -268,7 +268,7 @@ class _QuickLightsState extends State<QuickLights> {
             },
           ),
         ],
-      );
+      ));
 
       final chips = SizedBox(
         height: 40,
@@ -311,26 +311,181 @@ class _QuickLightsState extends State<QuickLights> {
         ),
       );
 
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          header,
-          SizedBox(height: widget.full ? DS.s8 : DS.s4),
-          if (widget.full) chips,
-          if (widget.full) ...[
-            if (slider != null) ...[const SizedBox(height: DS.s4), slider],
-            ?swatches,
-          ] else
-            switch (_row) {
-              1 when swatches != null => swatches,
-              2 when slider != null => SizedBox(height: 40, child: slider),
-              _ => chips,
-            },
-        ],
+      final both = slider != null && swatches != null;
+      return LayoutBuilder(
+        builder: (context, c) {
+          final wide = c.maxWidth >= 480;
+          final extra = both
+              ? (wide ? _gap + _rowH : 2 * (_gap + _rowH))
+              : (slider != null || swatches != null ? _gap + _rowH : 0.0);
+          final fullH = _headerH + DS.s8 + _rowH + extra;
+          final compactH = _headerH + DS.s4 + _rowH;
+          final mode =
+              widget.full ??
+              (c.maxHeight.isInfinite || c.maxHeight >= fullH
+                  ? true
+                  : c.maxHeight >= compactH
+                  ? false
+                  : null);
+          if (mode == null) return header(false);
+          if (!mode) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                header(true),
+                const SizedBox(height: DS.s4),
+                switch (_row) {
+                  1 when swatches != null => swatches,
+                  2 when slider != null => SizedBox(
+                    height: _rowH,
+                    child: slider,
+                  ),
+                  _ => chips,
+                },
+              ],
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              header(false),
+              const SizedBox(height: DS.s8),
+              chips,
+              if (both && wide) ...[
+                const SizedBox(height: _gap),
+                Row(
+                  children: [
+                    Expanded(flex: 5, child: slider),
+                    const SizedBox(width: DS.s12),
+                    Expanded(flex: 6, child: swatches),
+                  ],
+                ),
+              ] else ...[
+                if (slider != null) ...[const SizedBox(height: _gap), slider],
+                if (swatches != null) ...[
+                  const SizedBox(height: _gap),
+                  swatches,
+                ],
+              ],
+            ],
+          );
+        },
       );
     },
   );
+}
+
+const _headerH = 48.0, _rowH = 40.0, _gap = 4.0;
+
+/// Brightness as a 40 px stadium bar: the fill is the level, tinted with the lights' colour;
+/// tap or drag anywhere on it.
+class _BrightBar extends StatelessWidget {
+  const _BrightBar({
+    required this.value,
+    required this.ink,
+    required this.tint,
+    required this.onChanged,
+    required this.onEnd,
+  });
+  final double value;
+  final Color ink, tint;
+  final ValueChanged<double> onChanged, onEnd;
+
+  void _step(double d) {
+    final v = (value + d).clamp(1, 100).toDouble();
+    onChanged(v);
+    onEnd(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = value.round().clamp(0, 100);
+    final onFill = tint.computeLuminance() > .5 ? Colors.black : Colors.white;
+    Widget content(Color col) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Row(
+        children: [
+          Icon(Icons.wb_sunny_outlined, size: 18, color: col),
+          const SizedBox(width: DS.s8),
+          Text('$pct%', style: DS.pill.copyWith(color: col)),
+        ],
+      ),
+    );
+    return Semantics(
+      label: 'Brightness',
+      slider: true,
+      value: '$pct%',
+      increasedValue: '${(pct + 10).clamp(1, 100)}%',
+      decreasedValue: '${(pct - 10).clamp(1, 100)}%',
+      onIncrease: () => _step(10),
+      onDecrease: () => _step(-10),
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            double at(Offset o) =>
+                (o.dx / (w <= 0 ? 1 : w) * 100).clamp(1, 100).toDouble();
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) {
+                final v = at(d.localPosition);
+                onChanged(v);
+                onEnd(v);
+              },
+              onHorizontalDragStart: (d) => onChanged(at(d.localPosition)),
+              onHorizontalDragUpdate: (d) => onChanged(at(d.localPosition)),
+              onHorizontalDragEnd: (_) => onEnd(value.clamp(1, 100)),
+              child: SizedBox(
+                height: _rowH,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_rowH / 2),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(color: ink.withValues(alpha: .16)),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FractionallySizedBox(
+                          widthFactor: (value / 100).clamp(0, 1),
+                          heightFactor: 1,
+                          child: ColoredBox(color: tint),
+                        ),
+                      ),
+                      ClipRect(
+                        clipper: _Part(value / 100, fill: false),
+                        child: content(ink),
+                      ),
+                      ClipRect(
+                        clipper: _Part(value / 100, fill: true),
+                        child: content(onFill),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// The part of the bar under (fill) or past the fill edge, so the words stay readable on both.
+class _Part extends CustomClipper<Rect> {
+  const _Part(this.f, {required this.fill});
+  final double f;
+  final bool fill;
+  @override
+  Rect getClip(Size s) {
+    final x = s.width * f.clamp(0, 1);
+    return fill ? Rect.fromLTRB(0, 0, x, s.height) : Rect.fromLTRB(x, 0, s.width, s.height);
+  }
+
+  @override
+  bool shouldReclip(_Part o) => o.f != f || o.fill != fill;
 }
 
 class _Line extends StatelessWidget {

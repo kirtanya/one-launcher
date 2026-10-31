@@ -12,11 +12,12 @@ import 'prefs.dart';
 import 'quick_actions.dart';
 import 'quick_chips.dart';
 import 'remote_sheet.dart';
+import 'quick_lights.dart';
+import 'smart_home.dart';
 import 'smart_home_sheet.dart';
 import 'tv_remote.dart';
 import 'search.dart';
 import 'search_dock.dart';
-import 'notifications/notifications_page.dart';
 import 'search_history.dart';
 import 'widgets.dart';
 import 'top/top_carousel.dart';
@@ -92,9 +93,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     reverseDuration: AppDrawerState.backDuration,
   );
 
-  /// The recent-search pills: in while nothing is typed, out once something is.
+  /// The recent-search pills (and quick lights): in while nothing is typed, gone the moment
+  /// something is, so the results show at once.
   late final AnimationController _pillsIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420), value: 1);
-  void _syncPills() => _query.text.trim().isEmpty ? _pillsIn.forward() : _pillsIn.reverse();
+  void _syncPills() => _query.text.trim().isEmpty ? _pillsIn.forward() : _pillsIn.value = 0;
 
   /// How far search has come in (0–1): the pull while pulling, else [_reveal].
   double get _revealed => _searching || _reveal.isAnimating ? _reveal.value : (_pull.value / pullToOpen).clamp(0.0, 1.0);
@@ -104,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   final _pages = <_TabPage>[];
   int _pageSeq = 0;
   double _pageFrom = 1; // the side the next page comes in from (1 = right)
-  static const _navOrder = ['home', 'search', 'smart', 'remote', 'alerts', 'settings'];
+  static const _navOrder = ['home', 'smart', 'remote', 'search', 'settings'];
   bool get _pageOpen => _pages.any((p) => !p.leaving);
 
   /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
@@ -247,18 +249,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onSubmitted: _onSubmit,
     onSettings: _settings,
     // The nav's Smart home tab (it took the remote's place; the remote is its first tile).
-    onRemote: prefs.remoteButton
-        ? () => _openTab('smart', () => showSmartHome(context, onRemote: () => _openTab('remote', () => showTvRemote(context, prefs: prefs))))
-        : null,
+    onRemote: prefs.remoteButton ? _openSmart : null,
     onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
-    // The notification centre: a tab for now, while it's being built (it moves later).
-    onNotifications: () => _openTab('alerts', () => showNotificationCenter(context, work: _apps.any((a) => a.work))),
-    // At the bottom the dock is the nav (Home · Search · Remote · Settings); in the drawer, just search.
+    // At the bottom the dock is the nav (Home · Smart home · Search · Settings); in the drawer, just search.
     tab: _tab,
     onHome: inline ? null : _navHome,
     pull: _pull, // pull-to-search drives the nav → search morph
     pullFull: pullToOpen,
   );
+
+  /// Pages scrolling under the nav: it shrinks once one has left its top, and grows back there.
+  /// And on the home itself, a swipe right-to-left past its edge opens the next tab (Smart home),
+  /// the way a left-to-right one opens the Today panel.
+  double _edgePull = 0;
+  bool _onPagesScroll(ScrollNotification n) {
+    final m = n.metrics;
+    if (m.axis == Axis.vertical && n is ScrollUpdateNotification) {
+      final away = m.pixels > m.minScrollExtent + 8;
+      if (SearchDock.shrunk.value != away) SearchDock.shrunk.value = away;
+    }
+    if (n.depth == 0 && m.axis == Axis.horizontal) {
+      if (n is ScrollStartNotification) _edgePull = 0;
+      if (n is OverscrollNotification && n.dragDetails != null && n.overscroll > 0) _edgePull += n.overscroll;
+      if (n is ScrollEndNotification) {
+        final v = n.dragDetails?.primaryVelocity ?? 0;
+        if (!_pageOpen && !_searching && prefs.remoteButton && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _openSmart();
+        _edgePull = 0;
+      }
+    }
+    return false;
+  }
+
+  void _openSmart() => _openTab('smart', () => showSmartHome(context, onRemote: () => _openTab('remote', () => showTvRemote(context, prefs: prefs))));
 
   void _openRemote() {
     if (prefs.tvHost == null && !prefs.remoteButton) return;
@@ -281,6 +303,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     if (_tab == tab && _pageOpen) return;
     final forward = _navOrder.indexOf(tab) > _navOrder.indexOf(_tab);
     setState(() => _tab = tab);
+    SearchDock.shrunk.value = false; // a new page starts at its top
     _closePages(toward: forward ? -1 : 1, replaced: true);
     _pageFrom = forward ? 1 : -1;
     if (prefs.searchPosition != 'top') TabPageHost.arm(TabPageHost(present: _presentPage, navRoom: SearchDock.height + DS.s12 * 2));
@@ -345,6 +368,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   /// The nav's Home: back to the clock (closes search, the list and the today panel).
   void _navHome() {
+    SearchDock.shrunk.value = false;
     _closePages(toward: 1); // Home is the first tab: the page goes off to the right
     _stopSearch();
     _drawerKey.currentState?.reset();
@@ -484,7 +508,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   Future<void> _startSearch() async {
     HapticFeedback.selectionClick();
-    _closePages(toward: 1); // Search sits left of Remote and Settings
+    // Search sits right of Smart home / Remote and left of Settings.
+    _closePages(toward: _navOrder.indexOf(_tab) < _navOrder.indexOf('search') ? -1 : 1);
+    SearchDock.shrunk.value = false;
+    SmartHome.instance.refresh(); // its quick lights, above the recent searches
     _reveal.value = math.max(_reveal.value, (_pull.value / pullToOpen).clamp(0.0, 1.0)); // a pull: on from where it got to
     _reveal.forward();
     _compact.value = false;
@@ -732,7 +759,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                     // stretch on the pager itself; the pages keep their own. ----
                     ScrollConfiguration(
                       behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
-                      child: PageView(
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _onPagesScroll,
+                        // No Today panel: the pager doesn't scroll, so the swipe to Smart home is caught here.
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onHorizontalDragStart: _sidePanel || _pageOpen ? null : (_) => _edgePull = 0,
+                          onHorizontalDragUpdate: _sidePanel || _pageOpen ? null : (d) => _edgePull -= d.delta.dx,
+                          onHorizontalDragEnd: _sidePanel || _pageOpen
+                              ? null
+                              : (d) {
+                                  final v = d.primaryVelocity ?? 0;
+                                  if (!_searching && prefs.remoteButton && (_edgePull > 48 || (_edgePull > 8 && v < -300))) _openSmart();
+                                  _edgePull = 0;
+                                },
+                          child: PageView(
                         controller: _panel,
                         physics: _sidePanel && !_pageOpen ? const PageScrollPhysics() : const NeverScrollableScrollPhysics(), // a tab page keeps its own swipes
                         onPageChanged: (i) {
@@ -868,12 +909,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                   // ---- Recent searches: pills just above the bar, popping in one after another as
                                   // search opens (with the pull, or on their own after a tap); typing or closing
                                   // search takes them back out. ----
-                                  if (prefs.searchPosition != 'top' && RecentSearches.shows(prefs))
+                                  // Quick lights sit just above them (when Google Home has lights).
+                                  if (prefs.searchPosition != 'top')
                                     AnimatedBuilder(
-                                      animation: Listenable.merge([_reveal, _pull, _pillsIn]),
+                                      animation: Listenable.merge([_reveal, _pull, _pillsIn, SmartHome.instance.state]),
                                       builder: (context, _) {
                                         final t = _revealed * _pillsIn.value;
-                                        if (t == 0) return const SizedBox.shrink();
+                                        final lights = SmartHome.instance.state.value.lights.isNotEmpty;
+                                        final pills = RecentSearches.shows(prefs);
+                                        if (t == 0 || !(lights || pills)) return const SizedBox.shrink();
                                         final mq = MediaQuery.of(context);
                                         return Positioned(
                                           left: 0,
@@ -881,7 +925,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                           bottom: math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12 + SearchDock.height + DS.s12,
                                           child: IgnorePointer(
                                             ignoring: !_searching || t < 1,
-                                            child: RecentSearchPills(prefs: prefs, progress: t, onPick: _setQuery),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                                              children: [
+                                                if (lights)
+                                                  Opacity(
+                                                    opacity: Curves.easeOut.transform(t),
+                                                    child: Transform.translate(
+                                                      offset: Offset(0, 16 * (1 - t)),
+                                                      child: Padding(
+                                                        padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
+                                                        child: Container(
+                                                          padding: const EdgeInsets.fromLTRB(DS.s12, DS.s4, DS.s4, DS.s8),
+                                                          decoration: ShapeDecoration(
+                                                            color: DS.card,
+                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: DS.hairline)),
+                                                          ),
+                                                          child: QuickLights(ink: DS.ink, soft: DS.inkMuted, full: false, onOpen: () {
+                                                            _stopSearch();
+                                                            _openSmart();
+                                                          }),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                if (pills) RecentSearchPills(prefs: prefs, progress: t, onPick: _setQuery),
+                                              ],
+                                            ),
                                           ),
                                         );
                                       },
@@ -915,7 +986,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                             ),
                           ),
                         ],
-                      ),
+                      ))),
                     ),
                   ],
                 );

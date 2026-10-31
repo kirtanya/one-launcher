@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'quick_lights.dart';
 import 'smart_home.dart';
 import 'ui/components.dart';
 import 'ui/ds.dart';
@@ -83,6 +84,10 @@ class SmartHomeBody extends StatelessWidget {
               ),
               const SizedBox(height: DS.s16),
               if (ready) _HomePicker(state: s),
+              if (ready && s.lights.isNotEmpty) ...[
+                const _QuickLightsCard(),
+                const SizedBox(height: DS.s12),
+              ],
               if (onRemote != null) ...[
                 _RemoteTile(onTap: onRemote!),
                 const SizedBox(height: DS.s12),
@@ -164,6 +169,29 @@ class _HomePicker extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    ),
+  );
+}
+
+/// The home widget's quick light control, up front: all lights, a room, or one light.
+class _QuickLightsCard extends StatelessWidget {
+  const _QuickLightsCard();
+
+  @override
+  Widget build(BuildContext context) => RoleSurface(
+    role: SurfaceRole.key,
+    color: DS.cardMuted,
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(_tileRadius),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(DS.s16),
+      child: QuickLights(
+        ink: DS.ink,
+        soft: DS.inkMuted,
+        full: true,
+        onOpen: () {}, // already in Smart home; rooms open from their names below
       ),
     ),
   );

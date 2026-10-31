@@ -33,7 +33,6 @@ class SearchDock extends StatelessWidget {
     this.onSwipeClose,
     this.onRemote,
     this.onRemoteLongPress,
-    this.onNotifications,
     this.tab = 'home',
     this.onHome,
     this.pull,
@@ -45,7 +44,7 @@ class SearchDock extends StatelessWidget {
   final ValueListenable<double>? pull;
   final double pullFull;
 
-  /// The bottom nav's selected tab at rest: 'home', 'search', 'smart', 'remote', 'alerts' or 'settings'.
+  /// The bottom nav's selected tab at rest: 'home', 'smart', 'remote', 'search' or 'settings'.
   final String tab;
 
   /// The nav's Home tab (back to the clock); null = the plain search dock (inside the drawer).
@@ -57,8 +56,6 @@ class SearchDock extends StatelessWidget {
   /// Long-press on the remote button (offer to hide it).
   final VoidCallback? onRemoteLongPress;
 
-  /// The notification centre's tab (for now, while it's being built; null = none).
-  final VoidCallback? onNotifications;
 
   /// Swiped down on the bar while searching (defaults to [onClose]).
   final VoidCallback? onSwipeClose;
@@ -74,10 +71,14 @@ class SearchDock extends StatelessWidget {
   final VoidCallback onActivate, onClose, onSettings;
   final ValueChanged<String> onChanged, onSubmitted;
 
-  static const height = 56.0;
+  static const height = 64.0; // nav tabs are 56 (4 + 56 + 4); icons keep their size
   // Small blur: it's redrawn every frame, and big blurs are costly on slower phones.
   static const shadow = [BoxShadow(color: Color(0x3D000000), blurRadius: 10, offset: Offset(0, 4))];
   static const gap = 8.0;
+
+  /// A page under the nav has scrolled away from its top: the nav's tabs shrink from 56 to 48
+  /// (icons stay their size) and grow back at the top. Home sets it from the pages' scrolling.
+  static final shrunk = ValueNotifier<bool>(false);
 
   /// The bar's outline: it's the lowest surface, so this keeps it from merging into what's
   /// behind (glass draws its own bright edge instead).
@@ -120,10 +121,9 @@ class SearchDock extends StatelessWidget {
                   selected: tab == 'remote' ? 'smart' : tab, // the remote lives in Smart home
                   tabs: [
                     _NavTab('home', Icons.home_rounded, 'Home', onHome!, tooltip: 'Home screen'),
-                    _NavTab('search', Icons.search_rounded, 'Search', onActivate),
                     if (onRemote != null)
                       _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),
-                    if (onNotifications != null) _NavTab('alerts', Icons.notifications_none_rounded, 'Notifications', onNotifications!),
+                    _NavTab('search', Icons.search_rounded, 'Search', onActivate),
                     _NavTab('settings', Icons.tune_rounded, 'Settings', onSettings, tooltip: 'Launcher settings'),
                   ],
                   controller: controller,
@@ -292,10 +292,10 @@ class _Pill extends StatelessWidget {
             onTap: active ? null : onActivate,
             child: Stack(
               children: [
-                // The icon never moves: 16 + 24 + 16 = 56, so it sits dead centre when the pill is a circle.
-                Positioned(left: 16, top: 16, child: Icon(Icons.search_rounded, color: DS.ink, size: 24)),
+                // The icon never moves: 20 + 24 + 20 = 64, so it sits dead centre when the pill is a circle.
+                Positioned(left: 20, top: 20, child: Icon(Icons.search_rounded, color: DS.ink, size: 24)),
                 Positioned(
-                  left: 48,
+                  left: 52,
                   right: DS.s16,
                   top: 0,
                   bottom: 0,
@@ -345,7 +345,7 @@ class _NavTab {
 /// accent circle sits behind the selected one and slides to the tab tapped, and the icons crossfade
 /// between ink and accent ink.
 class _NavBar extends StatelessWidget {
-  const _NavBar({required this.tabs, required this.selected, this.bare = false, this.hide, this.shift});
+  const _NavBar({required this.tabs, required this.selected, this.bare = false, this.hide, this.shift, this.tab = big});
   final List<_NavTab> tabs;
   final String selected;
 
@@ -359,33 +359,36 @@ class _NavBar extends StatelessWidget {
   /// with its tab.
   final List<double>? shift;
 
-  static const _inset = 4.0; // bar around the tabs: 4 + 48 + 4 = the dock's 56
-  static const _tab = SearchDock.height - _inset * 2; // 48: a full touch target
+  /// Each tab's size: [big] at rest, [small] once the page under it scrolls (SearchDock.small).
+  final double tab;
+
+  static const _inset = 4.0; // bar around the tabs: 4 + 56 + 4 = the dock's 64
+  static const big = SearchDock.height - _inset * 2; // 56: a roomy touch target
+  static const small = 48.0;
   static const _gap = 4.0;
-  static const _radius = _tab / 2; // round tabs; the bar's corners are this + the inset, so they nest (a pill)
 
   @override
   Widget build(BuildContext context) {
     final on = tabs.indexWhere((t) => t.id == selected);
-    final bar = RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius + _inset), side: SearchDock.border);
+    final radius = tab / 2; // round tabs; the bar's corners are this + the inset, so they nest (a pill)
+    final bar = RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius + _inset), side: SearchDock.border);
     final content = Padding(
       padding: const EdgeInsets.all(_inset),
       child: Stack(
         children: [
           if (on >= 0 && !DS.third) // Tactile: the chosen tab is a latched key instead
-            AnimatedPositioned(
+            // Slides by tab index (not pixels), so it keeps up while the tabs grow or shrink.
+            TweenAnimationBuilder<double>(
+              tween: Tween(end: on.toDouble()),
               duration: Motion.snapDuration,
               curve: Motion.settle,
-              left: on * (_tab + _gap),
-              top: 0,
-              width: _tab,
-              height: _tab,
+              builder: (context, at, child) => Positioned(left: at * (tab + _gap), top: 0, width: tab, height: tab, child: child!),
               child: Transform.translate(
                 offset: Offset(shift?[on] ?? 0, 0),
                 child: DecoratedBox(
                   decoration: ShapeDecoration(
                     color: DS.hero,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_radius)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(tab / 2)),
                   ),
                 ),
               ),
@@ -396,12 +399,12 @@ class _NavBar extends StatelessWidget {
               for (final (i, t) in tabs.indexed) ...[
                 if (i > 0) const SizedBox(width: _gap),
                 SizedBox.square(
-                  dimension: _tab,
+                  dimension: tab,
                   child: Transform.translate(
                     offset: Offset(shift?[i] ?? 0, 0),
                     child: Opacity(
                       opacity: t.id == hide ? 0 : 1,
-                      child: _NavButton(tab: t, selected: i == on),
+                      child: _NavButton(tab: t, selected: i == on, size: tab),
                     ),
                   ),
                 ),
@@ -422,9 +425,10 @@ class _NavBar extends StatelessWidget {
 }
 
 class _NavButton extends StatelessWidget {
-  const _NavButton({required this.tab, required this.selected});
+  const _NavButton({required this.tab, required this.selected, required this.size});
   final _NavTab tab;
   final bool selected;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -454,11 +458,11 @@ class _NavButton extends StatelessWidget {
         child: Pressable(
           scale: .9,
           child: SizedBox.square(
-            dimension: _NavBar._tab,
+            dimension: size,
             child: Material(
               type: MaterialType.transparency,
               child: InkWell(
-                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_NavBar._radius)),
+                customBorder: RoundedRectangleBorder(borderRadius: BorderRadius.circular(size / 2)),
                 onTap: () {
                   HapticFeedback.selectionClick();
                   tab.onTap();
@@ -515,7 +519,7 @@ class _NavSearch extends StatefulWidget {
   State<_NavSearch> createState() => _NavSearchState();
 }
 
-class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMixin {
+class _NavSearchState extends State<_NavSearch> with TickerProviderStateMixin {
   // Slower than the app's usual snap so every step of the morph can be seen.
   late final _t = AnimationController(
     vsync: this,
@@ -523,6 +527,17 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
     reverseDuration: const Duration(milliseconds: 311), // closing: quicker, out of the way
     value: widget.active ? 1 : 0,
   );
+
+  /// 0 big tabs … 1 small (SearchDock.shrunk).
+  late final _size = AnimationController(vsync: this, duration: Motion.snapDuration, value: SearchDock.shrunk.value ? 1 : 0);
+
+  void _onShrunk() => SearchDock.shrunk.value ? _size.forward() : _size.reverse();
+
+  @override
+  void initState() {
+    super.initState();
+    SearchDock.shrunk.addListener(_onShrunk);
+  }
 
   /// How far the pull has got towards opening search (0–1).
   double get _pulled => widget.pull == null ? 0 : (widget.pull!.value / widget.pullFull).clamp(0.0, 1.0);
@@ -541,6 +556,8 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
 
   @override
   void dispose() {
+    SearchDock.shrunk.removeListener(_onShrunk);
+    _size.dispose();
     _t.dispose();
     super.dispose();
   }
@@ -552,16 +569,15 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    const h = SearchDock.height, inset = _NavBar._inset, tab = _NavBar._tab, gap = _NavBar._gap;
+    const full = SearchDock.height, inset = _NavBar._inset, gap = _NavBar._gap;
     final n = widget.tabs.length;
-    final navW = inset * 2 + n * tab + (n - 1) * gap;
     final searchAt = widget.tabs.indexWhere((t) => t.id == 'search');
     return LayoutBuilder(
       builder: (context, c) {
         final w = c.maxWidth;
-        final barW = w - h - SearchDock.gap; // room for the close circle on the right
+        final barW = w - full - SearchDock.gap; // room for the close circle on the right
         return AnimatedBuilder(
-          animation: Listenable.merge([_t, if (widget.pull != null) widget.pull!]),
+          animation: Listenable.merge([_t, _size, if (widget.pull != null) widget.pull!]),
           builder: (context, _) {
             // Pulling the list down scrubs the morph like a seek bar: it's wherever the finger is,
             // forwards and back. Opening / closing search plays it on its own.
@@ -572,6 +588,11 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
             final glide = _span(p, .1, .8); // the Search icon to the bar's start
             final field = _span(p, .5, 1, Curves.easeOutCubic); // the field slides in after them
             final close = _span(p, .6, 1, Curves.easeOutBack);
+            // Scrolled: smaller tabs (the search bar is always full height, so the morph grows it back).
+            final tab = _lerp(_NavBar.big, _NavBar.small, Curves.easeInOut.transform(_size.value) * (1 - t));
+            final navH = tab + inset * 2;
+            final h = _lerp(navH, full, t); // the pill's height, kept on the dock's bottom edge
+            final navW = inset * 2 + n * tab + (n - 1) * gap;
             final pillW = _lerp(navW, barW, t);
             final pillLeft = _lerp((w - navW) / 2, 0, t);
             final navLeft = (pillW - navW) / 2; // the tabs' row, centred in the pill
@@ -587,7 +608,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                         : 0.0),
             ];
             // The Search icon's centre: on its tab at rest, at the bar's start (16 + 12) when searching.
-            final iconX = _lerp(navLeft + inset + searchAt * (tab + gap) + tab / 2, 28, glide);
+            final iconX = _lerp(navLeft + inset + searchAt * (tab + gap) + tab / 2, 32, glide);
             final searching = widget.active || p > 0;
             final radius = BorderRadius.circular(DS.third ? _trayRadius : 99); // Tactile: a squared-off tray, like the keys
             return Stack(
@@ -595,7 +616,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
               children: [
                 Positioned(
                   left: pillLeft,
-                  top: 0,
+                  top: full - h,
                   width: pillW,
                   height: h,
                   child: DecoratedBox(
@@ -616,14 +637,14 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                               Positioned(
                                 key: const ValueKey('tabs'),
                                 left: navLeft,
-                                top: 0,
+                                top: (h - navH) / 2,
                                 width: navW,
-                                height: h,
+                                height: navH,
                                 child: IgnorePointer(
                                   ignoring: searching,
                                   child: Opacity(
                                     opacity: 1 - fade,
-                                    child: _NavBar(selected: widget.selected, tabs: widget.tabs, bare: true, hide: searching ? 'search' : null, shift: shift),
+                                    child: _NavBar(selected: widget.selected, tabs: widget.tabs, bare: true, hide: searching ? 'search' : null, shift: shift, tab: tab),
                                   ),
                                 ),
                               ),
@@ -636,7 +657,7 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                               ),
                               Positioned(
                                 key: const ValueKey('field'),
-                                left: 48,
+                                left: 52,
                                 right: DS.s16,
                                 top: 0,
                                 bottom: 0,
@@ -676,8 +697,8 @@ class _NavSearchState extends State<_NavSearch> with SingleTickerProviderStateMi
                   Positioned(
                     right: 0,
                     top: 0,
-                    width: h,
-                    height: h,
+                    width: full,
+                    height: full,
                     child: Transform.scale(
                       scale: close,
                       child: _DockCircle(icon: Icons.close_rounded, tooltip: 'Close search', onTap: widget.onClose),

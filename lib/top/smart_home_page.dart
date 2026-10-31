@@ -37,28 +37,23 @@ class _SmartHomePageState extends State<SmartHomePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: LayoutBuilder(
-              // Brightness and colour too when the page is tall enough.
-              builder: (context, c) => Align(
-                alignment: Alignment.topLeft,
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(DS.s12, DS.s4, DS.s4, DS.s8),
-                    decoration: ShapeDecoration(
-                      color: DS.glass,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: const BorderSide(color: DS.glassLine),
-                      ),
-                    ),
-                    child: QuickLights(
-                      ink: DS.onWallpaper,
-                      soft: DS.clockInk,
-                      full: c.maxHeight >= 200,
-                      onOpen: () => showSmartHome(context),
-                    ),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(DS.s12, DS.s4, DS.s4, DS.s8),
+                decoration: ShapeDecoration(
+                  color: const Color(0x59000000), // black ~35%: darker glass
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: const BorderSide(color: DS.glassLine),
                   ),
+                ),
+                // QuickLights picks full / compact / header-only from the space left.
+                child: QuickLights(
+                  ink: DS.onWallpaper,
+                  soft: DS.clockInk,
+                  onOpen: () => showSmartHome(context),
                 ),
               ),
             ),

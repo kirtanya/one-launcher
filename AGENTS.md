@@ -151,10 +151,13 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `home.dart`: Classic/Real home. Top area + app sheet (`DraggableScrollableSheet`), pull-to-search
   (`_pull`, `_reveal`, `_onPull/_onPullEnd`), search state (`_searching`, `_showResults`),
   tab pages under the nav (`_TabPage`, `_presentPage`, `_openTab`, `_navOrder`), status-bar style.
+  Nav order: Home · Smart home · Search · Settings (no Notifications tab). `_onPagesScroll` (around the home pager):
+  vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons unchanged; back at the top / on tab change),
+  and a right-to-left swipe past home's edge opens Smart home (no Today panel: a GestureDetector catches it).
 - `app_drawer.dart`: the sheet's list: hero card (pinned + most used), folders, search results
   (`_SearchResults`, `searchResults()`), pull veil (fade via a sheet-coloured overlay, not
   Opacity), `_PullPill`.
-- `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`), nav→search morph (`_NavSearch`),
+- `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`; dock 64, tabs `big` 56 / `small` 48), nav→search morph (`_NavSearch`),
   `_surface()`. `search_history.dart`: recent searches (card for top bar; `RecentSearchPills`
   above the bottom bar). `google_suggest.dart`: Google autocomplete (follows "Search Google").
 - `sheets.dart`: all Settings. `showSettingsSheet` → `settingsNow()` (`_Setting` list with
@@ -183,7 +186,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   sleep/wake (`LightEffects`); rooms have All on/off, and tapping a room name opens its lights as one (`SmartDetail.room`).
   Homes: bridge `homes` + device `homeId`; the sheet's home chips pick one (saved `smartHome.home`), "Add a home" = `connect(force: true)`
   (re-opens Google's share screen). `quick_lights.dart` (`QuickLights`): chips All / each light (its dot = on/off) / each room, power,
-  brightness, colour; on the top page (compact: colour/brightness buttons swap in for the chips) and the side panel kind `smart`.
+  brightness bar (tinted with the lights' colour; not a `Slider`), colour. `full: null` = fits its height (full / compact: colour and
+  brightness buttons swap in for the chips / header only). Used on the top page (dark card, auto), the side panel kind `smart`,
+  the top of the Smart home sheet (`_QuickLightsCard`) and search's empty state above the recent pills (gone at once on typing).
   Commands: one per device+trait in flight, only the newest waits (`SmartHome.set`); sent values stay on top of device updates
   until 4 s after they finish, so stale echoes don't snap the UI back. Bridge logs `set <trait> took N ms` (tag SmartHome). The SDK needs coroutines ≥ 1.11.0 (calls static `Mutex.unlock$default`; 1.8.0 crash-loops), pinned for phone.
   Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
