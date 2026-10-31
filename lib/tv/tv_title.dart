@@ -202,11 +202,15 @@ class ShowImage extends StatelessWidget {
 
 // ---- Details page ---------------------------------------------------------------
 
-/// A show or film, cinematic: backdrop; kind · year · runtime · genres; title; the critics' scores
-/// (IMDb, Rotten Tomatoes, Metacritic — only the ones there are); plot; where to watch (open it in
-/// its app on this TV), Open in Nuvio, trailer; reviews (OK opens one whole); cast. Details from the
-/// catalog sources (Cinemeta first); where to watch from WatchHub; scores from OMDb and reviews
-/// from TMDB when the build has their keys (ratings.dart).
+/// A show or film, cinematic, on pure black: the backdrop top right, fading into black to the left
+/// and the bottom; kind · year · runtime · genres; title; the critics' scores (IMDb, Rotten
+/// Tomatoes, Metacritic — only the ones there are); plot; then ONE line of options that scrolls
+/// sideways: One Stream first (its logo; resume / play), each other app the title is on as just its
+/// round logo (WatchHub's link, or the app's own search; Nuvio too) with a small RENT / BUY tag when
+/// that is the only way the app offers it, then the Trailer and Search everywhere pills. Right under
+/// it: seasons + episodes (series), reviews (OK opens one whole), cast. Details from the catalog
+/// sources (Cinemeta first); where to watch from WatchHub; scores from OMDb and reviews from TMDB
+/// when the build has their keys (ratings.dart).
 class TvTitlePage extends StatefulWidget {
   const TvTitlePage({super.key, required this.title, required this.apps, required this.searchTargets, required this.onOpenApp});
   final ShowTitle title;
@@ -228,8 +232,8 @@ class _TvTitlePageState extends State<TvTitlePage> {
   Object? _linksError;
   bool _linksDone = false;
   List<(String, String)> _openers = const []; // apps that open stremio:///detail/… (Nuvio)
-  // Focus starts on "Search everywhere" (always there); when the Watch on … buttons arrive and the
-  // remote hasn't been touched yet, it moves to the first of them.
+  // The options line: focus starts on One Stream when it's there; else on "Search everywhere" (always
+  // there), and when the app logos arrive and the remote hasn't been touched yet it moves to the first.
   final _everywhere = FocusNode(debugLabel: 'everywhere'), _firstWatch = FocusNode(debugLabel: 'watch');
   bool _moved = false; // a key was pressed on this page
   OneStreamTitle? _stream; // One Stream's row for this title (its progress, when started there)
@@ -273,13 +277,26 @@ class _TvTitlePageState extends State<TvTitlePage> {
         )
         .whenComplete(() {
           _update(() => _linksDone = true);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && !_moved && _everywhere.hasPrimaryFocus && _firstWatch.context != null) _firstWatch.requestFocus();
-          });
+          _settleFocus();
         });
     // One Stream: "Play in One Stream" from the IMDb id; "Resume … · 12 min left" once it's started.
     if (_inStream) OneStream.instance.titleFor(t.id, t.isTv ? 'tv' : 'movie').then((s) => _update(() => _stream = s));
-    TvApps.instance.linkHandlers(Catalog.detailLink(t)).then<void>((o) => _update(() => _openers = o), onError: (Object _) {});
+    TvApps.instance
+        .linkHandlers(Catalog.detailLink(t))
+        .then<void>(
+          (o) {
+            _update(() => _openers = o);
+            _settleFocus();
+          },
+          onError: (Object _) {},
+        );
+  }
+
+  /// Untouched remote, focus still on "Search everywhere": move it to the line's first button.
+  void _settleFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_moved && _everywhere.hasPrimaryFocus && _firstWatch.context != null) _firstWatch.requestFocus();
+    });
   }
 
   @override
@@ -426,7 +443,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
   Widget build(BuildContext context) {
     final t = _details?.title ?? widget.title;
     return Scaffold(
-      backgroundColor: TvDS.canvas,
+      backgroundColor: _black,
       body: LayoutBuilder(
         builder: (context, c) => Stack(
           fit: StackFit.expand,
@@ -444,7 +461,7 @@ class _TvTitlePageState extends State<TvTitlePage> {
                 child: ShowImage(urls: [...t.backdrops, ...t.posters], decodeWidth: 1280, alignment: Alignment.topCenter),
               ),
             ),
-            const TvScrims(),
+            const _BlackFade(),
             SingleChildScrollView(
               controller: _scroll,
               padding: EdgeInsets.fromLTRB(TvDS.safe.left, 64, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
@@ -476,15 +493,13 @@ class _TvTitlePageState extends State<TvTitlePage> {
 
     // Where to watch: WatchHub's services with an app here (buttons), the rest listed underneath.
     final watch = <_Watch>[];
-    final elsewhere = <ShowLink>[];
+    final offers = <String, List<String?>>{}; // package → the kinds WatchHub lists it under
     bool shown(String package) => watch.any((w) => w.app.package == package);
     for (final l in _links) {
       final app = (l.package == null ? null : _installed(l.package!)) ?? appForService(l.service, widget.apps);
-      if (app == null) {
-        elsewhere.add(l);
-      } else if (!shown(app.package)) {
-        watch.add((app: app, link: l));
-      }
+      if (app == null) continue; // not on this TV: nothing to open
+      (offers[app.package] ??= []).add(l.kind);
+      if (!shown(app.package)) watch.add((app: app, link: l));
     }
     // Services whose catalogs list it (e.g. Netflix's), when WatchHub didn't link them: the app's search.
     final searchable = <AppEntry>[
@@ -548,86 +563,89 @@ class _TvTitlePageState extends State<TvTitlePage> {
         ),
         const SizedBox(height: DS.s24),
 
-        // ---- Where to watch: the actions, right under the plot ----
-        Wrap(
-          spacing: DS.s12,
-          runSpacing: DS.s12,
-          children: [
-            // One Stream first (the user's own app): play, or pick up where it was left.
-            if (_inStream)
+        // ---- The options: one line (scrolls sideways) right under the plot ----
+        // One Stream's logo, the other apps' logos, then the Trailer and Search everywhere pills.
+        SingleChildScrollView(
+          key: const ValueKey('options'),
+          scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: _spaced([
+              // One Stream first (the user's own app): play, or pick up where it was left…
+              if (_inStream)
+                _LogoButton(
+                  key: const ValueKey('onestream'),
+                  focusNode: _firstWatch,
+                  autofocus: true,
+                  app: _installed(OneStream.package),
+                  icon: Icons.play_arrow_rounded,
+                  label: _stream?.hasProgress == true ? ['Resume in One Stream', ?_stream!.left].join(' · ') : 'Play in One Stream',
+                  tag: _stream?.hasProgress == true ? 'RESUME' : null,
+                  onSelect: () => OneStream.instance.open(_stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie')),
+                ),
+              // …and its page here (episodes, sources, watchlist, download), when One Stream knows it.
+              if (_stream?.tmdb != null)
+                TvActionPill(
+                  key: const ValueKey('onestream:more'),
+                  icon: Icons.read_more_rounded,
+                  label: 'More in One Stream',
+                  onSelect: () => Navigator.of(context).push(tvFade(TvOneStreamPage(title: _stream!))),
+                ),
+              // Keyed: logos that arrive later never take over the focused one's place. The first of
+              // them (when One Stream isn't there) is where focus lands once WatchHub has answered.
+              for (final (i, w) in watch.indexed)
+                _LogoButton(
+                  key: ValueKey('watch:${w.app.package}'),
+                  focusNode: i == 0 && !_inStream ? _firstWatch : null,
+                  app: w.app,
+                  label: 'Watch on ${w.app.label}',
+                  tag: _offerTag(offers[w.app.package] ?? [w.link?.kind]),
+                  onSelect: () => _watch(w),
+                ),
+              for (final (i, a) in searchIn.take(3).indexed)
+                _LogoButton(
+                  key: ValueKey('search:${a.package}'),
+                  focusNode: i == 0 && watch.isEmpty && !_inStream ? _firstWatch : null,
+                  app: a,
+                  label: widget.searchTargets.contains(a.package) ? 'Search in ${a.label}' : 'Open ${a.label}',
+                  onSelect: () => _watch((app: a, link: null)),
+                ),
+              for (final (i, (pkg, name)) in _openers.indexed)
+                _LogoButton(
+                  key: ValueKey('nuvio:$pkg'),
+                  focusNode: i == 0 && watch.isEmpty && searchIn.isEmpty && !_inStream ? _firstWatch : null,
+                  app: _installed(pkg),
+                  icon: Icons.open_in_new_rounded,
+                  label: 'Open in $name',
+                  onSelect: () => TvApps.instance.openLink(Catalog.detailLink(t), package: pkg),
+                ),
+              if (d?.trailer != null)
+                TvActionPill(
+                  key: const ValueKey('trailer'),
+                  icon: Icons.play_circle_outline_rounded,
+                  label: 'Trailer',
+                  onSelect: () => TvApps.instance.openUri('https://www.youtube.com/watch?v=${d!.trailer}', package: 'com.google.android.youtube.tv'),
+                ),
               TvActionPill(
-                key: const ValueKey('onestream'),
-                focusNode: _firstWatch,
-                leading: _installed(OneStream.package) == null
-                    ? null
-                    : SizedBox(width: 40, height: 22.5, child: TvAppArt(app: _installed(OneStream.package)!, width: 40)),
-                icon: Icons.play_arrow_rounded,
-                label: _stream?.hasProgress == true ? ['Resume in One Stream', ?_stream!.left].join(' · ') : 'Play in One Stream',
-                onSelect: () => OneStream.instance.open(_stream?.hasProgress == true ? _stream!.link : OneStream.imdbLink(t.id, t.isTv ? 'tv' : 'movie')),
+                key: const ValueKey('everywhere'),
+                focusNode: _everywhere,
+                autofocus: !_inStream,
+                icon: Icons.travel_explore_rounded,
+                label: 'Search everywhere',
+                onSelect: () => TvApps.instance.searchEverywhere(t.title),
               ),
-            // …and its page here (episodes, sources, watchlist, download), when One Stream knows it.
-            if (_stream?.tmdb != null)
-              TvActionPill(
-                key: const ValueKey('onestream:more'),
-                icon: Icons.read_more_rounded,
-                label: 'More in One Stream',
-                onSelect: () => Navigator.of(context).push(tvFade(TvOneStreamPage(title: _stream!))),
-              ),
-            // Keyed: buttons that arrive later never take over the focused one's place.
-            for (final (i, w) in watch.indexed)
-              TvActionPill(
-                key: ValueKey('watch:${w.app.package}'),
-                focusNode: i == 0 && !_inStream ? _firstWatch : null,
-                leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: w.app, width: 40)),
-                label: 'Watch on ${w.app.label}',
-                detail: w.link?.kind,
-                onSelect: () => _watch(w),
-              ),
-            for (final (pkg, name) in _openers)
-              TvActionPill(
-                key: ValueKey('nuvio:$pkg'),
-                leading: _installed(pkg) == null ? null : SizedBox(width: 40, height: 22.5, child: TvAppArt(app: _installed(pkg)!, width: 40)),
-                icon: Icons.open_in_new_rounded,
-                label: 'Open in $name',
-                onSelect: () => TvApps.instance.openLink(Catalog.detailLink(t), package: pkg),
-              ),
-            if (d?.trailer != null)
-              TvActionPill(
-                key: const ValueKey('trailer'),
-                icon: Icons.play_circle_outline_rounded,
-                label: 'Trailer',
-                onSelect: () => TvApps.instance.openUri('https://www.youtube.com/watch?v=${d!.trailer}', package: 'com.google.android.youtube.tv'),
-              ),
-            TvActionPill(
-              key: const ValueKey('everywhere'),
-              focusNode: _everywhere,
-              autofocus: true,
-              icon: Icons.travel_explore_rounded,
-              label: 'Search everywhere',
-              onSelect: () => TvApps.instance.searchEverywhere(t.title),
-            ),
-            for (final a in searchIn.take(3))
-              TvActionPill(
-                key: ValueKey('search:${a.package}'),
-                leading: SizedBox(width: 40, height: 22.5, child: TvAppArt(app: a, width: 40)),
-                label: widget.searchTargets.contains(a.package) ? 'Search in ${a.label}' : 'Open ${a.label}',
-                onSelect: () => _watch((app: a, link: null)),
-              ),
-          ],
+            ]),
+          ),
         ),
-        const SizedBox(height: DS.s12),
-        Text(
-          !_linksDone
-              ? TvMetro.cased('Finding where it’s streaming…')
-              : _linksError != null
-              ? 'Couldn’t reach ${hub ?? 'WatchHub'}. Check the TV’s internet.'
-              : _links.isEmpty
-              ? (hub == null ? 'Turn on WatchHub (Customise → Search → Sources) to see where it’s streaming.' : 'No streaming links for this one yet.')
-              : elsewhere.isEmpty
-              ? ''
-              : 'Also on ${elsewhere.take(5).map((l) => l.kind == null ? l.service : '${l.service} (${l.kind!.toLowerCase()})').join(', ')}',
-          style: TvDS.heroBody.copyWith(fontSize: 13),
-        ),
+        // Only what needs the user: WatchHub unreachable, or off.
+        if (_linksDone && (_linksError != null || (_links.isEmpty && hub == null))) ...[
+          const SizedBox(height: DS.s12),
+          Text(
+            _linksError != null ? 'Couldn’t reach ${hub ?? 'WatchHub'}. Check the TV’s internet.' : 'Turn on WatchHub (Customise → Search → Sources) to see where it’s streaming.',
+            style: TvDS.heroBody.copyWith(fontSize: 13),
+          ),
+        ],
 
         // ---- Series: season tabs, then that season's episodes ----
         if (d != null && _season != null && d.seasonNumbers.isNotEmpty) ...[
@@ -730,6 +748,107 @@ class _TvTitlePageState extends State<TvTitlePage> {
   }
 }
 
+const _black = Color(0xFF000000);
+const _darkSurface = Color(0xFF1B1B1D); // cards, placeholders: near-black on the black page
+
+/// The backdrop into black: from the left (behind the text) and from the bottom (behind the rows),
+/// plus a light veil at the top. Drawn over the picture only; the page is black under it.
+class _BlackFade extends StatelessWidget {
+  const _BlackFade();
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_black, _black.withValues(alpha: .94), _black.withValues(alpha: .4), _black.withValues(alpha: 0)],
+              stops: const [0, .3, .55, .78],
+            ),
+          ),
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [_black.withValues(alpha: .35), _black.withValues(alpha: 0), _black.withValues(alpha: .85), _black],
+              stops: const [0, .3, .68, .86],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+/// [items] with a gap between each.
+List<Widget> _spaced(List<Widget> items) => [
+  for (final (i, w) in items.indexed) ...[if (i > 0) const SizedBox(width: DS.s20), w],
+];
+
+/// "RENT" / "BUY" / "RENT · BUY" when that is all an app offers it as (WatchHub's kinds for it);
+/// null when it's in the subscription (or free), or the kind isn't known.
+String? _offerTag(Iterable<String?> kinds) {
+  final ks = [for (final k in kinds) ?k?.toLowerCase()];
+  if (ks.any((k) => k.contains('subscri') || k.contains('stream') || k.contains('free') || k.contains('ads') || k.contains('included'))) return null;
+  final rent = ks.any((k) => k.contains('rent')), buy = ks.any((k) => k.contains('buy') || k.contains('purchase'));
+  return rent && buy ? 'RENT · BUY' : (rent ? 'RENT' : (buy ? 'BUY' : null));
+}
+
+/// An app as just its round logo (no chip behind it), an optional small tag beside it (RENT, BUY,
+/// RESUME). Focus: a white ring round the logo with a thin gap of black — no fill, never a scale.
+/// Without an [app] (not installed) the [icon] sits on a dark disc.
+class _LogoButton extends StatelessWidget {
+  const _LogoButton({super.key, required this.label, required this.onSelect, this.app, this.icon, this.tag, this.focusNode, this.autofocus = false});
+  final String label; // what screen readers say
+  final VoidCallback onSelect;
+  final AppEntry? app;
+  final IconData? icon;
+  final String? tag;
+  final FocusNode? focusNode;
+  final bool autofocus;
+
+  static const size = 46.0;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: [label, ?tag].join(', '),
+    child: TvFocusable(
+      focusNode: focusNode,
+      autofocus: autofocus,
+      onSelect: onSelect,
+      builder: (context, f) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            // Tiles: the Metro frame on a square; else the ring round a disc.
+            foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: size / 2),
+            child: ClipRRect(
+              borderRadius: TvMetro.on ? TvMetro.corners(0) : BorderRadius.circular(size / 2),
+              child: app != null
+                  ? TvAppIcon(app: app!, size: size)
+                  : ColoredBox(
+                      color: _darkSurface,
+                      child: Icon(icon ?? Icons.apps_rounded, size: 24, color: TvDS.ink),
+                    ),
+            ),
+          ),
+          if (tag != null) ...[
+            const SizedBox(width: DS.s8, height: size, child: ColoredBox(color: Colors.transparent)), // a touch target, not a hole
+            Text(tag!, style: TvDS.keycap.copyWith(fontSize: 11, letterSpacing: .8, color: f ? TvDS.ink : TvDS.inkMuted)),
+          ],
+        ],
+      ),
+    ),
+  );
+}
+
 class _Chip extends StatelessWidget {
   const _Chip({required this.label});
   final String label;
@@ -772,7 +891,7 @@ class _CastCard extends StatelessWidget {
                 ? BoxDecoration(borderRadius: TvMetro.corners(0), color: TvMetro.tileFill, boxShadow: TvMetro.glow(f))
                 : BoxDecoration(
                     shape: BoxShape.circle,
-                    color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
+                    color: f ? TvDS.surfaceFocused : _darkSurface,
                     border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
                   ),
             foregroundDecoration: TvMetro.on ? TvMetro.frame(f) : null,

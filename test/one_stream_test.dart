@@ -309,7 +309,7 @@ void main() {
     home: home,
   );
 
-  testWidgets('TV search: chips; One Stream row, then YouTube; OK opens the title in One Stream', (tester) async {
+  testWidgets('TV search: icon sidebar; One Stream row, then YouTube; OK opens the title in One Stream', (tester) async {
     await tv(tester);
     SharedPreferences.setMockInitialValues({});
     await tester.runAsync(() async => Catalog.instance.start(await Prefs.load())); // reads its files for real
@@ -321,39 +321,50 @@ void main() {
     final streamRow = find.textContaining(RegExp(r'^One Stream · '));
     final ytRow = find.textContaining(RegExp(r'^YouTube · ')); // the demo's videos
     expect(streamRow, findsOneWidget);
-    expect(find.byKey(const ValueKey('chip:stream')), findsOneWidget, reason: 'its filter chip');
-    expect(find.byKey(const ValueKey('chip:youtube')), findsOneWidget, reason: 'its filter chip');
+    expect(find.byKey(const ValueKey('side:stream')), findsOneWidget, reason: 'its sidebar icon');
+    expect(find.byKey(const ValueKey('side:youtube')), findsOneWidget, reason: 'its sidebar icon');
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('side:stream'))).dy,
+      lessThan(tester.getTopLeft(find.byKey(const ValueKey('side:youtube'))).dy),
+      reason: 'One Stream above YouTube in the sidebar',
+    );
     expect(tester.getTopLeft(streamRow).dy, lessThan(tester.getTopLeft(ytRow).dy), reason: 'One Stream leads, then YouTube');
     expect(find.text('Dune: Part Two'), findsWidgets);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_15_one_stream_search.png'));
-    // ↓ from the box lands on the "All" chip, ↓ again on One Stream's first poster; OK opens it.
+    String? poster() => FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>()?.title.title;
+    // ↓ from the box: straight to One Stream's first poster (no chips in between).
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'chip:all');
-    // ↑ from the chips goes back to the field (no history here).
+    expect(poster(), 'Dune: Part Two');
+    // ← from the first card: the sidebar, on All (picked by default); → back to the results.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'side:all');
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(poster(), 'Dune: Part Two');
+    // ↑ from the top row: the box.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'search field');
+    // Back away from the field returns to it, without leaving Search.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, 'chip:all');
-    // Back away from the field returns to it, without leaving Search.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'search field');
     expect(find.byType(TvSearch), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>()?.title.title, 'Dune: Part Two');
+    expect(poster(), 'Dune: Part Two');
     await tester.sendKeyEvent(LogicalKeyboardKey.select);
     await tester.pumpAndSettle();
     expect(find.byType(TvOneStreamPage), findsOneWidget, reason: 'its page here, not One Stream');
     expect(calls.where((c) => c.method == 'oneStreamOpen'), isEmpty);
   });
 
-  testWidgets('TV title page: "Resume in One Stream · 12 min left" first in Where to watch; else Play', (tester) async {
+  testWidgets('TV title page: One Stream\'s logo first in the options line (Resume · 12 min left); else Play', (tester) async {
+    final semantics = tester.ensureSemantics(); // the logo button names itself by its label
     await tv(tester);
     SharedPreferences.setMockInitialValues({});
     await tester.runAsync(() async => Catalog.instance.start(await Prefs.load())); // reads its files for real
@@ -363,14 +374,14 @@ void main() {
     final asked = calls.firstWhere((c) => c.method == 'oneStream').arguments as Map;
     expect(asked['path'], '/title');
     expect(asked['params'], {'type': 'movie', 'imdb': 'tt15239678'});
-    expect(find.text('Resume in One Stream · 12 min left'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('^Resume in One Stream · 12 min left')), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('Resume in One Stream · 12 min left')).dx,
+      tester.getTopLeft(find.bySemanticsLabel(RegExp('^Resume in One Stream · 12 min left'))).dx,
       lessThan(tester.getTopLeft(find.text('Search everywhere')).dx),
       reason: 'first in the row',
     );
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_16_one_stream_title.png'));
-    await tester.tap(find.text('Resume in One Stream · 12 min left'));
+    await tester.tap(find.bySemanticsLabel(RegExp('^Resume in One Stream · 12 min left')));
     await tester.pump();
     expect(calls.last.arguments, {'link': 'onestream://resume/dune'});
     // "More in One Stream": its page here (from /title's tmdb).
@@ -389,7 +400,7 @@ void main() {
     });
     await tester.pumpWidget(tvApp(TvTitlePage(key: const ValueKey(2), title: other, apps: const [], searchTargets: const [], onOpenApp: (_) {})));
     await settle(tester);
-    await tester.tap(find.text('Play in One Stream'));
+    await tester.tap(find.bySemanticsLabel(RegExp('^Play in One Stream')));
     await tester.pump();
     expect(calls.last.arguments, {'link': 'onestream://imdb/tt0000001?type=tv'});
 
@@ -397,7 +408,8 @@ void main() {
     OneStream.instance.debugReset();
     await tester.pumpWidget(tvApp(TvTitlePage(key: const ValueKey(3), title: other, apps: const [], searchTargets: const [], onOpenApp: (_) {})));
     await settle(tester);
-    expect(find.text('Play in One Stream'), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('^Play in One Stream')), findsNothing);
+    semantics.dispose();
   });
 
   testWidgets('TV home: One Stream’s Continue watching joins the resume row (in the history’s place), OK opens its page', (tester) async {

@@ -19,18 +19,21 @@ import 'tv_ratings.dart' show TvSeasonTab;
 import 'tv_title.dart';
 import 'youtube_search.dart';
 
-/// Search, content first. Under the field, filter chips: All · One Stream · YouTube · each
-/// streaming service with results (Netflix, Prime Video…) · Apps. "All" shows one row per source —
+/// Search, content first. Top to bottom: recent searches, the search field (+ mic), the results.
+/// On the left edge, an icon sidebar picks the source: All · One Stream · YouTube · each streaming
+/// service with results (Netflix, Prime Video…) · Apps. "All" shows one row per source —
 /// One Stream and YouTube first, then a row per service from the TV's catalog (instant, built from
 /// the Stremio addons — see catalog.dart — joined by their live search), the rest of the shows &
-/// films, apps, then other ways to search. A chip shows just that source, as a grid with more.
-/// Before typing: what's popular, by service. ↓ from the field goes to the chips, ↓ again into
-/// the results.
+/// films, apps, then other ways to search. One source shows as a grid with more. The sidebar opens
+/// on All; focusing an icon chooses it at once (its name floats beside it).
+/// Before typing: what's popular, by service. Keys: ↓ history → field → first result card; ↑ back
+/// up (a result's first row → the field); ← from the first card of a row / grid, the start of the
+/// field or the first history pill → the chosen icon; sidebar ↑↓ between icons, → into the results.
 class TvSearch extends StatefulWidget {
   const TvSearch({super.key, required this.apps, required this.onLaunch, this.query, this.prefs});
   final List<AppEntry> apps;
 
-  /// Search history (shown as pills above the filters; saved when a search is used). None in tests.
+  /// Search history (shown as pills above the field; saved when a search is used). None in tests.
   final Prefs? prefs;
 
   /// Words to search for at once (the phone remote's voice search).
@@ -54,7 +57,9 @@ class _TvSearchState extends State<TvSearch> {
   // it was on (a node never moves to another card).
   final _nodes = <String, FocusNode>{};
   final _seenNodes = <String>{}; // keys built this frame
-  final _chipNodes = <String, FocusNode>{};
+  final _sideNodes = <String, FocusNode>{}; // the sidebar's icons, by filter id
+  final _results = FocusNode(debugLabel: 'results', canRequestFocus: false, skipTraversal: true); // scope over the result cards
+  String? _lastHistory; // the pill ↑ returns to
   String _filter = 'all'; // 'all' · 'stream' · 'youtube' · 'svc:<service>' · 'apps'
   List<String> _targets = const []; // apps that accept a search
 
@@ -117,7 +122,7 @@ class _TvSearchState extends State<TvSearch> {
     _mic.dispose();
     _scroll.dispose();
     _q.dispose();
-    for (final n in [..._nodes.values, ..._chipNodes.values]) {
+    for (final n in [..._nodes.values, ..._sideNodes.values, _results]) {
       n.dispose();
     }
     _firstAction.dispose();
@@ -190,7 +195,7 @@ class _TvSearchState extends State<TvSearch> {
     return _nodes[key] ??= FocusNode(debugLabel: key);
   }
 
-  FocusNode _chip(String id) => _chipNodes[id] ??= FocusNode(debugLabel: 'chip:$id');
+  FocusNode _side(String id) => _sideNodes[id] ??= FocusNode(debugLabel: 'side:$id');
 
   /// After a frame: let go of the nodes of cards no longer shown.
   void _dropStaleNodes() {
@@ -275,7 +280,7 @@ class _TvSearchState extends State<TvSearch> {
     return 'No shows or films called “$raw”.';
   }
 
-  /// Each source's TV app: its icon is the source's chip (when the app is installed).
+  /// Each source's TV app: its icon is the source's sidebar icon (when the app is installed).
   static const _chipApps = {
     'stream': OneStream.package,
     'youtube': YouTubeSearch.tvPackage,
@@ -309,12 +314,12 @@ class _TvSearchState extends State<TvSearch> {
     'svc:Discovery+': 'discoveryplus.com',
   };
 
-  Widget? _chipIcon(String id, Map<String, AppEntry> byPkg) {
+  Widget? _chipIcon(String id, Map<String, AppEntry> byPkg, {Color ink = TvDS.ink}) {
     Widget clip(Widget w) => ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox.square(dimension: 26, child: w),
     );
-    if (id == 'apps') return const Icon(Icons.apps_rounded, size: 24, color: TvDS.ink);
+    if (id == 'apps') return Icon(Icons.apps_rounded, size: 24, color: ink);
     if (byPkg[_chipApps[id]] case final app?) return clip(TvAppIcon(app: app, size: 26));
     if (_chipSites[id] case final site?) {
       return clip(
@@ -325,7 +330,7 @@ class _TvSearchState extends State<TvSearch> {
         ),
       );
     }
-    return null; // no icon anywhere: the chip keeps its name
+    return null; // no icon anywhere: the icon shows the source's first letter
   }
 
   /// Services to group by, in this order first (the big ones here), then by how many results.
@@ -367,7 +372,7 @@ class _TvSearchState extends State<TvSearch> {
         if (!onRows.contains(t.key)) t,
     ];
 
-    // The chips: All, then each source that has something.
+    // The sidebar: All, then each source that has something.
     final chips = <(String, String)>[
       ('all', 'All'),
       if (stream.isNotEmpty) ('stream', 'One Stream'),
@@ -458,7 +463,7 @@ class _TvSearchState extends State<TvSearch> {
       ),
     ];
 
-    // ---- What the chip shows ----
+    // ---- What the sidebar's choice shows ----
     final List<Widget> body;
     if (filter == 'stream') {
       body = [header('One Stream', stream.length), grid(streamCards('stream', 24))];
@@ -491,19 +496,65 @@ class _TvSearchState extends State<TvSearch> {
     final history = widget.prefs?.searchHistory.take(8).toList() ?? const <String>[];
     FocusNode historyNode(String h) => _node('history:$h');
 
-    // ↓ from the box: the history pills, else the chip that's on. ↑ from the chips: the history,
-    // else the box; ↑ from the history: the box.
-    void down() => (history.isNotEmpty ? historyNode(history.first) : _chip(filter)).requestFocus();
-    KeyEventResult up(KeyEvent e, FocusNode to) {
-      if (e is! KeyDownEvent || e.logicalKey != LogicalKeyboardKey.arrowUp) return KeyEventResult.ignored;
-      to.requestFocus();
+    // The sidebar is on the left: ← from the start of the field / the first pill / a row's first
+    // card lands on the chosen icon; → from it goes to the first card (else the field).
+    void toSide() => _side(filter).requestFocus();
+    void intoResults() {
+      // The top-left card on screen (nodes join the tree as results arrive, not in reading order).
+      final cards = _results.traversalDescendants.where((n) => n.context != null);
+      if (cards.isEmpty) return _field.requestFocus();
+      cards.reduce((a, b) => (a.rect.top - b.rect.top).abs() > 4 ? (a.rect.top < b.rect.top ? a : b) : (a.rect.left <= b.rect.left ? a : b)).requestFocus();
+    }
+
+    // ↓ from the field: the first result card. ↑ from the field / mic: the history (the pill last
+    // on, else the first).
+    void toHistory() {
+      if (history.isEmpty) return;
+      historyNode(history.contains(_lastHistory) ? _lastHistory! : history.first).requestFocus();
+    }
+
+    // The results' own keys: ← off a row's / grid's first card → the sidebar; ↑ off the first row → the field.
+    KeyEventResult resultsKey(FocusNode _, KeyEvent e) {
+      if (e is KeyUpEvent) return KeyEventResult.ignored;
+      final left = e.logicalKey == LogicalKeyboardKey.arrowLeft;
+      if (!left && e.logicalKey != LogicalKeyboardKey.arrowUp) return KeyEventResult.ignored;
+      final cur = FocusManager.instance.primaryFocus;
+      if (cur == null || cur.context == null || !_results.descendants.contains(cur)) return KeyEventResult.ignored;
+      final r = cur.rect;
+      final others = _results.traversalDescendants.where((n) => n != cur && n.context != null);
+      final more = left
+          ? others.any((n) => n.rect.right <= r.left + 2 && n.rect.bottom > r.top + 2 && n.rect.top < r.bottom - 2)
+          : others.any((n) => n.rect.bottom <= r.top + 2);
+      if (more) return KeyEventResult.ignored;
+      left ? toSide() : _field.requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    // The sidebar's own keys: ↑↓ between the icons (stop at the ends), → into the results.
+    KeyEventResult sideKey(FocusNode _, KeyEvent e) {
+      if (e is KeyUpEvent) return KeyEventResult.ignored;
+      final i = chips.indexWhere((c) => _side(c.$1).hasPrimaryFocus);
+      if (i < 0) return KeyEventResult.ignored;
+      final k = e.logicalKey;
+      if (k == LogicalKeyboardKey.arrowUp) {
+        if (i > 0) _side(chips[i - 1].$1).requestFocus();
+      } else if (k == LogicalKeyboardKey.arrowDown) {
+        if (i < chips.length - 1) _side(chips[i + 1].$1).requestFocus();
+      } else if (k == LogicalKeyboardKey.arrowRight) {
+        intoResults();
+      } else if (k != LogicalKeyboardKey.arrowLeft) {
+        return KeyEventResult.ignored;
+      }
       return KeyEventResult.handled;
     }
 
     final query = TvDS.panelTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, height: 1.15);
     WidgetsBinding.instance.addPostFrameCallback((_) => _measureHeader());
 
-    // ---- Header: tiles title, the query, history, filters — on top of the results ----
+    // Header and results sit right of the sidebar.
+    final inset = TvDS.safe.left + _SideIcon.w + 24;
+
+    // ---- Header: tiles title, history, the query — on top of the results ----
     final top = Column(
       key: _headerKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -511,19 +562,76 @@ class _TvSearchState extends State<TvSearch> {
       children: [
         // Tiles: the page's name, big and light, like "start".
         if (metro) ...[Text(TvMetro.cased('Search'), style: TvMetro.title(size: 40).copyWith(height: 1)), const SizedBox(height: DS.s16)],
+        // ---- Recent searches, above the field: the full words; OK searches again, hold OK forgets one ----
+        if (history.isNotEmpty) ...[
+          Focus(
+            canRequestFocus: false,
+            skipTraversal: true,
+            onKeyEvent: (_, e) {
+              if (e is KeyUpEvent) return KeyEventResult.ignored;
+              final k = e.logicalKey;
+              if (k == LogicalKeyboardKey.arrowDown) {
+                for (final h in history) {
+                  if (historyNode(h).hasPrimaryFocus) _lastHistory = h;
+                }
+                _field.requestFocus();
+                return KeyEventResult.handled;
+              }
+              if (k == LogicalKeyboardKey.arrowUp) return KeyEventResult.handled; // nothing above
+              if (k == LogicalKeyboardKey.arrowLeft && historyNode(history.first).hasPrimaryFocus) {
+                toSide();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                children: [
+                  for (final (i, h) in history.indexed) ...[
+                    if (i > 0) const SizedBox(width: DS.s12),
+                    TvSeasonTab(
+                      key: ValueKey('history:$h'),
+                      focusNode: historyNode(h),
+                      label: h,
+                      selected: false,
+                      leading: const Icon(Icons.history_rounded, size: 20, color: TvDS.inkMuted),
+                      onSelect: () => _searchAgain(h),
+                      onLongSelect: () async {
+                        await widget.prefs?.removeSearch(h);
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: DS.s12),
+        ],
         Row(
           children: [
             Expanded(
               child: Focus(
-                // The field keeps ↓ for itself (send it to the pills) and → at the end goes to the mic.
+                // The field keeps ↑↓ for itself (history above, results below); → at the end goes to
+                // the mic, ← at the start to the sidebar.
                 onKeyEvent: (_, e) {
                   if (e is! KeyDownEvent) return KeyEventResult.ignored;
                   if (e.logicalKey == LogicalKeyboardKey.arrowDown) {
-                    down();
+                    intoResults();
+                    return KeyEventResult.handled;
+                  }
+                  if (e.logicalKey == LogicalKeyboardKey.arrowUp && history.isNotEmpty) {
+                    toHistory();
                     return KeyEventResult.handled;
                   }
                   if (e.logicalKey == LogicalKeyboardKey.arrowRight && _q.selection.baseOffset >= _q.text.length) {
                     _mic.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (e.logicalKey == LogicalKeyboardKey.arrowLeft && (_q.text.isEmpty || _q.selection.baseOffset <= 0)) {
+                    toSide();
                     return KeyEventResult.handled;
                   }
                   return KeyEventResult.ignored;
@@ -537,7 +645,7 @@ class _TvSearchState extends State<TvSearch> {
                   // shows & films search is on — then into the results).
                   onSubmitted: (_) {
                     _remember();
-                    raw.isNotEmpty && !searchOn ? TvApps.instance.searchEverywhere(raw) : down();
+                    raw.isNotEmpty && !searchOn ? TvApps.instance.searchEverywhere(raw) : intoResults();
                   },
                   // No box: the query is the page's headline, big and light.
                   style: query,
@@ -570,7 +678,11 @@ class _TvSearchState extends State<TvSearch> {
                   return KeyEventResult.handled;
                 }
                 if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowDown) {
-                  down();
+                  intoResults();
+                  return KeyEventResult.handled;
+                }
+                if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.arrowUp && history.isNotEmpty) {
+                  toHistory();
                   return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
@@ -579,67 +691,43 @@ class _TvSearchState extends State<TvSearch> {
             ),
           ],
         ),
-        // ---- Recent searches: the full words; OK searches again, hold OK forgets one ----
-        if (history.isNotEmpty) ...[
-          const SizedBox(height: DS.s12),
-          Focus(
-            canRequestFocus: false,
-            skipTraversal: true,
-            onKeyEvent: (_, e) => up(e, _field),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              child: Row(
-                children: [
-                  for (final (i, h) in history.indexed) ...[
-                    if (i > 0) const SizedBox(width: DS.s12),
-                    TvSeasonTab(
-                      key: ValueKey('history:$h'),
-                      focusNode: historyNode(h),
-                      label: h,
-                      selected: false,
-                      leading: const Icon(Icons.history_rounded, size: 20, color: TvDS.inkMuted),
-                      onSelect: () => _searchAgain(h),
-                      onLongSelect: () async {
-                        await widget.prefs?.removeSearch(h);
-                        if (mounted) setState(() {});
-                      },
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: DS.s16),
-        // ---- Filter chips: the app's icon for each source ----
-        Focus(
-          canRequestFocus: false,
-          skipTraversal: true,
-          onKeyEvent: (_, e) => up(e, history.isNotEmpty ? historyNode(history.first) : _field),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            child: Row(
-              children: [
-                for (final (i, (id, label)) in chips.indexed) ...[
-                  if (i > 0) const SizedBox(width: DS.s12),
-                  TvSeasonTab(
-                    key: ValueKey('chip:$id'),
-                    focusNode: _chip(id),
-                    label: label,
-                    leading: _chipIcon(id, byPkg),
-                    iconOnly: true,
-                    selected: id == filter,
-                    onSelect: () => setState(() => _filter = id),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
         const SizedBox(height: DS.s8),
       ],
+    );
+
+    // ---- Sidebar: one icon per source, centred on the left edge; focus chooses ----
+    final sidebar = Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: sideKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (i, (id, label)) in chips.indexed) ...[
+            if (i > 0) const SizedBox(height: 18),
+            _SideIcon(
+              key: ValueKey('side:$id'),
+              label: label,
+              focusNode: _side(id),
+              selected: id == filter,
+              icon: (ink) =>
+                  id == 'all'
+                  ? Icon(Icons.grid_view_rounded, size: 24, color: ink)
+                  : (_chipIcon(id, byPkg, ink: ink) ?? Text(label.characters.first, style: TvDS.panelRow.copyWith(fontSize: 18, color: ink))),
+              onFocus: () {
+                // Moving onto an icon chooses it; the results start from their top.
+                final changed = id != _filter;
+                if (changed) setState(() => _filter = id);
+                if (!_scroll.hasClients || _scroll.offset == 0) return;
+                changed
+                    ? _scroll.jumpTo(0)
+                    : _scroll.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+              },
+              onSelect: intoResults,
+            ),
+          ],
+        ],
+      ),
     );
 
     const fade = 48.0; // the header's soft lower edge, over the results
@@ -664,8 +752,14 @@ class _TvSearchState extends State<TvSearch> {
               child: SingleChildScrollView(
                 controller: _scroll,
                 clipBehavior: Clip.none,
-                padding: EdgeInsets.fromLTRB(TvDS.safe.left, DS.s8, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: body),
+                padding: EdgeInsets.fromLTRB(inset, DS.s8, TvDS.safe.right, TvDS.safe.bottom + DS.s24),
+                child: Focus(
+                  focusNode: _results,
+                  canRequestFocus: false,
+                  skipTraversal: true,
+                  onKeyEvent: resultsKey,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: body),
+                ),
               ),
             ),
             // ---- Header, drawn last so it sits on top ----
@@ -680,8 +774,8 @@ class _TvSearchState extends State<TvSearch> {
                   ColoredBox(
                     color: const Color(0xFF000000),
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(TvDS.safe.left, TvDS.safe.top, TvDS.safe.right, 0),
-                      // Back up into the header (box, history, filters): the results return to their
+                      padding: EdgeInsets.fromLTRB(inset, TvDS.safe.top, TvDS.safe.right, 0),
+                      // Back up into the header (history, box): the results return to their
                       // first place — left scrolled, the first row sat under the header's fade.
                       child: Focus(
                         canRequestFocus: false,
@@ -713,11 +807,102 @@ class _TvSearchState extends State<TvSearch> {
                 ],
               ),
             ),
+            // ---- Sidebar, over the results: a black rail (rows scrolled sideways pass under it) ----
+            Positioned(
+              top: 0,
+              bottom: 0,
+              left: 0,
+              width: TvDS.safe.left + _SideIcon.w + 16,
+              child: ColoredBox(
+                color: const Color(0xFF000000),
+                child: Padding(
+                  padding: EdgeInsets.only(left: TvDS.safe.left),
+                  child: Align(alignment: Alignment.centerLeft, child: sidebar),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// One entry of Search's sidebar: a round icon, 40 px, with a 12 px gutter for the chosen mark.
+/// Chosen: a lighter fill and a short white bar on its left. Focused: white fill (never scaled),
+/// and its name in a small pill beside it (an overlay: nothing moves).
+class _SideIcon extends StatelessWidget {
+  const _SideIcon({super.key, required this.label, required this.icon, required this.selected, required this.focusNode, required this.onFocus, required this.onSelect});
+  final String label;
+  final Widget Function(Color ink) icon; // the icon, drawn in [ink] where it takes a colour
+  final bool selected;
+  final FocusNode focusNode;
+  final VoidCallback onFocus; // focus arrived: choose this
+  final VoidCallback onSelect;
+
+  static const w = 52.0, d = 40.0;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    label: label,
+    child: Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (f) {
+        if (f) onFocus();
+      },
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        builder: (context, f) => SizedBox(
+          width: w,
+          height: d,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (selected && !TvMetro.on) Positioned(left: 0, top: 11, width: 3, height: 18, child: DecoratedBox(decoration: BoxDecoration(color: TvDS.ink, borderRadius: BorderRadius.circular(2)))),
+              Positioned(
+                left: w - d,
+                top: 0,
+                width: d,
+                height: d,
+                child: AnimatedContainer(
+                  duration: Motion.pressIn * 2,
+                  alignment: Alignment.center,
+                  decoration: TvMetro.on
+                      ? BoxDecoration(color: selected ? TvMetro.tileFill : TvDS.surface, borderRadius: TvMetro.corners(0), boxShadow: TvMetro.glow(f))
+                      : BoxDecoration(shape: BoxShape.circle, color: f ? TvDS.surfaceFocused : (selected ? const Color(0x29FFFFFF) : TvDS.surface)),
+                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: 2) : null,
+                  child: icon(!TvMetro.on && f ? TvDS.onLight : TvDS.ink),
+                ),
+              ),
+              if (f)
+                Positioned(
+                  left: w + 12,
+                  top: 0,
+                  width: 240,
+                  height: d,
+                  child: IgnorePointer(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(color: const Color(0xF0262626), borderRadius: BorderRadius.circular(16), border: Border.all(color: const Color(0x33FFFFFF))),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: DS.s12, vertical: 6),
+                          child: Text(TvMetro.cased(label), style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: TvDS.ink), maxLines: 1),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// Search's mic: round, quiet until focused; pulses its fill while listening.
