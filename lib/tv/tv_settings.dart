@@ -32,60 +32,84 @@ const _spotlightOnly = {'spotCardContinue', 'spotCardFav', 'spotCardRecent', 'sp
 
 /// Everything the user can change, by section (Customise). Order = menu order.
 const tvSections = <(String, IconData, List<TvOption>)>[
+  // One page per thing on the home screen: everything about it in one place. Rows/columns the
+  // home adds actions to (Edit quick actions, All apps…) get them at the end (TvExtras).
   (
-    'Home screen',
-    Icons.dashboard_outlined,
+    'Background',
+    Icons.wallpaper_rounded,
     [
-      TvOption('hints', 'Remote hints (OK · Hold OK)', [(true, 'On'), (false, 'Off')], true),
-      TvOption('hero', 'Title & details', [(true, 'On'), (false, 'Off')], true),
       TvOption('backdrop', 'Background picture', [('art', 'Artwork'), ('glow', 'Soft glow'), ('off', 'Off')], 'art'),
       TvOption('dim', 'Background darkness', [(.7, 'Light'), (1.0, 'Medium'), (1.25, 'Strong')], 1.0),
       // How sharp the full-screen picture is (art_quality.dart): sharper = heavier to fetch and decode.
       TvOption('artQuality', 'Picture quality', ArtQuality.levels, 'high'),
-      TvOption('rowsAt', 'Rows start', [(.45, 'Higher'), (.55, 'Middle'), (.65, 'Lower')], .55),
+      TvOption('hero', 'Title & details', [(true, 'On'), (false, 'Off')], true),
+      TvOption('hints', 'Remote hints (OK · Hold OK)', [(true, 'On'), (false, 'Off')], true),
+    ],
+  ),
+  (
+    'Clock',
+    Icons.schedule_rounded,
+    [
       TvOption('clock', 'Clock', [(true, 'On'), (false, 'Off')], true),
       TvOption('clock24', 'Clock format', [('auto', 'Like the TV'), ('12', '12-hour'), ('24', '24-hour')], 'auto'),
       TvOption('date', 'Date', [(true, 'On'), (false, 'Off')], true),
     ],
   ),
   (
-    'Cards & motion',
+    'Continue watching',
+    Icons.play_circle_outline_rounded,
+    [
+      TvOption('rowContinue', 'Continue watching', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('spotCardContinue', 'Cards', _spotStyles, 'big'),
+      TvOption('resume', 'Resume button', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('controls', 'Player controls ⏮ ⏯ ⏭', [(true, 'Show'), (false, 'Hide')], true),
+    ],
+  ),
+  (
+    'Quick actions',
+    Icons.bolt_rounded,
+    [
+      TvOption('quick', 'Quick actions', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('quickLabels', 'Labels', [('always', 'Always'), ('focus', 'Only when focused'), ('never', 'Never (icons only)')], 'always'),
+      TvOption('quickSize', 'Chip size', [(.8, 'Small'), (1.0, 'Medium'), (1.2, 'Large')], 1.0),
+    ],
+  ),
+  (
+    'Your apps',
+    Icons.apps_rounded,
+    [
+      TvOption('rowFav', 'Your apps', [(true, 'Show'), (false, 'Hide')], true),
+      // Circles keep apps apart from shows and films at a glance.
+      TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
+      TvOption('spotCardFav', 'Cards', _spotStyles, 'big'),
+    ],
+  ),
+  (
+    'Jump back in',
+    Icons.history_rounded,
+    [
+      TvOption('rowRecent', 'Jump back in', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('spotCardRecent', 'Cards', _spotStyles, 'big'),
+    ],
+  ),
+  (
+    'Streaming apps’ rows',
+    Icons.view_stream_outlined,
+    [
+      TvOption('rowChannels', 'Streaming apps’ rows', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('rowFolders', 'Smart folder rows', [(true, 'Show'), (false, 'Hide')], true),
+      TvOption('spotCardOther', 'Cards', _spotStyles, 'big'),
+    ],
+  ),
+  (
+    'Cards & focus',
     Icons.view_carousel_outlined,
     [
       TvOption('cardScale', 'Card size', [(.7, 'Extra small'), (.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
-      // Circles keep apps apart from shows and films at a glance.
-      TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
       TvOption('focus', 'Focused card', [('glow', 'Outline + glow'), ('outline', 'Outline only')], 'glow'), // never scales
-      TvOption('motion', 'Animations', [('full', 'Full'), ('reduced', 'Reduced')], 'full'),
       TvOption('rowTitles', 'Row titles', [(true, 'On'), (false, 'Off')], true),
-    ],
-  ),
-  (
-    'Rows',
-    Icons.table_rows_outlined,
-    [
-      TvOption('rowContinue', 'Continue watching', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('rowFav', 'Your apps', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('rowRecent', 'Jump back in', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('rowChannels', 'Streaming apps’ rows', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('rowFolders', 'Smart folder rows', [(true, 'Show'), (false, 'Hide')], true),
-      // Spotlight only: each column's card style — a big card, or a small one (a pill for apps, a
-      // short card over a faded still for shows).
-      TvOption('spotCardContinue', 'Continue watching cards', _spotStyles, 'big'),
-      TvOption('spotCardFav', 'Your apps cards', _spotStyles, 'big'),
-      TvOption('spotCardRecent', 'Jump back in cards', _spotStyles, 'big'),
-      TvOption('spotCardOther', 'Other columns’ cards', _spotStyles, 'big'),
-    ],
-  ),
-  (
-    'Resume & quick actions',
-    Icons.play_circle_outline_rounded,
-    [
-      TvOption('resume', 'Resume button', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('controls', 'Player controls ⏮ ⏯ ⏭', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('quick', 'Quick actions', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('quickLabels', 'Chip labels', [('always', 'Always'), ('focus', 'Only when focused'), ('never', 'Never (icons only)')], 'always'),
-      TvOption('quickSize', 'Chip size', [(.8, 'Small'), (1.0, 'Medium'), (1.2, 'Large')], 1.0),
+      TvOption('rowsAt', 'Rows start', [(.45, 'Higher'), (.55, 'Middle'), (.65, 'Lower')], .55),
+      TvOption('motion', 'Animations', [('full', 'Full'), ('reduced', 'Reduced')], 'full'),
     ],
   ),
   (
@@ -318,10 +342,14 @@ class TvLook {
   static Duration anim(Duration d) => str('motion') == 'reduced' ? const Duration(milliseconds: 1) : d;
 }
 
-/// Customise: sections → options (each OK steps to the next choice; the home screen behind
-/// the panel updates as you go). [extras] adds the sections that live in the home screen
-/// (quick actions editor, colours, apps).
-void showTvCustomise(BuildContext context, {required Prefs prefs, required List<TvAction> extras}) {
+/// What the home screen adds to Customise, by page (its Cinematic name): 'Quick actions' →
+/// Edit quick actions, 'Your apps' → All apps / unhide, 'System' → home-screen setup; '' → rows
+/// on Customise itself (Colours).
+typedef TvExtras = Map<String, List<TvAction>>;
+
+/// Customise: the home view, then one page per thing on the home screen (each OK steps to the
+/// next choice; the home screen behind the panel updates as you go), Search, System.
+void showTvCustomise(BuildContext context, {required Prefs prefs, required TvExtras extras}) {
   final view = prefs.homeView;
   showTvPanel(
     context,
@@ -331,8 +359,21 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
       // Only what the home view in use reads (Tiles has its own groups).
       for (final (name, icon, opts) in tvSectionsFor(view)) TvAction(icon, name, () => _section(context, prefs, name, opts, extras)),
       if (view == 'tiles') TvAction(Icons.grid_view_rounded, 'Tiles', () => _tilesSection(context, prefs, extras)),
+      ...?extras[''],
       TvAction(Icons.search_rounded, 'Search', () => _section(context, prefs, 'Search', tvSearchOptions, extras)),
-      ...extras,
+      TvAction(Icons.settings_outlined, 'System', () => _system(context, prefs, extras)),
+    ],
+  );
+}
+
+/// Customise → System: home-screen setup and Reset everything.
+void _system(BuildContext context, Prefs prefs, TvExtras extras) {
+  showTvPanel(
+    context,
+    title: 'System',
+    actions: [
+      TvAction(Icons.arrow_back_rounded, 'Back', () => showTvCustomise(context, prefs: prefs, extras: extras)),
+      ...?extras['System'],
       TvAction(
         Icons.restart_alt_rounded,
         'Reset everything',
@@ -344,7 +385,7 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
             await prefs.resetTvSettings();
             await TvApps.instance.setHistoryEnabled(true);
           },
-          back: () => showTvCustomise(context, prefs: prefs, extras: extras),
+          back: () => _system(context, prefs, extras),
         ),
         danger: true,
       ),
@@ -352,7 +393,7 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
   );
 }
 
-/// Customise's sections for a home view, each with only the options that view reads.
+/// Customise's pages for a home view, each with only the options that view reads.
 /// Spotlight names them its own way (its rows are columns).
 List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
   if (view == 'tiles') {
@@ -368,18 +409,12 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
       ),
     ];
   }
-  if (view != 'spotlight') {
-    return [
-      for (final (name, icon, opts) in tvSections) (name, icon, [for (final o in opts) if (!_spotlightOnly.contains(o.key)) o]),
-    ];
-  }
-  const skip = {'rowsAt', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
-  const names = _spotlightNames;
+  final skip = view == 'spotlight' ? const {'rowsAt', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'} : _spotlightOnly;
   return [
     for (final (name, icon, opts) in tvSections)
       if (opts.any((o) => !skip.contains(o.key)))
         (
-          names[name] ?? name,
+          view == 'spotlight' ? (_spotlightNames[name] ?? name) : name,
           icon,
           [
             for (final o in opts)
@@ -389,12 +424,15 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
   ];
 }
 
-const _spotlightNames = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions'};
+const _spotlightNames = {'Streaming apps’ rows': 'Streaming apps’ columns'};
 
-/// Straight to one Customise section (Hold OK → "Customise …" on a row): [section] is its
-/// Cinematic name ('Rows', 'Resume & quick actions'); the home view's own name and options are
+/// A page's Cinematic name (the key of its extras) from the name the view shows.
+String _baseName(String name) => _spotlightNames.entries.where((e) => e.value == name).firstOrNull?.key ?? name;
+
+/// Straight to one Customise page (Hold OK → "Customise …" on a row): [section] is its
+/// Cinematic name ('Your apps', 'Quick actions'…); the home view's own name and options are
 /// used. Back returns to Customise.
-void showTvSection(BuildContext context, {required Prefs prefs, required String section, required List<TvAction> extras}) {
+void showTvSection(BuildContext context, {required Prefs prefs, required String section, required TvExtras extras}) {
   final view = prefs.homeView;
   final name = view == 'spotlight' ? (_spotlightNames[section] ?? section) : section;
   final match = tvSectionsFor(view).where((s) => s.$1 == name).firstOrNull;
@@ -406,7 +444,7 @@ void showTvSection(BuildContext context, {required Prefs prefs, required String 
 List<TvAction> tilesExtras = const [];
 
 /// Customise → Tiles: its groups, then Add a tile / Reset Start.
-void _tilesSection(BuildContext context, Prefs prefs, List<TvAction> extras) {
+void _tilesSection(BuildContext context, Prefs prefs, TvExtras extras) {
   showTvPanel(
     context,
     title: 'Tiles',
@@ -420,7 +458,7 @@ void _tilesSection(BuildContext context, Prefs prefs, List<TvAction> extras) {
   );
 }
 
-void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opts, List<TvAction> extras, {VoidCallback? back}) {
+void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opts, TvExtras extras, {VoidCallback? back}) {
   showTvPanel(
     context,
     title: name,
@@ -435,6 +473,8 @@ void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opt
         TvAction(Icons.arrow_back_rounded, 'Back', back ?? () => showTvCustomise(context, prefs: prefs, extras: extras)),
         if (name == 'Search') ...catalogRows(context, prefs, reopen: () => _section(context, prefs, name, opts, extras)),
         for (final o in opts) _optionRow(prefs, o),
+        // The home screen's own rows for this thing (Edit quick actions, All apps, unhide…).
+        ...?extras[_baseName(name)],
         if (name == 'Remote & behaviour')
           // JioHotstar & co. share only "S1 E5 Firewall": the show is read off their player (text
           // only) so the episode gets its picture. Android asks for this in Accessibility.

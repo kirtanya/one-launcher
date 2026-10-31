@@ -1080,30 +1080,40 @@ class _TvHomeState extends State<TvHome> {
     showTvCustomise(context, prefs: prefs, extras: _customiseExtras());
   }
 
-  /// Customise's rows that live in the home screen (apps, quick actions, colours…).
-  List<TvAction> _customiseExtras() {
+  /// Customise's rows that live in the home screen, on the page they belong to.
+  TvExtras _customiseExtras() {
     final hidden = [
       for (final a in _apps)
         if (prefs.hidden.contains(a.package)) a,
     ];
     final mediaOff = tv.media.value?['granted'] == false;
-    return [
-      TvAction(Icons.apps_rounded, 'All apps', _allApps),
-      TvAction(Icons.bolt_rounded, 'Edit quick actions', () => _editQuick(back: _customise)),
-      if (widget.theme != null) TvAction(Icons.palette_outlined, 'Colours', () => _colours(back: _customise)),
-      if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
-      for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
-      TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
-    ];
+    return {
+      if (widget.theme != null) '': [TvAction(Icons.palette_outlined, 'Colours', () => _colours(back: _customise))],
+      'Quick actions': [TvAction(Icons.edit_outlined, 'Edit quick actions', () => _editQuick(back: _customise))],
+      'Your apps': [
+        TvAction(Icons.apps_rounded, 'All apps', _allApps),
+        for (final a in hidden) TvAction(Icons.visibility_outlined, 'Show ${a.label}', () => prefs.toggleHidden(a.package)),
+      ],
+      'System': [
+        if (mediaOff) TvAction(Icons.play_circle_outline_rounded, 'Show what’s playing', tv.openNotificationAccess),
+        TvAction(Icons.home_outlined, 'Make this the home screen', tv.openHomeSettings),
+      ],
+    };
   }
 
-  /// Hold OK → "Customise …": that row's own settings (its section in Customise).
+  /// Hold OK → "Customise …": that row's own page in Customise.
   TvAction _customiseRow(TvRow row) {
-    final quick = row.chips;
+    final page = switch (row.id) {
+      'continue' || 'resume' => 'Continue watching',
+      'quick' => 'Quick actions',
+      'fav' => 'Your apps',
+      'recent' => 'Jump back in',
+      _ => 'Streaming apps’ rows',
+    };
     return TvAction(
       Icons.tune_rounded,
-      quick ? (row.id == 'quick' ? 'Customise quick actions' : 'Customise Resume') : 'Customise “${row.title}”',
-      () => showTvSection(context, prefs: prefs, section: quick ? 'Resume & quick actions' : 'Rows', extras: _customiseExtras()),
+      row.id == 'quick' ? 'Customise quick actions' : (row.id == 'resume' ? 'Customise Resume' : 'Customise “${row.title}”'),
+      () => showTvSection(context, prefs: prefs, section: page, extras: _customiseExtras()),
     );
   }
 

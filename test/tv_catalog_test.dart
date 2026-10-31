@@ -430,7 +430,7 @@ not a link
             backgroundColor: TvDS.canvas,
             body: Center(
               child: TextButton(
-                onPressed: () => showTvCustomise(context, prefs: prefs, extras: const []),
+                onPressed: () => showTvCustomise(context, prefs: prefs, extras: const {}),
                 child: const Text('Customise'),
               ),
             ),

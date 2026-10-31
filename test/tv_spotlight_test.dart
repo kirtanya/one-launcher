@@ -73,6 +73,11 @@ void main() {
     expect(_focused(), startsWith('spotlight top customise'));
     await _press(tester, LogicalKeyboardKey.select);
     expect(find.text('Customise'), findsWidgets);
+    // One page per thing, Spotlight's own names.
+    for (final page in ['Background', 'Clock', 'Continue watching', 'Quick actions', 'Your apps']) {
+      expect(find.text(page), findsWidgets, reason: page);
+    }
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_spotlight_5_customise.png'));
     final inPanel = _focused();
     await prefs.setTvQuickActions([...prefs.tvQuickActions]);
     await tester.pumpAndSettle();
@@ -95,5 +100,32 @@ void main() {
     await _press(tester, LogicalKeyboardKey.arrowRight);
     expect(_focused(), startsWith('spotlight fav:0'));
     await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_spotlight_4_small_apps.png'));
+  });
+
+  testWidgets('TV Customise: Hold OK on an app → "Customise “Your apps”" → that page with its own rows', (tester) async {
+    await _loadFonts();
+    TvApps.demo = true;
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({'homeView': 'spotlight'});
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncherTv(prefs: prefs));
+    await tester.pumpAndSettle();
+    await _press(tester, LogicalKeyboardKey.arrowRight); // Your apps
+    expect(_focused(), startsWith('spotlight fav:0'));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+    await tester.sendKeyRepeatEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+    await tester.pumpAndSettle();
+    final customise = find.text('Customise “Your apps”');
+    await tester.scrollUntilVisible(customise, 120, scrollable: find.byType(Scrollable).last);
+    await tester.tap(customise);
+    await tester.pumpAndSettle();
+    for (final row in ['Your apps', 'Cards', 'All apps']) {
+      expect(find.text(row), findsWidgets, reason: row);
+    }
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_spotlight_6_your_apps_page.png'));
   });
 }

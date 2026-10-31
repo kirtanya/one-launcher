@@ -218,7 +218,7 @@ Future<void> showTvPanel(
             child: Material(
               color: DS.third
                   ? Colors.transparent
-                  : (TvMetro.on ? DS.card : (left ? const Color(0xC70E0E0E) : const Color(0xFF1C1C1C))), // Tiles: Metro's near-black, flat
+                  : (TvMetro.on ? DS.card : (left ? const Color(0xF50E0E0E) : const Color(0xFF1C1C1C))), // Tiles: Metro's near-black, flat
               child: Container(
                 decoration: DS.third ? TvReal.panel : null, // Real: a moulded plate
                 child: SizedBox(

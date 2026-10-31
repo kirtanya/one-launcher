@@ -12,6 +12,11 @@ Flutter Android launcher, two flavours from one codebase:
   Search (`tv/tv_search.dart`): filter chips (All · One Stream · YouTube · services · Apps); All =
   a row per source, One Stream + YouTube first. YouTube via `tv/youtube_search.dart` (youtubei
   search endpoint, no key; POST through TvActivity "httpGet" with a body); opens in the YouTube TV app.
+  **TV Customise = one page per thing** (`tv_settings.dart` tvSections: Background, Clock,
+  Continue watching, Quick actions, Your apps, Jump back in, Streaming apps' rows, Cards & focus,
+  Remote & behaviour; then Search, System). `tvSectionsFor(view)` keeps each view's own options;
+  the home adds rows to a page via `TvExtras` (page name → actions; '' = Customise itself);
+  Hold OK → "Customise …" opens that row's page (`showTvSection`).
   **TV focus never scales** (user, 2026-10-31: scaling breaks the layout): show focus with an outline,
   fill or glow only. Backdrop Ken Burns zooms are fine.
   **Spotlight** (`tv/tv_spotlight.dart`, part of tv_home; homeView 'spotlight', shares Classic's
