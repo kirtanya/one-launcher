@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
 import 'apps.dart';
@@ -19,11 +20,15 @@ import 'apps.dart';
 /// - `devices` → `List<Map>`: every device the user granted, one map each:
 ///   `id` String (stable), `name` String, `room` String? (structure room, may be empty),
 ///   `type` `"light"|"plug"|"ac"|"fan"|"switch"|"other"`, `online` bool, `on` bool,
-///   `brightness` int 0..100? (lights), `colorTempK` int? (Kelvin), `colour` int? (ARGB),
-///   `setpoint` double? (°C, AC), `mode` `"cool"|"heat"|"auto"|"fan"|"off"`? (AC).
-/// - `set` `{id: String, trait: "on"|"brightness"|"setpoint"|"mode", value}` → void; throw a
-///   `PlatformException` when the command fails (Dart rolls the optimistic change back).
-///   `on` = bool, `brightness` = int 0..100, `setpoint` = double °C, `mode` = String.
+///   `brightness` int 0..100? (lights), `setpoint` double? (°C, AC),
+///   `mode` `"cool"|"heat"|"auto"|"fan"|"off"`? (AC).
+///   Lights may add: `canColor` / `canTemp` bool, `hue` double 0..360, `saturation` double 0..1,
+///   `colorTempK` int (Kelvin) with `minK` / `maxK`, `colorMode` `"color"|"temp"` (which one
+///   it shows now), `effects` bool (sleep/wake supported) and `effect` `"sleep"|"wake"`? (running).
+/// - `set` `{id: String, trait, value}` → void; throw a `PlatformException` when the command
+///   fails (Dart rolls the optimistic change back). Traits: `on` bool, `brightness` int 0..100,
+///   `setpoint` double °C, `mode` String, `color` `{h: 0..360, s: 0..1}`, `colorTempK` int,
+///   `effect` `"sleep"|"wake"|"stop"`.
 ///   For an AC, `on` is its OnOff trait; mode `"off"` is the same as `on: false`.
 /// Kotlin → Dart (via `invokeMethod` on the same channel):
 /// - `homeChanged` with the same `List<Map>` as `devices`: pushed on any device change.
@@ -43,7 +48,15 @@ class SmartDevice {
     this.on = false,
     this.brightness,
     this.colorTempK,
-    this.colour,
+    this.minK = 2000,
+    this.maxK = 6500,
+    this.hue,
+    this.saturation,
+    this.colorMode,
+    this.canColor = false,
+    this.canTemp = false,
+    this.effects = false,
+    this.effect,
     this.setpoint,
     this.mode,
   });
@@ -64,7 +77,15 @@ class SmartDevice {
     on: m['on'] as bool? ?? false,
     brightness: (m['brightness'] as num?)?.toInt().clamp(0, 100),
     colorTempK: (m['colorTempK'] as num?)?.toInt(),
-    colour: (m['colour'] as num?)?.toInt(),
+    minK: (m['minK'] as num?)?.toInt() ?? 2000,
+    maxK: (m['maxK'] as num?)?.toInt() ?? 6500,
+    hue: (m['hue'] as num?)?.toDouble(),
+    saturation: (m['saturation'] as num?)?.toDouble(),
+    colorMode: m['colorMode'] as String?,
+    canColor: m['canColor'] as bool? ?? false,
+    canTemp: m['canTemp'] as bool? ?? false,
+    effects: m['effects'] as bool? ?? false,
+    effect: m['effect'] as String?,
     setpoint: (m['setpoint'] as num?)?.toDouble(),
     mode: AcMode.values.where((e) => e.name == m['mode']).firstOrNull,
   );
@@ -76,9 +97,20 @@ class SmartDevice {
   /// 0–100, lights that dim.
   final int? brightness;
 
-  /// Warm/cool white in Kelvin, and an ARGB colour, for lights that have them.
+  /// Warm/cool white in Kelvin (within [minK]..[maxK]), for lights that have it ([canTemp]).
   final int? colorTempK;
-  final int? colour;
+  final int minK, maxK;
+
+  /// Colour as hue 0..360 and saturation 0..1, for lights that have it ([canColor]).
+  final double? hue, saturation;
+
+  /// What the light shows now: `"color"` or `"temp"` (white); null when unknown.
+  final String? colorMode;
+  final bool canColor, canTemp;
+
+  /// Sleep / wake effects supported, and the one running (`"sleep"`, `"wake"`).
+  final bool effects;
+  final String? effect;
 
   /// AC target in °C and its mode.
   final double? setpoint;
@@ -86,11 +118,25 @@ class SmartDevice {
 
   bool get dimmable => brightness != null;
 
+  /// The light's colour on screen: its hue, or its white's warmth; null for plain lights.
+  Color? get shade {
+    final white = colorMode == 'temp' || (colorMode == null && hue == null);
+    if (!white && hue != null) return HSVColor.fromAHSV(1, hue!.clamp(0, 360), (saturation ?? 1).clamp(0, 1), 1).toColor();
+    if (colorTempK != null) return kelvinColour(colorTempK!);
+    return null;
+  }
+
   SmartDevice copyWith({
     bool? on,
     int? brightness,
     double? setpoint,
     AcMode? mode,
+    double? hue,
+    double? saturation,
+    int? colorTempK,
+    String? colorMode,
+    String? effect,
+    bool clearEffect = false,
   }) => SmartDevice(
     id: id,
     name: name,
@@ -99,11 +145,33 @@ class SmartDevice {
     online: online,
     on: on ?? this.on,
     brightness: brightness ?? this.brightness,
-    colorTempK: colorTempK,
-    colour: colour,
+    colorTempK: colorTempK ?? this.colorTempK,
+    minK: minK,
+    maxK: maxK,
+    hue: hue ?? this.hue,
+    saturation: saturation ?? this.saturation,
+    colorMode: colorMode ?? this.colorMode,
+    canColor: canColor,
+    canTemp: canTemp,
+    effects: effects,
+    effect: clearEffect ? null : effect ?? this.effect,
     setpoint: setpoint ?? this.setpoint,
     mode: mode ?? this.mode,
   );
+}
+
+/// A white light's colour at [k] Kelvin (warm amber → neutral → cool blue), for the screen only.
+Color kelvinColour(int k) {
+  const stops = [(2000, Color(0xFFFFA24A)), (2700, Color(0xFFFFC27F)), (4000, Color(0xFFFFE9CF)), (5000, Color(0xFFFFF6EC)), (6500, Color(0xFFDDE8FF))];
+  if (k <= stops.first.$1) return stops.first.$2;
+  for (var i = 1; i < stops.length; i++) {
+    if (k <= stops[i].$1) {
+      final (a, ca) = stops[i - 1];
+      final (b, cb) = stops[i];
+      return Color.lerp(ca, cb, (k - a) / (b - a))!;
+    }
+  }
+  return stops.last.$2;
 }
 
 class SmartHomeState {
@@ -231,6 +299,12 @@ class SmartHome {
 
   Future<void> toggle(SmartDevice d) => set(d.id, 'on', !d.on);
 
+  /// Every online device in [room] on or off at once (each one rolls back on its own).
+  Future<void> setRoom(String room, bool on) => Future.wait([
+    for (final d in value.inRoom(room))
+      if (d.online && d.on != on) set(d.id, 'on', on),
+  ]);
+
   static SmartDevice _optimistic(SmartDevice d, String trait, Object v) =>
       switch (trait) {
         'on' => d.copyWith(
@@ -244,6 +318,14 @@ class SmartHome {
           on: v > 0 ? true : null,
         ),
         'setpoint' => d.copyWith(setpoint: (v as num).toDouble()),
+        'color' => d.copyWith(
+          hue: ((v as Map)['h'] as num).toDouble(),
+          saturation: (v['s'] as num).toDouble(),
+          colorMode: 'color',
+          on: true,
+        ),
+        'colorTempK' => d.copyWith(colorTempK: (v as num).toInt(), colorMode: 'temp', on: true),
+        'effect' => v == 'stop' ? d.copyWith(clearEffect: true) : d.copyWith(effect: v as String),
         'mode' => d.copyWith(
           mode: AcMode.values.firstWhere(
             (m) => m.name == v,
@@ -297,6 +379,12 @@ class SmartHome {
           on: true,
           brightness: 70,
           colorTempK: 3000,
+          hue: 280,
+          saturation: .8,
+          colorMode: 'color',
+          canColor: true,
+          canTemp: true,
+          effects: true,
         ),
         SmartDevice(
           id: 'p1',

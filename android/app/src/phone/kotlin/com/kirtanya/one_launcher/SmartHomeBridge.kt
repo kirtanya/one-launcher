@@ -14,7 +14,9 @@ import com.google.home.PermissionsResultStatus
 import com.google.home.PermissionsState
 import com.google.home.google.ExtendedColorControl
 import com.google.home.google.GoogleAirCoolerDevice
+import com.google.home.google.LightEffects
 import com.google.home.matter.standard.ColorControl
+import com.google.home.matter.standard.ColorControlTrait
 import com.google.home.matter.standard.ColorTemperatureLightDevice
 import com.google.home.matter.standard.DimmableLightDevice
 import com.google.home.matter.standard.DimmablePlugInUnitDevice
@@ -78,7 +80,7 @@ object SmartHomeBridge {
 
     private val registry by lazy {
         FactoryRegistry(
-            traits = listOf(OnOff, LevelControl, ColorControl, ExtendedColorControl, Thermostat, FanControl,
+            traits = listOf(OnOff, LevelControl, ColorControl, ExtendedColorControl, LightEffects, Thermostat, FanControl,
                 TemperatureMeasurement, RelativeHumidityMeasurement),
             types = listOf(OnOffLightDevice, DimmableLightDevice, ColorTemperatureLightDevice, ExtendedColorLightDevice,
                 OnOffPluginUnitDevice, DimmablePlugInUnitDevice, RoomAirConditionerDevice, ThermostatDevice,
@@ -256,11 +258,23 @@ object SmartHomeBridge {
         var onOff: OnOff? = null
         var level: LevelControl? = null
         var color: ColorControl? = null
+        var ext: ExtendedColorControl? = null
+        var fx: LightEffects? = null
+        var hs = false
+        var temp = false
         var thermo: Thermostat? = null
         for (t in ts) {
             when (t) {
-                is ExtendedColorLightDevice -> { kind = "light"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl }
-                is ColorTemperatureLightDevice -> { kind = "light"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl }
+                is ExtendedColorLightDevice -> {
+                    kind = "light"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl
+                    ext = runCatching { t.googleTraits.extendedColorControl }.getOrNull(); fx = runCatching { t.googleTraits.lightEffects }.getOrNull()
+                    hs = true; temp = true
+                }
+                is ColorTemperatureLightDevice -> {
+                    kind = "light"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl
+                    ext = runCatching { t.googleTraits.extendedColorControl }.getOrNull(); fx = runCatching { t.googleTraits.lightEffects }.getOrNull()
+                    temp = true
+                }
                 is DimmableLightDevice -> { kind = "light"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
                 is OnOffLightDevice -> { kind = "light"; onOff = t.standardTraits.onOff }
                 is DimmablePlugInUnitDevice -> { kind = "plug"; onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
@@ -285,6 +299,7 @@ object SmartHomeBridge {
             "on" to on,
         )
         level?.currentLevel?.let { m["brightness"] = (it.toInt() * 100 / 254.0).roundToInt().coerceIn(0, 100) }
+        if (kind == "light") lightColour(m, color, ext, fx, hs, temp)
         if (kind == "ac" && thermo != null) {
             val heat = sysMode == ThermostatTrait.SystemModeEnum.Heat || sysMode == ThermostatTrait.SystemModeEnum.EmergencyHeat
             val sp = if (heat) thermo.occupiedHeatingSetpoint ?: thermo.occupiedCoolingSetpoint
@@ -293,6 +308,42 @@ object SmartHomeBridge {
             m["mode"] = if (!on) "off" else modeName(sysMode)
         }
         return m
+    }
+
+    /** Colour (hue 0..360, saturation 0..1), white warmth (Kelvin) and the sleep/wake effects. */
+    private fun lightColour(m: MutableMap<String, Any?>, color: ColorControl?, ext: ExtendedColorControl?, fx: LightEffects?, hsType: Boolean, tempType: Boolean) {
+        val caps = runCatching { color?.colorCapabilities }.getOrNull()
+        val hs = caps?.hueSaturation ?: hsType
+        val temp = caps?.colorTemperature ?: tempType
+        m["canColor"] = hs && (color != null || ext != null)
+        m["canTemp"] = temp && color != null
+        if (hs) {
+            val hue = runCatching { ext?.currentHue?.toDouble() }.getOrNull()
+                ?: runCatching { color?.currentHue?.toInt()?.let { it * 360 / 254.0 } }.getOrNull()
+            var sat = runCatching { ext?.currentSaturation?.toDouble() }.getOrNull()
+                ?: runCatching { color?.currentSaturation?.toInt()?.let { it / 254.0 } }.getOrNull()
+            if (sat != null && sat > 1) sat /= 100 // some clouds report 0..100
+            hue?.let { m["hue"] = it.coerceIn(0.0, 360.0) }
+            sat?.let { m["saturation"] = it.coerceIn(0.0, 1.0) }
+        }
+        if (temp && color != null) {
+            runCatching { color.colorTemperatureMireds?.toInt() }.getOrNull()?.takeIf { it > 0 }?.let { m["colorTempK"] = 1_000_000 / it }
+            runCatching { color.colorTempPhysicalMaxMireds?.toInt() }.getOrNull()?.takeIf { it > 0 }?.let { m["minK"] = 1_000_000 / it }
+            runCatching { color.colorTempPhysicalMinMireds?.toInt() }.getOrNull()?.takeIf { it > 0 }?.let { m["maxK"] = 1_000_000 / it }
+        }
+        when (runCatching { color?.colorMode }.getOrNull()) {
+            ColorControlTrait.ColorModeEnum.ColorTemperatureMireds -> m["colorMode"] = "temp"
+            ColorControlTrait.ColorModeEnum.CurrentHueAndCurrentSaturation, ColorControlTrait.ColorModeEnum.CurrentXAndCurrentY -> m["colorMode"] = "color"
+            else -> {}
+        }
+        if (fx != null) {
+            m["effects"] = true
+            m["effect"] = when {
+                runCatching { fx.sleepEffectSet }.getOrNull() == true -> "sleep"
+                runCatching { fx.wakeEffectSet }.getOrNull() == true -> "wake"
+                else -> null
+            }
+        }
     }
 
     private fun modeName(s: ThermostatTrait.SystemModeEnum?): String? = when (s) {
@@ -313,10 +364,19 @@ object SmartHomeBridge {
         val ts = types[id] ?: d.types().first()
         var onOff: OnOff? = null
         var level: LevelControl? = null
+        var color: ColorControl? = null
+        var ext: ExtendedColorControl? = null
+        var fx: LightEffects? = null
         var thermo: Thermostat? = null
         for (t in ts) when (t) {
-            is ExtendedColorLightDevice -> { onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
-            is ColorTemperatureLightDevice -> { onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
+            is ExtendedColorLightDevice -> {
+                onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl
+                ext = runCatching { t.googleTraits.extendedColorControl }.getOrNull(); fx = runCatching { t.googleTraits.lightEffects }.getOrNull()
+            }
+            is ColorTemperatureLightDevice -> {
+                onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl; color = t.standardTraits.colorControl
+                ext = runCatching { t.googleTraits.extendedColorControl }.getOrNull(); fx = runCatching { t.googleTraits.lightEffects }.getOrNull()
+            }
             is DimmableLightDevice -> { onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
             is OnOffLightDevice -> onOff = t.standardTraits.onOff
             is DimmablePlugInUnitDevice -> { onOff = t.standardTraits.onOff; level = t.standardTraits.levelControl }
@@ -350,6 +410,30 @@ object SmartHomeBridge {
                     th.update { if (heat) setOccupiedHeatingSetpoint(c) else setOccupiedCoolingSetpoint(c) }
                 }
                 "mode" -> setMode(onOff, thermo ?: throw IllegalStateException("${d.name} has no modes"), value as String)
+                "color" -> {
+                    val hs = value as Map<*, *>
+                    val h = (hs["h"] as Number).toDouble().coerceIn(0.0, 360.0)
+                    val sat = (hs["s"] as Number).toDouble().coerceIn(0.0, 1.0)
+                    val v = (level?.currentLevel?.toInt()?.let { it / 254.0 } ?: 1.0).coerceIn(0.01, 1.0)
+                    val viaGoogle = ext != null && runCatching { ext.moveToColorHsv(h.toFloat(), sat.toFloat(), v.toFloat()) }.isSuccess
+                    if (!viaGoogle) {
+                        val cc = color ?: throw IllegalStateException("${d.name} can't change colour")
+                        cc.moveToHueAndSaturation((h * 254 / 360).roundToInt().coerceIn(0, 254).toUByte(), (sat * 254).roundToInt().toUByte(), 0u, ColorControlTrait.OptionsBitmap(), ColorControlTrait.OptionsBitmap())
+                    }
+                }
+                "colorTempK" -> {
+                    val cc = color ?: throw IllegalStateException("${d.name} has no warm/cool white")
+                    val k = (value as Number).toInt().coerceIn(1000, 10000)
+                    cc.moveToColorTemperature((1_000_000 / k).toUShort(), 0u, ColorControlTrait.OptionsBitmap(), ColorControlTrait.OptionsBitmap())
+                }
+                "effect" -> {
+                    val e = fx ?: throw IllegalStateException("${d.name} has no light effects")
+                    when (value as String) {
+                        "sleep" -> e.sleepEffectSetDefault()
+                        "wake" -> e.wakeEffectSetDefault()
+                        else -> e.stopEffect()
+                    }
+                }
                 else -> throw IllegalStateException("Unknown setting $trait")
             }
         } catch (e: HomeException) {

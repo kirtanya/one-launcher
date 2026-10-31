@@ -179,7 +179,8 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `smart_home.dart` (model + `SmartHome` service, channel `one_launcher/home`, contract in its header) · `smart_home_sheet.dart` (sheet, detail, setup card) · `top/smart_home_page.dart`.
   Entry points: the nav's Smart home tab (id `smart`, took the Remote tab's place, same `remoteButton` pref; the TV remote is
   its first tile, and the bulb stays lit on the remote), chip `b:home` (also Tiles `qa:b:home`), top page `smart_home`.
-  The SDK needs coroutines ≥ 1.11.0 (calls static `Mutex.unlock$default`; 1.8.0 crash-loops), pinned for phone.
+  Lights: colour (Google `ExtendedColorControl.moveToColorHsv`, fallback Matter hue/sat), warmth (Matter mireds ↔ K),
+  sleep/wake (`LightEffects`); rooms have All on/off. The SDK needs coroutines ≥ 1.11.0 (calls static `Mutex.unlock$default`; 1.8.0 crash-loops), pinned for phone.
   Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
   from the local maven repo `android/home-sdk/` (190 MB, gitignored; repo + `phoneImplementation` deps only added when it exists, else the phone builds without the bridge → status unavailable).
   MainActivity attaches it reflectively (`Class.forName(...SmartHomeBridge).attach`; keep rule in `app/proguard-rules.pro`). Matter units: setpoints 0.01 °C, level 0..254. Debug: long-press the setup card = fake devices.

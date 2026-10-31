@@ -120,6 +120,34 @@ void main() {
     },
   );
 
+  testWidgets('sheet: light detail page — colour, warmth, effects, room all off', (tester) async {
+    await boot(tester);
+    home.debugDemo(local: false);
+    showSmartHome(tester.element(find.byType(Scaffold).first));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('All off').first); // Living room: light + AC on
+    await tester.pumpAndSettle();
+    expect(home.value.inRoom('Living room').every((d) => !d.on), isTrue);
+    await tester.tap(find.byTooltip('Details').first); // Ceiling light
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('Warm white'));
+    await tester.pumpAndSettle();
+    expect(calls.last.arguments, {'id': 'l1', 'trait': 'colorTempK', 'value': 2700});
+    expect(home.value.byId('l1')!.colorMode, 'temp');
+    expect(home.value.byId('l1')!.on, isTrue);
+    await tester.tap(find.bySemanticsLabel('Colour').at(3)); // green
+    await tester.pumpAndSettle();
+    expect(calls.last.arguments, {'id': 'l1', 'trait': 'color', 'value': {'h': 120.0, 's': 1}});
+    await tester.dragUntilVisible(find.text('Fall asleep'), find.byType(Scrollable).last, const Offset(0, -200));
+    await tester.tap(find.text('Fall asleep'));
+    await tester.pumpAndSettle();
+    expect(home.value.byId('l1')!.effect, 'sleep');
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/smart_home_light.png'));
+    await tester.tap(find.text('Fall asleep'));
+    await tester.pumpAndSettle();
+    expect(calls.last.arguments['value'], 'stop');
+  });
+
   testWidgets('sheet: AC detail page — setpoint and mode', (tester) async {
     await boot(tester);
     home.debugDemo(local: false);

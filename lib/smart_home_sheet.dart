@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -101,10 +103,7 @@ class SmartHomeBody extends StatelessWidget {
                 )
               else
                 for (final room in s.rooms) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: DS.s8, bottom: DS.s8),
-                    child: Text(DS.cased(room), style: DS.eyebrow),
-                  ),
+                  _RoomHeader(room: room, devices: s.inRoom(room)),
                   _Grid(devices: s.inRoom(room)),
                 ],
               if (ready && s.error != null)
@@ -247,7 +246,15 @@ class SmartTile extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(smartIcon(d.type), size: 24, color: ink),
+                          Row(
+                            children: [
+                              Icon(smartIcon(d.type), size: 24, color: ink),
+                              if (lit && d.shade != null) ...[
+                                const SizedBox(width: DS.s8),
+                                _Dot(colour: d.shade!, ring: ink),
+                              ],
+                            ],
+                          ),
                           const SizedBox(height: DS.s12),
                           Text(
                             d.name,
@@ -375,6 +382,14 @@ class _SmartDetailState extends State<SmartDetail> {
                   ),
                 ),
               ],
+              if (d.type == SmartType.light && (d.canColor || d.canTemp)) ...[
+                const SizedBox(height: DS.s12),
+                _ColourCard(d: d),
+              ],
+              if (d.type == SmartType.light && d.effects) ...[
+                const SizedBox(height: DS.s12),
+                _EffectsCard(d: d),
+              ],
               if (d.type == SmartType.ac) ...[
                 const SizedBox(height: DS.s12),
                 OneCard(
@@ -436,6 +451,295 @@ class _SmartDetailState extends State<SmartDetail> {
           ),
         );
       },
+    );
+  }
+}
+
+/// A room's name, with all on / all off for its devices.
+class _RoomHeader extends StatelessWidget {
+  const _RoomHeader({required this.room, required this.devices});
+  final String room;
+  final List<SmartDevice> devices;
+
+  @override
+  Widget build(BuildContext context) {
+    final live = devices.where((d) => d.online).toList();
+    final anyOn = live.any((d) => d.on);
+    return Padding(
+      padding: const EdgeInsets.only(top: DS.s4, bottom: DS.s4),
+      child: Row(
+        children: [
+          Expanded(child: Text(DS.cased(room), style: DS.eyebrow)),
+          if (live.length > 1)
+            TextButton(
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                SmartHome.instance.setRoom(room, !anyOn);
+              },
+              child: Text(DS.cased(anyOn ? 'All off' : 'All on'), style: DS.pill.copyWith(color: DS.ink)),
+            )
+          else
+            const SizedBox(height: 48),
+        ],
+      ),
+    );
+  }
+}
+
+/// A light's current colour, on its tile.
+class _Dot extends StatelessWidget {
+  const _Dot({required this.colour, required this.ring});
+  final Color colour, ring;
+  static const size = 12.0;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    decoration: BoxDecoration(
+      color: colour,
+      shape: BoxShape.circle,
+      border: Border.all(color: ring.withValues(alpha: .35)),
+    ),
+  );
+}
+
+const _hues = [0.0, 30.0, 50.0, 120.0, 175.0, 210.0, 260.0, 310.0];
+const _whites = [2700, 4000, 6500];
+
+/// Colour and white warmth: quick swatches, then a hue slider and a warm → cool slider.
+class _ColourCard extends StatefulWidget {
+  const _ColourCard({required this.d});
+  final SmartDevice d;
+
+  @override
+  State<_ColourCard> createState() => _ColourCardState();
+}
+
+class _ColourCardState extends State<_ColourCard> {
+  double? _hue, _k; // while a thumb is down
+
+  void _colour(double h, [double s = 1]) {
+    HapticFeedback.selectionClick();
+    SmartHome.instance.set(widget.d.id, 'color', {'h': h, 's': s});
+  }
+
+  void _white(int k) {
+    HapticFeedback.selectionClick();
+    SmartHome.instance.set(widget.d.id, 'colorTempK', k);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.d;
+    final inColour = d.colorMode == 'color' || (d.colorMode == null && d.hue != null);
+    final inWhite = d.colorMode == 'temp';
+    final hue = _hue ?? d.hue ?? 0;
+    final lo = d.minK.toDouble(), hi = math.max(d.maxK, d.minK + 100).toDouble();
+    final k = (_k ?? d.colorTempK?.toDouble() ?? 4000).clamp(lo, hi);
+    return OneCard(
+      tone: CardTone.muted,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(d.canColor ? 'Colour' : 'White', style: DS.rowTitle),
+          const SizedBox(height: DS.s12),
+          Wrap(
+            spacing: DS.s12,
+            runSpacing: DS.s12,
+            children: [
+              if (d.canTemp)
+                for (final w in _whites)
+                  _Swatch(
+                    colour: kelvinColour(w),
+                    label: w <= 3000 ? 'Warm white' : w >= 6000 ? 'Cool white' : 'White',
+                    selected: inWhite && d.colorTempK != null && (d.colorTempK! - w).abs() < 300,
+                    onTap: d.online ? () => _white(w.clamp(d.minK, d.maxK)) : null,
+                  ),
+              if (d.canColor)
+                for (final h in _hues)
+                  _Swatch(
+                    colour: HSVColor.fromAHSV(1, h, 1, 1).toColor(),
+                    label: 'Colour',
+                    selected: inColour && d.hue != null && (d.saturation ?? 1) > .6 && _hueGap(d.hue!, h) < 8,
+                    onTap: d.online ? () => _colour(h) : null,
+                  ),
+            ],
+          ),
+          if (d.canColor) ...[
+            const SizedBox(height: DS.s16),
+            _Label('Hue', '${hue.round()}°'),
+            _GradientSlider(
+              colours: [for (var h = 0; h <= 360; h += 60) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor()],
+              value: hue.clamp(0, 360),
+              min: 0,
+              max: 360,
+              onChanged: d.online ? (v) => setState(() => _hue = v) : null,
+              onChangeEnd: (v) {
+                setState(() => _hue = null);
+                _colour(v, d.colorMode == 'color' ? math.max(d.saturation ?? 1, .5) : 1);
+              },
+            ),
+          ],
+          if (d.canTemp) ...[
+            const SizedBox(height: DS.s8),
+            _Label('Warmth', '${(k / 100).round() * 100} K'),
+            _GradientSlider(
+              colours: [kelvinColour(lo.round()), kelvinColour(((lo + hi) / 2).round()), kelvinColour(hi.round())],
+              value: k,
+              min: lo,
+              max: hi,
+              onChanged: d.online ? (v) => setState(() => _k = v) : null,
+              onChangeEnd: (v) {
+                setState(() => _k = null);
+                _white(v.round());
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+double _hueGap(double a, double b) {
+  final g = (a - b).abs() % 360;
+  return g > 180 ? 360 - g : g;
+}
+
+class _Label extends StatelessWidget {
+  const _Label(this.title, this.value);
+  final String title, value;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(child: Text(title, style: DS.rowSub)),
+      Text(value, style: DS.rowSub),
+    ],
+  );
+}
+
+class _Swatch extends StatelessWidget {
+  const _Swatch({required this.colour, required this.label, required this.selected, required this.onTap});
+  final Color colour;
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    selected: selected,
+    label: label,
+    child: GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Motion.snapDuration,
+        width: 40,
+        height: 40,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: selected ? DS.ink : Colors.transparent, width: 2),
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colour,
+            shape: BoxShape.circle,
+            border: Border.all(color: DS.ink.withValues(alpha: .12)),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A slider whose track is a colour gradient (hue, warmth).
+class _GradientSlider extends StatelessWidget {
+  const _GradientSlider({
+    required this.colours,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    required this.onChangeEnd,
+  });
+  final List<Color> colours;
+  final double value, min, max;
+  final ValueChanged<double>? onChanged;
+  final ValueChanged<double> onChangeEnd;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+          child: Container(
+            height: 12,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: colours),
+              borderRadius: BorderRadius.circular(6),
+            ),
+          ),
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 12,
+            activeTrackColor: Colors.transparent,
+            inactiveTrackColor: Colors.transparent,
+            thumbColor: Colors.white,
+            overlayColor: DS.ink.withValues(alpha: .08),
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 11, elevation: 2),
+            trackShape: const RectangularSliderTrackShape(),
+          ),
+          child: Slider(value: value, min: min, max: max, onChanged: onChanged, onChangeEnd: onChangeEnd),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Google Home's light effects: dim slowly to off, or brighten slowly.
+class _EffectsCard extends StatelessWidget {
+  const _EffectsCard({required this.d});
+  final SmartDevice d;
+
+  @override
+  Widget build(BuildContext context) {
+    void run(String e) {
+      HapticFeedback.selectionClick();
+      SmartHome.instance.set(d.id, 'effect', d.effect == e ? 'stop' : e);
+    }
+
+    return OneCard(
+      tone: CardTone.muted,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Effects', style: DS.rowTitle),
+          Text(
+            switch (d.effect) {
+              'sleep' => 'Falling asleep: dimming slowly, then off. Tap again to stop.',
+              'wake' => 'Waking up: brightening slowly. Tap again to stop.',
+              _ => 'Fall asleep dims slowly, then turns off. Wake up brightens slowly.',
+            },
+            style: DS.rowSub,
+          ),
+          const SizedBox(height: DS.s12),
+          Wrap(
+            spacing: DS.s8,
+            runSpacing: DS.s8,
+            children: [
+              _ModeChip(label: 'Fall asleep', selected: d.effect == 'sleep', onTap: d.online ? () => run('sleep') : null),
+              _ModeChip(label: 'Wake up', selected: d.effect == 'wake', onTap: d.online ? () => run('wake') : null),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
