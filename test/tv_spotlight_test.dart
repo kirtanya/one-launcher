@@ -79,4 +79,21 @@ void main() {
     expect(_focused(), inPanel, reason: 'the home screen rebuilt underneath; the panel keeps focus');
     expect(_focused(), isNot(startsWith('spotlight')));
   });
+
+  testWidgets('TV Spotlight: small cards per column (Customise → Columns)', (tester) async {
+    await _loadFonts();
+    TvApps.demo = true;
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({'homeView': 'spotlight', 'tvSettings': '{"spotCardContinue":"small","spotCardFav":"small"}'});
+    final prefs = await Prefs.load();
+    await tester.pumpWidget(OneLauncherTv(prefs: prefs));
+    await tester.pumpAndSettle();
+    expect(_focused(), startsWith('spotlight continue:0'));
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_spotlight_3_small.png'));
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(), startsWith('spotlight fav:0'));
+    await expectLater(find.byType(OneLauncherTv), matchesGoldenFile('shots/tv_spotlight_4_small_apps.png'));
+  });
 }

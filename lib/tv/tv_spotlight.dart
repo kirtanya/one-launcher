@@ -50,8 +50,20 @@ class _SpotlightState extends State<_Spotlight> {
   static const _gap = 16.0, _chipGap = 10.0;
 
   ScrollController _scrollOf(String row) => _scrolls[row] ??= ScrollController();
+  static double get _pillH => 64 * _k; // a column's small cards
   static bool _small(TvRow row) => row.id == 'quick';
-  static double _extent(TvRow row) => _small(row) ? _chipH + _chipGap : _cardH + _gap;
+
+  /// Customise → Columns: this column's cards small (pill / short card) instead of big.
+  static bool _compact(TvRow row) =>
+      !_small(row) &&
+      TvLook.str(switch (row.id) {
+            'continue' => 'spotCardContinue',
+            'fav' => 'spotCardFav',
+            'recent' => 'spotCardRecent',
+            _ => 'spotCardOther',
+          }) ==
+          'small';
+  static double _extent(TvRow row) => _small(row) ? _chipH + _chipGap : (_compact(row) ? _pillH + _chipGap : _cardH + _gap);
 
   List<TvRow> get _rows => widget.rows;
   TvRow? get _row => _rows.isEmpty ? null : _rows[_col.clamp(0, _rows.length - 1)];
@@ -325,7 +337,19 @@ class _SpotlightState extends State<_Spotlight> {
 
                 return Align(
                   alignment: Alignment.topCenter,
-                  child: _small(row)
+                  child: _compact(row)
+                      ? _SmallCard(
+                          key: ValueKey('${row.id}:${item.key}'),
+                          item: item,
+                          width: _colW,
+                          height: _pillH,
+                          focusNode: _node(row.id, i),
+                          onSelect: () => widget.onOpen(item),
+                          onOptions: () => widget.onOptions(row, i),
+                          onMove: (d) => _move(i, d),
+                          onFocus: focus,
+                        )
+                      : _small(row)
                       ? _QuickCard(
                           key: ValueKey('${row.id}:${item.key}'),
                           item: item,
@@ -462,6 +486,140 @@ class _QuickCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Spotlight's small card (Customise → Columns → Small cards). An app: a pill with its round
+/// icon and name, white when focused. A show: a short card over its still, faded, the title and
+/// app small on it, a thin progress line; an outline when focused.
+class _SmallCard extends StatelessWidget {
+  const _SmallCard({
+    super.key,
+    required this.item,
+    required this.width,
+    required this.height,
+    required this.focusNode,
+    required this.onSelect,
+    required this.onOptions,
+    this.onMove,
+    this.onFocus,
+  });
+  final TvItem item;
+  final double width, height;
+  final FocusNode focusNode;
+  final VoidCallback onSelect, onOptions;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = item.kind == TvKind.app || item.key == 'all-apps' ? item.app : null;
+    final pill = item.kind == TvKind.app || item.key == 'all-apps';
+    return Semantics(
+      button: true,
+      label: item.title,
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onLongSelect: onOptions,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => pill ? _pill(app, f) : _show(f),
+      ),
+    );
+  }
+
+  Widget _pill(AppEntry? app, bool f) => AnimatedContainer(
+    duration: TvLook.anim(Motion.pressIn * 2),
+    width: width,
+    height: height,
+    padding: EdgeInsets.symmetric(horizontal: height * .14),
+    decoration: BoxDecoration(
+      color: f ? TvDS.surfaceFocused : const Color(0x14FFFFFF),
+      borderRadius: BorderRadius.circular(height / 2),
+      border: Border.all(color: f ? Colors.transparent : const Color(0x1FFFFFFF)),
+    ),
+    child: Row(
+      children: [
+        if (app != null)
+          ClipOval(
+            child: TvAppIcon(app: app, size: height * .66),
+          )
+        else
+          SizedBox.square(
+            dimension: height * .66,
+            child: Icon(Icons.apps_rounded, size: height * .4, color: f ? TvDS.onLight : TvDS.ink),
+          ),
+        SizedBox(width: height * .2),
+        Expanded(
+          child: Text(
+            item.key == 'all-apps' ? 'All apps' : (app?.label ?? item.title),
+            style: TvDS.panelRow.copyWith(fontSize: 16, color: f ? TvDS.onLight : TvDS.ink),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _show(bool f) {
+    final r = BorderRadius.circular(TvDS.rTile);
+    Widget picture;
+    if (item.art != null) {
+      picture = Image(image: item.art!, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => const SizedBox.shrink());
+    } else if (item.image != null) {
+      final ready = TvApps.instance.imageNow(item.image!);
+      picture = FutureBuilder<MemoryImage?>(
+        future: ready != null ? Future.value(ready) : TvApps.instance.image(item.image!),
+        builder: (context, s) => s.data == null ? const SizedBox.shrink() : Image(image: s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+      );
+    } else {
+      picture = const SizedBox.shrink();
+    }
+    return AnimatedContainer(
+      duration: TvLook.anim(Motion.pressIn * 2),
+      width: width,
+      height: height,
+      foregroundDecoration: TvRing(on: f, radius: TvDS.rTile),
+      decoration: BoxDecoration(borderRadius: r, color: tvTint(item.title).withValues(alpha: .35)),
+      child: ClipRRect(
+        borderRadius: r,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Opacity(opacity: f ? .55 : .35, child: picture),
+            // Darker toward the text.
+            const DecoratedBox(
+              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xCC000000), Color(0x33000000)])),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: DS.s16, vertical: height * .14),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (item.appName != null)
+                    Text(
+                      item.appName!,
+                      style: TvDS.tileName.copyWith(fontSize: 12, color: TvDS.inkMuted),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            if (item.progress != null) Positioned(left: 0, right: 0, bottom: 0, child: _Progress(value: item.progress!)),
+          ],
         ),
       ),
     );

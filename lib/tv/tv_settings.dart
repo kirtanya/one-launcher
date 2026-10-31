@@ -25,6 +25,11 @@ class TvOption {
   static TvOption onOff(String key, String label, {bool on = true}) => TvOption(key, label, const [(true, 'On'), (false, 'Off')], on);
 }
 
+const _spotStyles = [('big', 'Big cards'), ('small', 'Small cards')];
+
+/// Spotlight-only options: left out of the other views' Customise.
+const _spotlightOnly = {'spotCardContinue', 'spotCardFav', 'spotCardRecent', 'spotCardOther'};
+
 /// Everything the user can change, by section (Customise). Order = menu order.
 const tvSections = <(String, IconData, List<TvOption>)>[
   (
@@ -64,6 +69,12 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('rowRecent', 'Jump back in', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('rowChannels', 'Streaming apps’ rows', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('rowFolders', 'Smart folder rows', [(true, 'Show'), (false, 'Hide')], true),
+      // Spotlight only: each column's card style — a big card, or a small one (a pill for apps, a
+      // short card over a faded still for shows).
+      TvOption('spotCardContinue', 'Continue watching cards', _spotStyles, 'big'),
+      TvOption('spotCardFav', 'Your apps cards', _spotStyles, 'big'),
+      TvOption('spotCardRecent', 'Jump back in cards', _spotStyles, 'big'),
+      TvOption('spotCardOther', 'Other columns’ cards', _spotStyles, 'big'),
     ],
   ),
   (
@@ -357,7 +368,11 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
       ),
     ];
   }
-  if (view != 'spotlight') return tvSections;
+  if (view != 'spotlight') {
+    return [
+      for (final (name, icon, opts) in tvSections) (name, icon, [for (final o in opts) if (!_spotlightOnly.contains(o.key)) o]),
+    ];
+  }
   const skip = {'rowsAt', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
   const names = _spotlightNames;
   return [
