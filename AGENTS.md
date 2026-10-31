@@ -29,6 +29,12 @@ Flutter Android launcher, two flavours from one codebase:
   --pid-file <f>` (flutter run can't read the TV launcher activity). If attach keeps losing the
   TV, pass `--debug-url` from logcat's "Dart VM service is listening on". SIGUSR1 = hot reload,
   SIGUSR2 = hot restart.
+  **TV performance** (Acer R4, Impeller/Vulkan; measured with SurfaceFlinger `--timestats`):
+  nothing may animate while idle — the old 26 s Ken Burns drift redrew the full-screen backdrop
+  at ~22 fps (26% CPU) idle; now a 1.8 s settle then still (idle ~2 fps, ~8% CPU). Backdrop
+  crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
+  48 MB / 80, media updates rebuild the home only when more than the position changed.
+  `io.flutter.embedding.android.ImpellerBackend=opengles` had no effect on Flutter 3.47.
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 

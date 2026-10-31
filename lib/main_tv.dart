@@ -16,6 +16,10 @@ import 'ui/theme.dart';
 /// Same design language as the phone app, laid out for a TV and a remote.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // A small TV (32-bit, little memory): keep decoded pictures to what's on screen and near it.
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 80
+    ..maximumSizeBytes = 48 << 20;
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   TvApps.instance.init();
   OneStream.channel = const MethodChannel('one_launcher/tv');

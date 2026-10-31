@@ -18,7 +18,6 @@ import '../ui/ds.dart';
 import '../ui/palette.dart';
 import '../ui/theme.dart';
 import '../ui/motion.dart';
-import '../ui/perf.dart';
 import 'catalog.dart';
 import 'app_trending.dart';
 import 'art_quality.dart';
@@ -162,7 +161,7 @@ class _TvHomeState extends State<TvHome> {
       if (_tilesView) _tilesKey.currentState?.land(); // back from an app: tiles fly in again
       Catalog.instance.maybeUpdate(); // shows & films catalog: update in the background when due
     };
-    tv.media.addListener(_regroup);
+    tv.media.addListener(_onMedia);
     tv.shows.addListener(_regroup); // a show name read from an app's screen: its episode's picture
     prefs.addListener(_regroup);
     OneStream.instance.available.addListener(_loadContent); // installed / removed: its resume items
@@ -477,6 +476,17 @@ class _TvHomeState extends State<TvHome> {
   // ---- Tiles view (Customise → Home view → Tiles) ----
 
   final _tilesKey = GlobalKey<TvTilesStartState>();
+  /// Media updates arrive with every position tick: rebuild the home only when what it shows
+  /// changes (another track, play ↔ pause, artwork…), not for the position.
+  String? _mediaSeen;
+  void _onMedia() {
+    final m = tv.media.value;
+    final sig = m == null ? '' : [for (final e in m.entries) if (e.key != 'position' && e.key != 'at' && e.key != 'speed') '${e.key}=${e.value is List || e.value is Uint8List ? identityHashCode(e.value) : e.value}'].join('|');
+    if (sig == _mediaSeen) return;
+    _mediaSeen = sig;
+    _regroup();
+  }
+
   bool get _tilesView => prefs.homeView == 'tiles';
   bool get _spotlightView => prefs.homeView == 'spotlight'; // TV only: tv_spotlight.dart
   final _spotlightKey = GlobalKey<_SpotlightState>();
@@ -1412,7 +1422,7 @@ class _Backdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final it = item;
     return AnimatedSwitcher(
-      duration: TvLook.anim(const Duration(milliseconds: 650)),
+      duration: TvLook.anim(const Duration(milliseconds: 350)), // two full-screen pictures blend meanwhile: keep it short
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
@@ -1426,31 +1436,21 @@ class _Backdrop extends StatelessWidget {
 
   Widget _picture(TvItem it) {
     if (glowOnly) return _wash(it);
-    // Settles in from a slight zoom (1.8 s), then drifts slowly closer (4% over ~25 s) and stops —
-    // a Ken Burns move. Reduced motion / lighter effects: still.
+    // Settles in from a slight zoom (1.8 s), then holds still: on the TV a long Ken Burns drift
+    // redrew the full-screen picture every frame (≈22 frames/s, a quarter of the CPU, while idle).
+    // Reduced motion: still from the start.
     final still = TvLook.str('motion') == 'reduced';
-    final drift = !still && !Perf.lite.value;
-    Widget settle(Widget child) => RepaintBoundary(
-      child: TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0, end: 1),
-        duration: Duration(milliseconds: drift ? 26000 : 1800),
-        builder: (context, t, child) {
-          const settleEnd = 1800 / 26000;
-          final double scale;
-          if (still) {
-            scale = 1;
-          } else if (!drift) {
-            scale = 1.06 - .06 * Curves.easeOutCubic.transform(t);
-          } else if (t < settleEnd) {
-            scale = 1.06 - .06 * Curves.easeOutCubic.transform(t / settleEnd);
-          } else {
-            scale = 1 + .04 * Curves.easeInOutSine.transform((t - settleEnd) / (1 - settleEnd));
-          }
-          return Transform.scale(scale: scale, alignment: _focusPoint, child: child);
-        },
-        child: child,
-      ),
-    );
+    Widget settle(Widget child) => still
+        ? child
+        : RepaintBoundary(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 1.06, end: 1),
+              duration: const Duration(milliseconds: 1800),
+              curve: Curves.easeOutCubic,
+              builder: (context, scale, child) => Transform.scale(scale: scale, alignment: _focusPoint, child: child),
+              child: child,
+            ),
+          );
     if (it.art != null) {
       return settle(_Wide(image: it.art!, onError: () => _wash(it)));
     }
@@ -1466,19 +1466,14 @@ class _Backdrop extends StatelessWidget {
     // Streaming apps: what's popular on them now, one picture after another (their own art until
     // the first arrives). Other apps: their banner, pre-blurred on the TV into a soft wash.
     if (it.kind == TvKind.app && AppTrending.has(it.package)) {
-      return _TrendingShow(package: it.package, still: TvLook.str('motion') == 'reduced', drift: drift, fallback: _appWash(it, settle));
+      return _TrendingShow(package: it.package, fallback: _appWash(it, settle));
     }
     return _appWash(it, settle);
   }
 
   Widget _appWash(TvItem it, Widget Function(Widget) settle) {
     if (it.kind == TvKind.app) {
-      Widget wash(MemoryImage img) => settle(
-        Opacity(
-          opacity: .75,
-          child: _Wide(image: img),
-        ),
-      );
+      Widget wash(MemoryImage img) => settle(_Wide(image: img, opacity: .75)); // alpha on the images: no full-screen layer
       final ready = TvApps.instance.backdropNow(it.package);
       if (ready != null) return wash(ready);
       return FutureBuilder<MemoryImage?>(future: TvApps.instance.backdrop(it.package), builder: (context, s) => s.data == null ? _wash(it) : wash(s.data!));
@@ -1494,14 +1489,13 @@ class _Backdrop extends StatelessWidget {
   );
 }
 
-/// What's popular on a streaming app (AppTrending), one picture every 2 s with a crossfade and
-/// a slight drift; the app's own art ([fallback]) until the first one is ready. The next picture
+/// What's popular on a streaming app (AppTrending), one still picture every 10 s with a
+/// crossfade; the app's own art ([fallback]) until the first one is ready. The next picture
 /// loads while this one shows, and the show only moves on once it's there.
 class _TrendingShow extends StatefulWidget {
-  const _TrendingShow({required this.package, required this.fallback, this.still = false, this.drift = true});
+  const _TrendingShow({required this.package, required this.fallback});
   final String package;
   final Widget fallback;
-  final bool still, drift; // reduced motion: no zoom; lighter effects: no drift
 
   @override
   State<_TrendingShow> createState() => _TrendingShowState();
@@ -1575,14 +1569,8 @@ class _TrendingShowState extends State<_TrendingShow> {
           ? KeyedSubtree(key: const ValueKey(-1), child: widget.fallback)
           : KeyedSubtree(
               key: ValueKey(_i),
-              child: RepaintBoundary(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: widget.still || !widget.drift ? 1.0 : 1.04, end: 1.0), // eases back while it shows
-                  duration: every + fade,
-                  builder: (context, s, child) => Transform.scale(scale: s, alignment: _Backdrop._focusPoint, child: child),
-                  child: _Wide(image: img),
-                ),
-              ),
+              // Still pictures, crossfaded: a slow zoom on each redrew the screen every frame.
+              child: RepaintBoundary(child: _Wide(image: img)),
             ),
     );
   }
@@ -1592,9 +1580,10 @@ class _TrendingShowState extends State<_TrendingShow> {
 /// right don't cut into it), then the same picture flipped, carrying on from its right edge —
 /// one continuous image, the mirrored part sunk under black so it reads as shade, not a copy.
 class _Wide extends StatelessWidget {
-  const _Wide({required this.image, this.onError});
+  const _Wide({required this.image, this.onError, this.opacity = 1});
   final ImageProvider image;
   final Widget Function()? onError;
+  final double opacity;
 
   static const share = .7;
 
@@ -1607,7 +1596,8 @@ class _Wide extends StatelessWidget {
         fit: BoxFit.cover,
         alignment: _Backdrop._focusPoint,
         gaplessPlayback: true,
-        filterQuality: FilterQuality.medium,
+        filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
+        opacity: opacity < 1 ? AlwaysStoppedAnimation(opacity) : null,
         errorBuilder: onError == null ? null : (_, _, _) => onError!(),
       );
       return Stack(
