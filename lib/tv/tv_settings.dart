@@ -355,6 +355,7 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required TvExt
   final view = prefs.homeView;
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: 'Customise',
     actions: [
       _optionRow(prefs, tvTilesHomeView), // Home view: Cinematic / Spotlight / Tiles / Real
@@ -372,6 +373,7 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required TvExt
 void _system(BuildContext context, Prefs prefs, TvExtras extras) {
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: 'System',
     actions: [
       TvAction(Icons.arrow_back_rounded, 'Back', () => showTvCustomise(context, prefs: prefs, extras: extras)),
@@ -449,6 +451,7 @@ List<TvAction> tilesExtras = const [];
 void _tilesSection(BuildContext context, Prefs prefs, TvExtras extras) {
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: 'Tiles',
     refresh: prefs,
     build: () => [
@@ -463,6 +466,7 @@ void _tilesSection(BuildContext context, Prefs prefs, TvExtras extras) {
 void _section(BuildContext context, Prefs prefs, String name, List<TvOption> opts, TvExtras extras, {VoidCallback? back}) {
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: name,
     // Search also follows the catalog (updating…, titles, last updated).
     // Remote & behaviour: Read show names turns On once switched on in Accessibility settings.

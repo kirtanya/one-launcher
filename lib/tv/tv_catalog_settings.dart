@@ -41,6 +41,7 @@ void showCatalogSources(BuildContext context, Prefs prefs, {required VoidCallbac
   void reopen() => showCatalogSources(context, prefs, back: back);
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: 'Sources',
     refresh: Listenable.merge([prefs, c]),
     build: () => [
@@ -64,6 +65,7 @@ void _confirmReset(BuildContext context, {required VoidCallback back}) {
   final n = Catalog.buildSources.length;
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: 'Reset to $n ${n == 1 ? 'source' : 'sources'}?',
     actions: [
       TvAction(Icons.arrow_back_rounded, 'Cancel', back),
@@ -81,6 +83,7 @@ void _source(BuildContext context, String url, {required VoidCallback back}) {
   final on = c.isOn(url);
   showTvPanel(
     context,
+    pages: true, // Customise: ← up a level, → into a page
     title: c.sourceName(url),
     actions: [
       TvAction(Icons.arrow_back_rounded, 'Back', back),

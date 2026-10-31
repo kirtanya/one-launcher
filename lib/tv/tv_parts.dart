@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'tv_real.dart';
 import '../third/tactile/tactile.dart';
@@ -189,6 +190,7 @@ Future<void> showTvPanel(
   Listenable? refresh,
   List<TvAction> Function()? build,
   VoidCallback? onBack,
+  bool pages = false,
 }) {
   VoidCallback? back() => onBack ?? (build?.call() ?? actions).where((a) => a.icon == Icons.arrow_back_rounded).firstOrNull?.onSelect;
   // Spotlight: the column is on the right, so the panel comes in on the left — see-through, the
@@ -248,7 +250,28 @@ Future<void> showTvPanel(
                             for (final (i, a) in actions2.indexed)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: DS.s8),
-                                child: TvFocusable(
+                                // [pages] (Customise): ← up a level, like Back (the first page stays
+                                // open: only Back / Home leave Customise); → opens a row that is a page.
+                                child: Focus(
+                                  canRequestFocus: false,
+                                  skipTraversal: true,
+                                  onKeyEvent: !pages
+                                      ? null
+                                      : (_, e) {
+                                          if (e is! KeyDownEvent) return KeyEventResult.ignored;
+                                          if (e.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                            if (back() != null) Navigator.pop(ctx); // the PopScope above goes up
+                                            return KeyEventResult.handled;
+                                          }
+                                          final opensPage = a.value == null && !a.keepOpen && !a.danger && a.swatch == null && a.icon != Icons.arrow_back_rounded;
+                                          if (e.logicalKey == LogicalKeyboardKey.arrowRight && opensPage) {
+                                            Navigator.pop(ctx, true);
+                                            a.onSelect();
+                                            return KeyEventResult.handled;
+                                          }
+                                          return KeyEventResult.ignored;
+                                        },
+                                  child: TvFocusable(
                                   autofocus: i == 0,
                                   onSelect: () {
                                     if (!a.keepOpen) Navigator.pop(ctx, true);
@@ -309,6 +332,7 @@ Future<void> showTvPanel(
                                             ],
                                           ),
                                         ),
+                                  ),
                                 ),
                               ),
                           ],

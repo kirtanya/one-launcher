@@ -25,7 +25,8 @@ Flutter Android launcher, two flavours from one codebase:
   fill or glow only. Backdrop Ken Burns zooms are fine.
   **Spotlight** (`tv/tv_spotlight.dart`, part of tv_home; homeView 'spotlight', shares Classic's
   look/prefs): pure black, focused item's picture full screen, title bottom-left (display only),
-  one column on the right (Classic's content rows on their side); ↑↓ in it, ←→ columns, ↑ top bar.
+  one column on the right (Classic's content rows on their side; Your apps first, then Continue
+  watching); ↑↓ in it, ←→ columns, ↑ top bar.
   Debug on the TV (hot reload, data kept): debug builds are signed with the release key, so
   `flutter build apk --debug --flavor tv -t lib/main_tv.dart --build-number=<above installed>` →
   `adb install -r` (never let flutter install: a failed install uninstalls = data wiped) →

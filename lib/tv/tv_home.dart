@@ -491,6 +491,9 @@ class _TvHomeState extends State<TvHome> {
   /// cards after Your apps (the Resume button is the first Continue watching card already).
   List<TvRow> _spotlightRows() {
     final content = [for (final r in _rows) if (!r.chips && r.items.isNotEmpty) r];
+    // Your apps is the first column (Home lands there); Continue watching one → away (user, 2026-10-31).
+    final apps = content.indexWhere((r) => r.id == 'fav');
+    if (apps > 0) content.insert(0, content.removeAt(apps));
     final quick = _rows.where((r) => r.id == 'quick' && r.items.isNotEmpty).firstOrNull;
     if (quick == null) return content;
     final at = content.indexWhere((r) => r.id == 'fav');
