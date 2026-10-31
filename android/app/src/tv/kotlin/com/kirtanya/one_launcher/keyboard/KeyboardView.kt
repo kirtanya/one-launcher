@@ -52,10 +52,9 @@ class KeyboardView(context: Context) : View(context) {
     private val chipPad = dp(10f)
     private val icon = dp(8f) // half an icon's box
 
-    // Solid: grey panel, black keys, so posters behind never hurt legibility (no text shadow needed).
-    private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF25262D.toInt() }
-    private val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF000000.toInt() }
-    private val keyOn = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x59FFFFFF } // Shift held
+    // Solid: dark panel, lighter keys, so posters behind never hurt legibility (no text shadow needed).
+    private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF21242C.toInt() }
+    private val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF353641.toInt() }
     private val focusFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val hintEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1.5f); color = 0xFFFFFFFF.toInt() }
     private val letter = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); textAlign = Paint.Align.CENTER }
@@ -87,7 +86,7 @@ class KeyboardView(context: Context) : View(context) {
             rect.set(x, y, x + if (col == KeyGrid.COLS - 1) actionW else keyW, y + keyH)
             val key = KeyGrid.key(mode, row, col)
             val focused = pos.row == row && pos.col == col
-            canvas.drawRoundRect(rect, radius, radius, if (focused) focusFill else if (key == Key.Shift && shift) keyOn else keyFill)
+            canvas.drawRoundRect(rect, radius, radius, if (focused) focusFill else keyFill) // Shift held = filled ⇧ icon only
             if (!focused && isHint(key)) {
                 rect.inset(hintEdge.strokeWidth / 2, hintEdge.strokeWidth / 2)
                 canvas.drawRoundRect(rect, radius, radius, hintEdge)

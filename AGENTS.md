@@ -65,7 +65,7 @@ Flutter Android launcher, two flavours from one codebase:
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
   **TV keyboard** (1.47.0, `android/app/src/tv/kotlin/.../keyboard/`): a system keyboard (IME) for every
   app, chosen by the user in Settings → System → Keyboard. Native Canvas view, own process `:keyboard`
-  (no Flutter engine: every app's text field binds it). A small solid panel (grey #25262D, black keys) flush in the
+  (no Flutter engine: every app's text field binds it). A small solid panel (#21242C, keys #353641) flush in the
   bottom-right corner; it reports no insets, so the app keeps its full screen. `KeyGrid` = alphabetical 6×5 letters + an
   action column of drawn icons (Delete, Space, Shift, 123/abc, Done/Search), focus starts on "o", all
   four directions wrap (through the strip). `Suggest` = strip above: typed history (prefs "keyboard",
