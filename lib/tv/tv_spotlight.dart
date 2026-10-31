@@ -78,7 +78,8 @@ class _SpotlightState extends State<_Spotlight> {
     _landWhenReady();
     // The focused card went away with the change: focus the column's card again.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_landed) return;
+      // Only on the home screen itself: a panel or page on top (Customise…) keeps its focus.
+      if (!mounted || !_landed || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
       final f = FocusManager.instance.primaryFocus;
       if (f == null || !(_nodes.containsValue(f) || _top.containsValue(f))) _focusCard(_at[_row?.id] ?? 0, animate: false);
     });

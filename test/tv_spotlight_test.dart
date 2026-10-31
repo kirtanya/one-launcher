@@ -66,5 +66,17 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(_focused(), startsWith('spotlight continue:0'));
+    // Customise open (top bar → customise), then something changes under it: focus stays in the panel.
+    await _press(tester, LogicalKeyboardKey.arrowUp);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    await _press(tester, LogicalKeyboardKey.arrowRight);
+    expect(_focused(), startsWith('spotlight top customise'));
+    await _press(tester, LogicalKeyboardKey.select);
+    expect(find.text('Customise'), findsWidgets);
+    final inPanel = _focused();
+    await prefs.setTvQuickActions([...prefs.tvQuickActions]);
+    await tester.pumpAndSettle();
+    expect(_focused(), inPanel, reason: 'the home screen rebuilt underneath; the panel keeps focus');
+    expect(_focused(), isNot(startsWith('spotlight')));
   });
 }
