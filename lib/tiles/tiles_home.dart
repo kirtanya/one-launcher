@@ -676,7 +676,7 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                             onPin: _pin,
                             onUnpin: (a) => _unpin('app:${a.package}'),
                             onSettings: _settings,
-                            onRemote: prefs.remoteButton ? () => showTvRemote(context, prefs: prefs) : null,
+                            onRemote: prefs.remoteButton ? () => showSmartHome(context, onRemote: () => showTvRemote(context, prefs: prefs)) : null,
                           ),
                         ),
                       ),

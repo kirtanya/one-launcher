@@ -9,14 +9,15 @@ import 'ui/motion.dart';
 import 'ui/perf.dart';
 import 'widgets.dart';
 
-/// Opens the Smart home sheet (quick chip `b:home`, the top page's "All devices", Tiles' `qa:b:home`).
-Future<Object?> showSmartHome(BuildContext context) {
+/// Opens the Smart home sheet (the nav's Smart home tab, quick chip `b:home`, the top page's
+/// "All devices", Tiles' `qa:b:home`). [onRemote] adds the TV remote as the first tile.
+Future<Object?> showSmartHome(BuildContext context, {VoidCallback? onRemote}) {
   SmartHome.instance.refresh();
   final h = MediaQuery.sizeOf(context).height;
   return showOneSheetWith(
     context,
     height: h * .8,
-    builder: (_) => const SmartHomeBody(),
+    builder: (_) => SmartHomeBody(onRemote: onRemote),
   );
 }
 
@@ -57,7 +58,8 @@ String smartSub(SmartDevice d) {
 double get _tileRadius => DS.metro ? DS.rCard : 20.0;
 
 class SmartHomeBody extends StatelessWidget {
-  const SmartHomeBody({super.key});
+  const SmartHomeBody({super.key, this.onRemote});
+  final VoidCallback? onRemote;
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +80,10 @@ class SmartHomeBody extends StatelessWidget {
                 subtitle: 'Lights, plugs and AC',
               ),
               const SizedBox(height: DS.s16),
+              if (onRemote != null) ...[
+                _RemoteTile(onTap: onRemote!),
+                const SizedBox(height: DS.s12),
+              ],
               if (!ready && s.status == SmartHomeStatus.loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: DS.s32),
@@ -112,6 +118,54 @@ class SmartHomeBody extends StatelessWidget {
       },
     );
   }
+}
+
+/// The TV remote, living in Smart home since it took the remote's place in the nav.
+class _RemoteTile extends StatelessWidget {
+  const _RemoteTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Pressable(
+    scale: Perf.lite.value ? 1 : .97,
+    child: RoleSurface(
+      role: SurfaceRole.key,
+      color: DS.cardMuted,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(_tileRadius),
+      ),
+      child: Semantics(
+        button: true,
+        label: 'TV remote',
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            SheetHost.close(context); // the remote opens in place of this sheet
+            onTap();
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(DS.s16),
+            child: Row(
+              children: [
+                Icon(Icons.settings_remote_rounded, color: DS.ink, size: 24),
+                const SizedBox(width: DS.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(DS.cased('TV remote'), style: DS.rowTitle),
+                      Text('Control the TV', style: DS.rowSub),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: DS.inkMuted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _Grid extends StatelessWidget {

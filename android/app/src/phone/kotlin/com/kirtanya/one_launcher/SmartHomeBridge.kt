@@ -38,6 +38,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -89,7 +90,9 @@ object SmartHomeBridge {
     fun attach(engine: FlutterEngine, context: Context) {
         val ctx = context.applicationContext
         app = ctx
-        val sc = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        // Any error inside the bridge is logged, never allowed to crash the launcher.
+        val guard = CoroutineExceptionHandler { _, e -> android.util.Log.w("SmartHome", "bridge error", e) }
+        val sc = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + guard)
         scope = sc
         val ch = MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL)
         channel = ch

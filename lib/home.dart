@@ -12,6 +12,7 @@ import 'prefs.dart';
 import 'quick_actions.dart';
 import 'quick_chips.dart';
 import 'remote_sheet.dart';
+import 'smart_home_sheet.dart';
 import 'tv_remote.dart';
 import 'search.dart';
 import 'search_dock.dart';
@@ -103,7 +104,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   final _pages = <_TabPage>[];
   int _pageSeq = 0;
   double _pageFrom = 1; // the side the next page comes in from (1 = right)
-  static const _navOrder = ['home', 'search', 'remote', 'alerts', 'settings'];
+  static const _navOrder = ['home', 'search', 'smart', 'remote', 'alerts', 'settings'];
   bool get _pageOpen => _pages.any((p) => !p.leaving);
 
   /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
@@ -245,7 +246,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     onChanged: _onQuery,
     onSubmitted: _onSubmit,
     onSettings: _settings,
-    onRemote: prefs.remoteButton ? () => _openTab('remote', () => showTvRemote(context, prefs: prefs)) : null,
+    // The nav's Smart home tab (it took the remote's place; the remote is its first tile).
+    onRemote: prefs.remoteButton
+        ? () => _openTab('smart', () => showSmartHome(context, onRemote: () => _openTab('remote', () => showTvRemote(context, prefs: prefs))))
+        : null,
     onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
     // The notification centre: a tab for now, while it's being built (it moves later).
     onNotifications: () => _openTab('alerts', () => showNotificationCenter(context, work: _apps.any((a) => a.work))),

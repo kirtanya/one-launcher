@@ -14,14 +14,14 @@ import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
 
-/// Long-press on the remote button: hide it (Settings → TV remote → Remote button brings it back).
+/// Long-press on the nav's Smart home tab (which holds the remote): hide it (Settings → TV remote → Remote button brings it back).
 void offerHideRemote(BuildContext context, {required Prefs prefs}) {
   HapticFeedback.mediumImpact();
   showOneSheet(
     context,
-    header: const SheetHeader(title: 'Remote tab', subtitle: 'Turn it back on in Settings → TV remote'),
+    header: const SheetHeader(title: 'Smart home tab', subtitle: 'Turn it back on in Settings → TV remote'),
     actions: [
-      SheetAction(Icons.visibility_off_outlined, 'Hide the Remote tab', () {
+      SheetAction(Icons.visibility_off_outlined, 'Hide the Smart home tab', () {
         Navigator.pop(context);
         prefs.setRemoteButton(false);
       }),

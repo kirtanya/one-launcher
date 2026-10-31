@@ -45,7 +45,7 @@ class SearchDock extends StatelessWidget {
   final ValueListenable<double>? pull;
   final double pullFull;
 
-  /// The bottom nav's selected tab at rest: 'home', 'search', 'remote', 'alerts' or 'settings'.
+  /// The bottom nav's selected tab at rest: 'home', 'search', 'smart', 'remote', 'alerts' or 'settings'.
   final String tab;
 
   /// The nav's Home tab (back to the clock); null = the plain search dock (inside the drawer).
@@ -117,12 +117,12 @@ class SearchDock extends StatelessWidget {
           child: onHome != null && !inline
               ? _NavSearch(
                   active: active,
-                  selected: tab,
+                  selected: tab == 'remote' ? 'smart' : tab, // the remote lives in Smart home
                   tabs: [
                     _NavTab('home', Icons.home_rounded, 'Home', onHome!, tooltip: 'Home screen'),
                     _NavTab('search', Icons.search_rounded, 'Search', onActivate),
                     if (onRemote != null)
-                      _NavTab('remote', Icons.settings_remote_rounded, 'Remote', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'TV remote'),
+                      _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),
                     if (onNotifications != null) _NavTab('alerts', Icons.notifications_none_rounded, 'Notifications', onNotifications!),
                     _NavTab('settings', Icons.tune_rounded, 'Settings', onSettings, tooltip: 'Launcher settings'),
                   ],
@@ -193,7 +193,7 @@ class SearchDock extends StatelessWidget {
               slide(
                 right: tools ? _slot : -_slot,
                 shown: tools,
-                child: _DockCircle(icon: Icons.settings_remote_rounded, tooltip: 'TV remote', onTap: onRemote!, onLongPress: onRemoteLongPress),
+                child: _DockCircle(icon: Icons.lightbulb_rounded, tooltip: 'Smart home and TV remote', onTap: onRemote!, onLongPress: onRemoteLongPress),
               ),
             slide(
               right: tools ? 0 : -_slot,
@@ -710,7 +710,7 @@ TextStyle get _lcdText => TextStyle(fontFamily: 'monospace', fontSize: 16, lette
 final _hairline = <IconData, IconData>{
   Icons.home_rounded: Icons.home_outlined,
   Icons.search_rounded: Icons.search_outlined,
-  Icons.settings_remote_rounded: Icons.settings_remote_outlined,
+  Icons.lightbulb_rounded: Icons.lightbulb_outline_rounded,
   Icons.tune_rounded: Icons.tune_outlined,
 };
 

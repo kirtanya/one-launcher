@@ -107,6 +107,8 @@ dependencies {
     if (homeSdkPresent) {
         "phoneImplementation"("com.google.android.gms:play-services-home:17.1.0")
         "phoneImplementation"("com.google.android.gms:play-services-home-types:17.1.0")
+        // The SDK calls Mutex.unlock$default, which only exists in newer coroutines (1.8.0 crashes).
+        "phoneImplementation"("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     }
 }
 
