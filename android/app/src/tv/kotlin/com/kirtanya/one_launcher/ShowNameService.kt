@@ -70,11 +70,11 @@ class ShowNameService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
     private var lookUntil = 0L
 
-    /** Google's search is up: look for the words now and every 250 ms for 5 s (the headline can
+    /** Google's search is up: look for the words now and every 250 ms for 15 s (the headline can
      *  appear after its last event — a single look missed the first real press). */
     private fun takeVoiceSearch(event: AccessibilityEvent) {
         val running = SystemClock.uptimeMillis() < lookUntil
-        lookUntil = SystemClock.uptimeMillis() + 5000
+        lookUntil = SystemClock.uptimeMillis() + 15_000 // a slow results page took ~15 s to show the words
         if (!running) look()
     }
 
