@@ -25,6 +25,7 @@ Future<void> main() async {
   OneStream.channel = const MethodChannel('one_launcher/tv');
   OneStream.instance.init(); // the user's streaming app, when installed
   TitleExtras.useTv(); // scores & reviews through Android's network stack, kept in the files folder
+  Prefs.homeViewDefault = 'spotlight'; // a fresh TV install opens on Spotlight, small cards (user, 2026-10-31)
   final prefs = await Prefs.load();
   final theme = OneTheme(prefs); // same colour engine as the phone (Customise → Colours)
   await theme.refreshSystem();

@@ -25,7 +25,7 @@ class TvOption {
   static TvOption onOff(String key, String label, {bool on = true}) => TvOption(key, label, const [(true, 'On'), (false, 'Off')], on);
 }
 
-const _spotStyles = [('big', 'Big cards'), ('small', 'Small cards')];
+const _spotStyles = [('big', 'Big cards'), ('small', 'Small cards')]; // small (pills) by default (user, 2026-10-31)
 
 /// Spotlight-only options: left out of the other views' Customise.
 const _spotlightOnly = {'spotCardContinue', 'spotCardFav', 'spotCardRecent', 'spotCardOther'};
@@ -60,7 +60,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     Icons.play_circle_outline_rounded,
     [
       TvOption('rowContinue', 'Continue watching', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('spotCardContinue', 'Cards', _spotStyles, 'big'),
+      TvOption('spotCardContinue', 'Cards', _spotStyles, 'small'),
       TvOption('resume', 'Resume button', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('controls', 'Player controls ⏮ ⏯ ⏭', [(true, 'Show'), (false, 'Hide')], true),
     ],
@@ -81,7 +81,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('rowFav', 'Your apps', [(true, 'Show'), (false, 'Hide')], true),
       // Circles keep apps apart from shows and films at a glance.
       TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
-      TvOption('spotCardFav', 'Cards', _spotStyles, 'big'),
+      TvOption('spotCardFav', 'Cards', _spotStyles, 'small'),
     ],
   ),
   (
@@ -89,7 +89,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     Icons.history_rounded,
     [
       TvOption('rowRecent', 'Jump back in', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('spotCardRecent', 'Cards', _spotStyles, 'big'),
+      TvOption('spotCardRecent', 'Cards', _spotStyles, 'small'),
     ],
   ),
   (
@@ -98,7 +98,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     [
       TvOption('rowChannels', 'Streaming apps’ rows', [(true, 'Show'), (false, 'Hide')], true),
       TvOption('rowFolders', 'Smart folder rows', [(true, 'Show'), (false, 'Hide')], true),
-      TvOption('spotCardOther', 'Cards', _spotStyles, 'big'),
+      TvOption('spotCardOther', 'Cards', _spotStyles, 'small'),
     ],
   ),
   (
@@ -139,7 +139,7 @@ final tvTilesHomeView = TvOption(
   'homeView',
   'Home view',
   const [('classic', 'Cinematic'), ('spotlight', 'Spotlight'), ('tiles', 'Tiles'), ('third', 'Real')],
-  'classic',
+  Prefs.homeViewDefault,
   read: (p) => p.homeView,
   write: (p, v) => p.setHomeView(v as String),
 );

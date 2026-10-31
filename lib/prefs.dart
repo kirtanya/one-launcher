@@ -713,7 +713,9 @@ class Prefs extends ChangeNotifier {
 
   /// Which home screen: 'classic' (clock on top, app drawer below), 'tiles' (Start tiles +
   /// app list, Lumia-style) or 'third' (the new view, being designed).
-  String get homeView => _sp.getString('homeView') ?? 'classic';
+  /// The view a fresh install opens on: the phone's Classic; the TV app sets Spotlight (main_tv.dart).
+  static String homeViewDefault = 'classic';
+  String get homeView => _sp.getString('homeView') ?? homeViewDefault;
   Future<void> setHomeView(String v) async {
     await _sp.setString('homeView', v);
     notifyListeners();
