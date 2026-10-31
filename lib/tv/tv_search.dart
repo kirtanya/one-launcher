@@ -393,10 +393,15 @@ class _TvSearchState extends State<TvSearch> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _dropStaleNodes());
 
     // ---- Pieces ----
-    Widget header(String title, [int? count]) => Padding(
-      padding: const EdgeInsets.only(top: DS.s24, bottom: DS.s12),
-      child: Text(count == null ? TvMetro.cased(title) : '${TvMetro.cased(title)} · $count', style: TvMetro.headerOr(TvDS.rowTitleFocused)),
-    );
+    // A source's row starts with its app's small logo (not "On Netflix"), when there is one.
+    Widget header(String title, [int? count, String? src]) {
+      final logo = src == null ? null : _chipIcon(src, byPkg);
+      final text = Text(count == null ? TvMetro.cased(title) : '${TvMetro.cased(title)} · $count', style: TvMetro.headerOr(TvDS.rowTitleFocused));
+      return Padding(
+        padding: const EdgeInsets.only(top: DS.s24, bottom: DS.s12),
+        child: logo == null ? text : Row(children: [SizedBox.square(dimension: 22, child: FittedBox(child: logo)), const SizedBox(width: DS.s8), text]),
+      );
+    }
     // A row scrolls sideways; a single source shows as a grid.
     Widget row(List<Widget> cards, {double gap = DS.s16}) => SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -478,23 +483,23 @@ class _TvSearchState extends State<TvSearch> {
       child: Text(raw.isEmpty ? 'Type a name to search $where' : 'Nothing in $where for “$raw” yet', style: TvDS.heroBody),
     );
     if (filter == 'stream') {
-      body = stream.isEmpty ? [none('One Stream')] : [header('One Stream', stream.length), grid(streamCards('stream', 24))];
+      body = stream.isEmpty ? [none('One Stream')] : [header('One Stream', stream.length, 'stream'), grid(streamCards('stream', 24))];
     } else if (filter == 'youtube') {
-      body = yt.isEmpty ? [none('YouTube')] : [header('YouTube', yt.length), grid(ytCards('youtube', 24), gap: DS.s20)];
+      body = yt.isEmpty ? [none('YouTube')] : [header('YouTube', yt.length, 'youtube'), grid(ytCards('youtube', 24), gap: DS.s20)];
     } else if (filter.startsWith('svc:')) {
       final s = filter.substring(4);
       final list = bySvc[s] ?? const <ShowTitle>[];
-      body = list.isEmpty ? [none(s)] : [header(q.isEmpty ? 'Popular on $s' : 'On $s', list.length), grid(posterCards(filter, list, 40))];
+      body = list.isEmpty ? [none(s)] : [header(s, list.length, filter), grid(posterCards(filter, list, 40))];
     } else if (filter == 'apps') {
       body = [header('Apps', apps.length), grid(appCards(), gap: TvDS.gap)];
     } else {
       body = [
         if (!searchOn) ...moreWays('Search with Google TV'),
         // One Stream and YouTube lead.
-        if (stream.isNotEmpty) ...[header('One Stream', stream.length), row(streamCards('stream', 12))],
-        if (yt.isNotEmpty) ...[header('YouTube', yt.length), row(ytCards('youtube', 12), gap: DS.s20)],
+        if (stream.isNotEmpty) ...[header('One Stream', stream.length, 'stream'), row(streamCards('stream', 12))],
+        if (yt.isNotEmpty) ...[header('YouTube', yt.length, 'youtube'), row(ytCards('youtube', 12), gap: DS.s20)],
         if (searchOn) ...[
-          for (final s in rowServices) ...[header(q.isEmpty ? 'Popular on $s' : 'On $s', bySvc[s]!.length), row(posterCards('svc:$s', bySvc[s]!, 16))],
+          for (final s in rowServices) ...[header(s, bySvc[s]!.length, 'svc:$s'), row(posterCards('svc:$s', bySvc[s]!, 16))],
           if (rest.isNotEmpty) ...[
             header(rowServices.isEmpty ? (q.isEmpty ? 'Popular now' : 'Shows & films') : (q.isEmpty ? 'More popular' : 'More shows & films'), rest.length),
             row(posterCards('rest', rest, 16)),
@@ -516,7 +521,10 @@ class _TvSearchState extends State<TvSearch> {
       // The top-left card on screen (nodes join the tree as results arrive, not in reading order).
       final cards = _results.traversalDescendants.where((n) => n.context != null);
       if (cards.isEmpty) return _field.requestFocus();
-      cards.reduce((a, b) => (a.rect.top - b.rect.top).abs() > 4 ? (a.rect.top < b.rect.top ? a : b) : (a.rect.left <= b.rect.left ? a : b)).requestFocus();
+      final first = cards.reduce((a, b) => (a.rect.top - b.rect.top).abs() > 4 ? (a.rect.top < b.rect.top ? a : b) : (a.rect.left <= b.rect.left ? a : b));
+      first.requestFocus();
+      // Its row may be scrolled far right: bring the card back into view (focus is always on screen).
+      Scrollable.ensureVisible(first.context!, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
     }
 
     // ↓ from the field: the first result card. ↑ from the field / mic: the history (the pill last
@@ -529,12 +537,17 @@ class _TvSearchState extends State<TvSearch> {
     // The results' own keys: ← off a row's / grid's first card → the sidebar; ↑ off the first row → the field.
     KeyEventResult resultsKey(FocusNode _, KeyEvent e) {
       if (e is KeyUpEvent) return KeyEventResult.ignored;
-      final left = e.logicalKey == LogicalKeyboardKey.arrowLeft;
-      if (!left && e.logicalKey != LogicalKeyboardKey.arrowUp) return KeyEventResult.ignored;
+      final left = e.logicalKey == LogicalKeyboardKey.arrowLeft, right = e.logicalKey == LogicalKeyboardKey.arrowRight;
+      if (!left && !right && e.logicalKey != LogicalKeyboardKey.arrowUp) return KeyEventResult.ignored;
       final cur = FocusManager.instance.primaryFocus;
       if (cur == null || cur.context == null || !_results.descendants.contains(cur)) return KeyEventResult.ignored;
       final r = cur.rect;
       final others = _results.traversalDescendants.where((n) => n != cur && n.context != null);
+      // → on a row's last card stays put: rows change only with ↑ ↓ (it slid into the next row).
+      if (right) {
+        final onRight = others.any((n) => n.rect.left >= r.right - 2 && n.rect.bottom > r.top + 2 && n.rect.top < r.bottom - 2);
+        return onRight ? KeyEventResult.ignored : KeyEventResult.handled;
+      }
       final more = left
           ? others.any((n) => n.rect.right <= r.left + 2 && n.rect.bottom > r.top + 2 && n.rect.top < r.bottom - 2)
           : others.any((n) => n.rect.bottom <= r.top + 2);
@@ -609,7 +622,11 @@ class _TvSearchState extends State<TvSearch> {
                       focusNode: historyNode(h),
                       label: h,
                       selected: false,
-                      leading: const Icon(Icons.history_rounded, size: 20, color: TvDS.inkMuted),
+                      // Dark on the white focus fill (light grey there disappeared).
+                      leading: ListenableBuilder(
+                        listenable: historyNode(h),
+                        builder: (context, _) => Icon(Icons.history_rounded, size: 20, color: historyNode(h).hasFocus ? TvDS.onLight : TvDS.inkMuted),
+                      ),
                       onSelect: () => _searchAgain(h),
                       onLongSelect: () async {
                         await widget.prefs?.removeSearch(h);
