@@ -61,13 +61,14 @@ Flutter Android launcher, two flavours from one codebase:
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
   **TV keyboard** (1.47.0, `android/app/src/tv/kotlin/.../keyboard/`): a system keyboard (IME) for every
   app, chosen by the user in Settings → System → Keyboard. Native Canvas view, own process `:keyboard`
-  (no Flutter engine: every app's text field binds it). A compact rounded panel floating bottom-right;
-  it reports no insets, so the app keeps its full screen. `KeyGrid` = alphabetical 6×5 letters + an
+  (no Flutter engine: every app's text field binds it). A small solid panel (grey #25262D, black keys) flush in the
+  bottom-right corner; it reports no insets, so the app keeps its full screen. `KeyGrid` = alphabetical 6×5 letters + an
   action column of drawn icons (Delete, Space, Shift, 123/abc, Done/Search), focus starts on "o", all
   four directions wrap (through the strip). `Suggest` = strip above: typed history (prefs "keyboard",
-  never from password fields) → One Stream continue/watchlist titles + app names → One Stream `/search`
-  (3+ letters, 350 ms debounce), ranked exact title → starts with → word starts with. A suggestion
-  replaces the whole field.
+  never from password fields) → One Stream continue/watchlist titles → popular films + shows (Cinemeta
+  "top", ~700, prefs, refetched daily) → One Stream `/search` (2+ letters, 300 ms debounce) → app names;
+  ranked exact title → starts with → word starts with. A suggestion replaces the whole field. The same
+  candidates outline the 3 likeliest next keys (`Suggest.nextKeys`).
   Netflix / YouTube / Prime draw their own keyboards, so it never shows there.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 

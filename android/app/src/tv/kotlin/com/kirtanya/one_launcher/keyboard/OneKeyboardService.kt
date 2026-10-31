@@ -16,6 +16,9 @@ import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.inputmethod.EditorInfo
 import android.widget.FrameLayout
 import com.kirtanya.one_launcher.OneStream
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.Executors
 
 /**
@@ -38,7 +41,9 @@ class OneKeyboardService : InputMethodService() {
     private var action = EditorInfo.IME_ACTION_NONE
 
     // Local candidates, loaded off the main thread; refreshed at most every LOCAL_TTL_MS.
-    @Volatile private var local: List<String> = emptyList()
+    @Volatile private var titles: List<String> = emptyList() // One Stream continue + My list
+    @Volatile private var apps: List<String> = emptyList()
+    @Volatile private var popular: List<String> = emptyList() // Cinemeta's top films + shows, daily
     private var localAt = 0L
     // One Stream search for [remoteFor] (stale answers are dropped).
     private var remote: List<String> = emptyList()
@@ -46,18 +51,14 @@ class OneKeyboardService : InputMethodService() {
     private val search = Runnable { searchOneStream() }
 
     /**
-     * The panel floats in the bottom-right corner (TV safe area), only as big as its keys; the rest of
-     * the keyboard window is see-through. Search fields and first results sit top-left on TV apps.
+     * The panel sits on the screen's bottom edge, right side (inside the TV safe area), only as big as its
+     * keys; the rest of the keyboard window is clear. Search fields and first results sit top-left.
      */
     override fun onCreateInputView(): View {
         window.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         view = KeyboardView(this)
-        val dp = resources.displayMetrics.density
         return FrameLayout(this).apply {
-            addView(view, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
-                marginEnd = (48 * dp).toInt()
-                bottomMargin = (27 * dp).toInt()
-            })
+            addView(view, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END))
         }
     }
 
@@ -217,10 +218,17 @@ class OneKeyboardService : InputMethodService() {
         view.typed = if (secret) "•".repeat(typed.length) else typed
         if (secret) {
             view.chips = emptyList()
+            view.hints = emptyList()
         } else {
-            view.chips = Suggest.rank(typed, history(), local, if (remoteFor.equals(typed.trim(), true)) remote else emptyList())
+            // Films first: this keyboard is mostly for finding something to watch. What's popular now
+            // beats TMDB's search order, which ranks the closest text first ("joke": Joke Book before Joker).
+            val sources = listOf(
+                history(), titles, popular, if (remoteFor.equals(typed.trim(), true)) remote else emptyList(), apps,
+            )
+            view.chips = Suggest.rank(typed, *sources.toTypedArray())
+            view.hints = Suggest.nextKeys(typed, sources)
             main.removeCallbacks(search)
-            if (typed.trim().length >= 3 && !remoteFor.equals(typed.trim(), true)) main.postDelayed(search, SEARCH_DELAY_MS)
+            if (typed.trim().length >= SEARCH_FROM && !remoteFor.equals(typed.trim(), true)) main.postDelayed(search, SEARCH_DELAY_MS)
         }
         if (view.pos.row < 0 && view.pos.col >= view.chips.size) view.pos = KeyGrid.START
         view.invalidate()
@@ -228,7 +236,7 @@ class OneKeyboardService : InputMethodService() {
 
     private fun searchOneStream() {
         val q = currentInputConnection?.getTextBeforeCursor(MAX_FIELD, 0)?.toString()?.trim().orEmpty()
-        if (q.length < 3) return
+        if (q.length < SEARCH_FROM) return
         worker.execute {
             val titles = runCatching { oneStream.query("/search", mapOf("q" to q, "limit" to "8")) }.getOrDefault(emptyList())
                 .mapNotNull { it["title"] as? String }
@@ -240,29 +248,64 @@ class OneKeyboardService : InputMethodService() {
         }
     }
 
-    /** One Stream's Continue watching + My list titles and the TV's app names; cached a few minutes. */
+    /**
+     * One Stream's Continue watching + My list titles and the TV's app names (cached a few minutes), and
+     * the popular list (kept in prefs, fetched again once a day).
+     */
     private fun loadLocal() {
         val now = SystemClock.elapsedRealtime()
         if (localAt != 0L && now - localAt < LOCAL_TTL_MS) return
         localAt = now
         worker.execute {
-            val titles = runCatching {
+            titles = runCatching {
                 (oneStream.query("/continue", mapOf("limit" to "20")) + oneStream.query("/watchlist", mapOf("limit" to "40")))
                     .mapNotNull { it["title"] as? String }
             }.getOrDefault(emptyList())
-            val apps = runCatching {
+            apps = runCatching {
                 packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)
                     .map { it.loadLabel(packageManager).toString() }
             }.getOrDefault(emptyList())
-            local = titles + apps
+            popular = prefs.getString(POPULAR, null)?.split('\n')?.filter { it.isNotBlank() }.orEmpty()
             main.post { if (isInputViewShown) refresh() }
+            if (System.currentTimeMillis() - prefs.getLong(POPULAR_AT, 0) > POPULAR_TTL_MS) fetchPopular()
         }
+    }
+
+    /**
+     * Cinemeta's "top" (what's popular now), films then shows, ~50 a page. Public and keyless, the same
+     * catalog the TV search uses. Nothing about the user is sent. Runs on [worker].
+     */
+    private fun fetchPopular() {
+        val pages = (0 until 500 step 50).map { "movie" to it } + (0 until 200 step 50).map { "series" to it }
+        val names = LinkedHashSet<String>()
+        for ((type, skip) in pages) {
+            val url = "https://v3-cinemeta.strem.io/catalog/$type/top" + (if (skip > 0) "/skip=$skip" else "") + ".json"
+            runCatching {
+                val c = URL(url).openConnection() as HttpURLConnection
+                c.connectTimeout = 8_000
+                c.readTimeout = 8_000
+                try {
+                    val metas = JSONObject(c.inputStream.bufferedReader().readText()).getJSONArray("metas")
+                    for (i in 0 until metas.length()) metas.getJSONObject(i).optString("name").trim().takeIf { it.isNotEmpty() }?.let(names::add)
+                } finally {
+                    c.disconnect()
+                }
+            }
+        }
+        if (names.size < 50) return // offline or Cinemeta changed: keep yesterday's list
+        popular = names.toList()
+        prefs.edit().putString(POPULAR, popular.joinToString("\n")).putLong(POPULAR_AT, System.currentTimeMillis()).apply()
+        main.post { if (isInputViewShown) refresh() }
     }
 
     companion object {
         private const val HISTORY = "history"
+        private const val POPULAR = "popular"
+        private const val POPULAR_AT = "popular_at"
+        private const val POPULAR_TTL_MS = 24 * 60 * 60_000L
+        private const val SEARCH_FROM = 2 // letters before One Stream's search is asked
         private const val MAX_FIELD = 500
-        private const val SEARCH_DELAY_MS = 350L
+        private const val SEARCH_DELAY_MS = 300L
         private const val LOCAL_TTL_MS = 5 * 60_000L
         private val PASSWORDS = setOf(
             InputType.TYPE_TEXT_VARIATION_PASSWORD,

@@ -15,8 +15,9 @@ import android.view.View
  * tens of MB and a slow first show on the 32-bit TV), no child views, nothing animating. Colours follow
  * the TV launcher (`TvDS`): dark panel, faint keys, focus = white fill (focus never scales).
  *
- * The view is only as big as its keys: a rounded panel the service floats in a bottom corner, so the
- * app's own results stay in view around it. Action keys are drawn icons (Delete, Space, Shift, Done).
+ * The view is only as big as its keys: a solid panel the service sits flush in the bottom-right corner,
+ * so the app's own results stay in view beside it. Action keys are drawn icons
+ * (Delete, Space, Shift, Done). Keys likely to come next ([hints]) get a faint outline.
  */
 @SuppressLint("ViewConstructor")
 class KeyboardView(context: Context) : View(context) {
@@ -28,6 +29,8 @@ class KeyboardView(context: Context) : View(context) {
     var typed = ""
     /** The app's action (Search / Go / Send / Next / New line / Done): picks the Done key's icon. */
     var doneLabel = "Done"
+    /** The next characters titles would continue with (' ' = Space): outlined, not filled. */
+    var hints: List<Char> = emptyList()
 
     /** How many chips fit on one line (D-pad moves only between these). */
     var visibleChips = 0
@@ -36,30 +39,31 @@ class KeyboardView(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
     private fun dp(v: Float) = v * d
 
-    private val keyW = dp(52f)
-    private val actionW = dp(72f)
-    private val keyH = dp(42f)
-    private val gap = dp(6f)
-    private val stripH = dp(34f)
-    private val pad = dp(16f)
-    private val radius = dp(8f)
-    private val panelRadius = dp(20f)
+    private val keyW = dp(39f)
+    private val actionW = dp(54f)
+    private val keyH = dp(32f)
+    private val gap = dp(5f)
+    private val stripH = dp(26f)
+    private val pad = dp(12f)
+    private val radius = dp(6f)
+    private val panelRadius = dp(16f)
     private val gridW = (KeyGrid.COLS - 1) * keyW + (KeyGrid.COLS - 1) * gap + actionW
-    private val chipMaxW = dp(200f)
-    private val chipPad = dp(14f)
-    private val icon = dp(11f) // half an icon's box
+    private val chipMaxW = dp(150f)
+    private val chipPad = dp(10f)
+    private val icon = dp(8f) // half an icon's box
 
-    private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1C1C1C.toInt() }
-    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1f); color = 0x1FFFFFFF }
-    private val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x14FFFFFF }
-    private val keyOn = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x40FFFFFF } // Shift held
+    // Solid: grey panel, black keys, so posters behind never hurt legibility (no text shadow needed).
+    private val panel = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF25262D.toInt() }
+    private val keyFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF000000.toInt() }
+    private val keyOn = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x59FFFFFF } // Shift held
     private val focusFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
-    private val letter = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(19f); textAlign = Paint.Align.CENTER }
-    private val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); textAlign = Paint.Align.CENTER }
-    private val chipText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f) }
-    private val hint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f) }
+    private val hintEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1.5f); color = 0xFFFFFFFF.toInt() }
+    private val letter = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(15f); textAlign = Paint.Align.CENTER }
+    private val label = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(12f); textAlign = Paint.Align.CENTER }
+    private val chipText = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(12f) }
+    private val hint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = dp(12f) }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; strokeWidth = dp(2f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
+        style = Paint.Style.STROKE; strokeWidth = dp(1.6f); strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
     private val ink = 0xE6FFFFFF.toInt()
     private val inkOnFocus = 0xFF161616.toInt()
@@ -72,10 +76,9 @@ class KeyboardView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        rect.set(0f, 0f, width.toFloat(), height.toFloat())
+        // Flush with the screen's right and bottom edges: only the top-left corner is round.
+        rect.set(0f, 0f, width + panelRadius, height + panelRadius)
         canvas.drawRoundRect(rect, panelRadius, panelRadius, panel)
-        rect.inset(edge.strokeWidth / 2, edge.strokeWidth / 2)
-        canvas.drawRoundRect(rect, panelRadius, panelRadius, edge)
         drawStrip(canvas, pad, pad)
         val top = pad + stripH + gap
         for (row in 0 until KeyGrid.ROWS) for (col in 0 until KeyGrid.COLS) {
@@ -85,8 +88,19 @@ class KeyboardView(context: Context) : View(context) {
             val key = KeyGrid.key(mode, row, col)
             val focused = pos.row == row && pos.col == col
             canvas.drawRoundRect(rect, radius, radius, if (focused) focusFill else if (key == Key.Shift && shift) keyOn else keyFill)
+            if (!focused && isHint(key)) {
+                rect.inset(hintEdge.strokeWidth / 2, hintEdge.strokeWidth / 2)
+                canvas.drawRoundRect(rect, radius, radius, hintEdge)
+                rect.inset(-hintEdge.strokeWidth / 2, -hintEdge.strokeWidth / 2)
+            }
             drawKey(canvas, key, if (focused) inkOnFocus else ink)
         }
+    }
+
+    private fun isHint(key: Key) = when (key) {
+        is Key.Text -> key.text.length == 1 && key.text[0].lowercaseChar() in hints
+        Key.Space -> ' ' in hints
+        else -> false
     }
 
     private fun drawKey(canvas: Canvas, key: Key, color: Int) {

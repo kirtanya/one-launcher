@@ -40,6 +40,29 @@ object Suggest {
             .take(MAX)
     }
 
+    /**
+     * The [n] characters most likely typed next, read from where each matching candidate continues
+     * (earlier candidates weigh more): typed "a" with Avatar, Avengers, Animal → v, n. ' ' = Space.
+     */
+    fun nextKeys(typed: String, sources: List<List<String>>, n: Int = 3): List<Char> {
+        val q = typed.trimStart().lowercase()
+        if (q.isBlank()) return emptyList()
+        val weight = HashMap<Char, Double>()
+        var seen = 0
+        for (source in sources) for (c in source) {
+            if (seen == HINT_POOL) break
+            val t = c.lowercase()
+            val at = if (t.startsWith(q)) q.length
+            else WORD.findAll(t).firstOrNull { t.startsWith(q, it.range.first) }?.let { it.range.first + q.length }
+            val next = at?.let { t.getOrNull(it) } ?: continue
+            weight[next] = (weight[next] ?: 0.0) + 1.0 / (1 + seen++)
+        }
+        return weight.entries.sortedByDescending { it.value }.take(n).map { it.key }
+    }
+
+    private const val HINT_POOL = 40
+    private val WORD = Regex("""(?<=[ \-:.])\S""")
+
     /** History after using [text]: newest first, no duplicates, capped. Blank text changes nothing. */
     fun remember(history: List<String>, text: String, cap: Int = 200): List<String> {
         val t = text.trim()
