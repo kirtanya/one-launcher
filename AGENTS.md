@@ -48,9 +48,11 @@ Flutter Android launcher, two flavours from one codebase:
   the mic still goes to Google; on any com.google.android.katniss event the service reads the results
   page's headline (`id/super_header` = what was said; a single title's page: `entity_row_header_title`) and opens our search on top (never Back: it
   hit our search on slow starts). Can't disable Google's search app: it does the speech-to-text.
-  Hands off while Google's VoicePlateActivity listens. Missed presses (2026-10-31 logs) are Google's:
-  each press starts listening twice (~60 ms apart) and the remote's audio pipe ends at once
-  ("Mic session was closed prior to the sink", "mic open error F02"); nothing to fix in the launcher.
+  Hands off while Google's VoicePlateActivity listens. Missed presses (2026-10-31 logs) are the TV's:
+  one press starts Google's voice twice — key 219 via the vendor's RtkKeyInterceptService and the
+  remote's BLE PTT via AtvRemote. Same interactionId → works; two ids → the second closes the
+  first's audio pipe ("Pipe was closed by the consumer") → "no recognized speech". Firmware race;
+  batteries fine; no app can catch 219 (it never reaches accessibility key filters).
   `googleUntil` (set by TvActivity "searchEverywhere") leaves Google alone when we sent the user there.
   **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
   accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service
