@@ -17,12 +17,11 @@ import android.view.View
  *
  * The view is only as big as its keys: a solid panel the service sits flush in the bottom-right corner,
  * so the app's own results stay in view beside it. Action keys are drawn icons
- * (Delete, Space, Shift, Done). Keys likely to come next ([hints]) get a faint outline.
+ * (Delete, Space, Done). Keys likely to come next ([hints]) get a faint outline.
  */
 @SuppressLint("ViewConstructor")
 class KeyboardView(context: Context) : View(context) {
     var mode = Mode.LETTERS
-    var shift = false
     var pos = KeyGrid.START
     var chips: List<String> = emptyList()
     /** What's typed so far, shown when there are no suggestions (some apps hide their field). */
@@ -39,15 +38,14 @@ class KeyboardView(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
     private fun dp(v: Float) = v * d
 
-    private val keyW = dp(39f)
-    private val actionW = dp(54f)
-    private val keyH = dp(32f)
+    private val keyW = dp(36f) // keys are square; Delete and Space are two keys tall
+    private val keyH = keyW
     private val gap = dp(5f)
     private val stripH = dp(26f)
     private val pad = dp(12f)
     private val radius = dp(6f)
     private val panelRadius = dp(16f)
-    private val gridW = (KeyGrid.COLS - 1) * keyW + (KeyGrid.COLS - 1) * gap + actionW
+    private val gridW = KeyGrid.COLS * keyW + (KeyGrid.COLS - 1) * gap
     private val chipMaxW = dp(150f)
     private val chipPad = dp(10f)
     private val icon = dp(8f) // half an icon's box
@@ -80,20 +78,22 @@ class KeyboardView(context: Context) : View(context) {
         canvas.drawRoundRect(rect, panelRadius, panelRadius, panel)
         drawStrip(canvas, pad, pad)
         val top = pad + stripH + gap
-        for (row in 0 until KeyGrid.ROWS) for (col in 0 until KeyGrid.COLS) {
+        val last = KeyGrid.COLS - 1
+        for (row in 0 until KeyGrid.GRID) for (col in 0 until last) {
             val x = pad + col * (keyW + gap)
             val y = top + row * (keyH + gap)
-            rect.set(x, y, x + if (col == KeyGrid.COLS - 1) actionW else keyW, y + keyH)
-            val key = KeyGrid.key(mode, row, col)
-            val focused = pos.row == row && pos.col == col
-            canvas.drawRoundRect(rect, radius, radius, if (focused) focusFill else keyFill) // Shift held = filled ⇧ icon only
-            if (!focused && isHint(key)) {
-                rect.inset(hintEdge.strokeWidth / 2, hintEdge.strokeWidth / 2)
-                canvas.drawRoundRect(rect, radius, radius, hintEdge)
-                rect.inset(-hintEdge.strokeWidth / 2, -hintEdge.strokeWidth / 2)
-            }
-            drawKey(canvas, key, if (focused) inkOnFocus else ink)
+            rect.set(x, y, x + keyW, y + keyH)
+            drawKey(canvas, KeyGrid.key(mode, row, col), pos.row == row && pos.col == col)
         }
+        // The right column's tall keys, then the full-width Done bar.
+        val x = pad + last * (keyW + gap)
+        for (rows in listOf(KeyGrid.DELETE_ROWS, KeyGrid.SPACE_ROWS)) {
+            rect.set(x, top + rows.first * (keyH + gap), x + keyW, top + (rows.last + 1) * (keyH + gap) - gap)
+            drawKey(canvas, KeyGrid.key(mode, rows.first, last), pos.col == last && pos.row in rows)
+        }
+        val y = top + KeyGrid.DONE_ROW * (keyH + gap)
+        rect.set(pad, y, pad + gridW, y + keyH)
+        drawKey(canvas, Key.Done, pos.row == KeyGrid.DONE_ROW)
     }
 
     private fun isHint(key: Key) = when (key) {
@@ -102,14 +102,28 @@ class KeyboardView(context: Context) : View(context) {
         else -> false
     }
 
-    private fun drawKey(canvas: Canvas, key: Key, color: Int) {
-        val cx = rect.centerX()
+    /** One key in [rect]: fill, the hint outline, then its letter or icon. */
+    private fun drawKey(canvas: Canvas, key: Key, focused: Boolean) {
+        canvas.drawRoundRect(rect, radius, radius, if (focused) focusFill else keyFill)
+        if (!focused && isHint(key)) {
+            rect.inset(hintEdge.strokeWidth / 2, hintEdge.strokeWidth / 2)
+            canvas.drawRoundRect(rect, radius, radius, hintEdge)
+            rect.inset(-hintEdge.strokeWidth / 2, -hintEdge.strokeWidth / 2)
+        }
+        val color = if (focused) inkOnFocus else ink
+        // The Done bar shows its icon and the app's label ("Search"), centred together.
+        val bar = key == Key.Done && rect.width() > 2 * keyW
+        val barLabel = if (bar) label.measureText(doneLabel) else 0f
+        val cx = if (bar) rect.centerX() - (icon * 2.6f + barLabel) / 2 + icon else rect.centerX()
         val cy = rect.centerY()
+        if (bar) {
+            label.color = color
+            canvas.drawText(doneLabel, cx + icon * 1.6f + barLabel / 2, cy - (label.descent() + label.ascent()) / 2, label)
+        }
         stroke.color = color
-        stroke.style = Paint.Style.STROKE
         path.reset()
         when (key) {
-            is Key.Text -> text(canvas, if (shift) key.text.uppercase() else key.text, letter, color)
+            is Key.Text -> text(canvas, key.text, letter, color)
             Key.Mode -> text(canvas, if (mode == Mode.LETTERS) "123" else "abc", label, color)
             Key.Delete -> { // ⌫
                 val l = cx - icon * 1.15f; val r = cx + icon * 1.15f; val t = cy - icon * 0.75f; val b = cy + icon * 0.75f
@@ -120,13 +134,6 @@ class KeyboardView(context: Context) : View(context) {
             Key.Space -> { // ␣
                 val l = cx - icon * 1.2f; val r = cx + icon * 1.2f
                 path.moveTo(l, cy - icon * 0.2f); path.lineTo(l, cy + icon * 0.35f); path.lineTo(r, cy + icon * 0.35f); path.lineTo(r, cy - icon * 0.2f)
-            }
-            Key.Shift -> { // ⇧, filled while on; nothing in symbols (no capitals there)
-                if (mode == Mode.SYMBOLS) return
-                val t = cy - icon; val b = cy + icon * 0.9f; val s = icon * 0.4f
-                path.moveTo(cx, t); path.lineTo(cx + icon, cy); path.lineTo(cx + s, cy); path.lineTo(cx + s, b)
-                path.lineTo(cx - s, b); path.lineTo(cx - s, cy); path.lineTo(cx - icon, cy); path.close()
-                if (shift) stroke.style = Paint.Style.FILL_AND_STROKE
             }
             Key.Done -> when (doneLabel) {
                 "Search" -> { // magnifier

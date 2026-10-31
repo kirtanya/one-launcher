@@ -89,7 +89,6 @@ class OneKeyboardService : InputMethodService() {
         else info.imeOptions and EditorInfo.IME_MASK_ACTION
         if (!restarting) {
             view.mode = if (cls == InputType.TYPE_CLASS_NUMBER || cls == InputType.TYPE_CLASS_PHONE) Mode.SYMBOLS else Mode.LETTERS
-            view.shift = false
             view.pos = KeyGrid.START
         }
         view.doneLabel = when (action) {
@@ -152,13 +151,9 @@ class OneKeyboardService : InputMethodService() {
             return
         }
         when (val key = KeyGrid.key(view.mode, p.row, p.col)) {
-            is Key.Text -> {
-                type(if (view.shift) key.text.uppercase() else key.text)
-                view.shift = false // one capital, like a phone's single Shift tap
-            }
+            is Key.Text -> type(key.text)
             Key.Delete -> delete()
             Key.Space -> type(" ")
-            Key.Shift -> if (view.mode == Mode.LETTERS) view.shift = !view.shift
             Key.Mode -> view.mode = if (view.mode == Mode.LETTERS) Mode.SYMBOLS else Mode.LETTERS
             Key.Done -> done()
         }
