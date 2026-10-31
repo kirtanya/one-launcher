@@ -24,10 +24,13 @@ import java.io.ByteArrayOutputStream
  * the track or play state changes, and passes play/pause/skip back. Listens only between
  * start() and stop() (while the launcher is on screen).
  */
-/** [artWidth]/[square]: the phone wants small square album art; the TV wants wide backdrops. */
+/**
+ * [artWidth]/[square]: the phone wants square album art (big enough to fill the Now page edge
+ * to edge, 1024); the TV wants wide backdrops.
+ */
 class MediaWatcher(
     private val activity: Activity,
-    private val artWidth: Int = 256,
+    private val artWidth: Int = 1024,
     private val square: Boolean = true,
     private val push: (Map<String, Any?>) -> Unit,
 ) {
@@ -127,12 +130,14 @@ class MediaWatcher(
     private fun art(meta: MediaMetadata?, key: String): ByteArray? {
         if (key == artKey) return artBytes
         artKey = key
-        artBytes = ArtFetch.bitmapOf(meta)?.let(::encode)
-        // Only a link (Hotstar, Prime Video, Netflix…): fetch it, then send the picture.
-        val uri = if (artBytes == null) ArtFetch.uriOf(meta) else null
+        val bmp = ArtFetch.bitmapOf(meta)
+        artBytes = bmp?.let(::encode)
+        // Only a link (Hotstar, Prime Video, Netflix…), or a picture too small for the Now page
+        // (music apps often attach a thumbnail and link the full cover): fetch it, then send it.
+        val uri = if (bmp == null || minOf(bmp.width, bmp.height) < artWidth) ArtFetch.uriOf(meta) else null
         if (uri != null) {
             ArtFetch.async {
-                val bytes = ArtFetch.load(activity, uri, artWidth)?.let(::encode)
+                val bytes = ArtFetch.load(activity, uri, artWidth)?.takeIf { bmp == null || it.width > bmp.width }?.let(::encode)
                 main.post {
                     if (artKey == key && bytes != null) {
                         artBytes = bytes
@@ -154,8 +159,9 @@ class MediaWatcher(
         // Centre-crop into a square.
         val s = minOf(it.width, it.height)
         val src = android.graphics.Rect((it.width - s) / 2, (it.height - s) / 2, (it.width + s) / 2, (it.height + s) / 2)
-        Canvas(out).drawBitmap(it, src, android.graphics.Rect(0, 0, size, size), null)
-        return ByteArrayOutputStream().also { o -> out.compress(Bitmap.CompressFormat.PNG, 100, o) }.toByteArray()
+        Canvas(out).drawBitmap(it, src, android.graphics.Rect(0, 0, size, size), android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+        // JPEG: a 1024² PNG is megabytes, and this crosses the channel on every update.
+        return ByteArrayOutputStream().also { o -> out.compress(Bitmap.CompressFormat.JPEG, 90, o) }.toByteArray()
     }
 
     fun handle(call: MethodCall, result: MethodChannel.Result): Boolean {

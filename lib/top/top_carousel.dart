@@ -71,7 +71,7 @@ class _TopCarouselState extends State<TopCarousel> {
     'battery' => BatteryPage(refresh: widget.refresh),
     'up_next' => UpNextPage(refresh: widget.refresh),
     'now_playing' => const NowPlayingPage(),
-    'now' => const NowPage(),
+    'now' => NowPage(prefs: widget.prefs),
     'tv_remote' => TvRemotePage(prefs: widget.prefs),
     'blank' => const SizedBox.expand(), // only the wallpaper
     _ when id.startsWith('widget:') => AppWidgetPage(widgetId: int.parse(id.substring(7)), label: widget.prefs.widgetLabels[id] ?? 'Widget'),

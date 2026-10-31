@@ -148,6 +148,21 @@ class Prefs extends ChangeNotifier {
     return _setList('topEnabled', set.toList());
   }
 
+  /// Now page: how dark the scrims over the cover art are (0 lightest … 1 darkest; 0.5 is the
+  /// designed look) and how much the cover is blurred (sigma, 0 sharp).
+  static const nowBlurMax = 40.0;
+  double get nowDim => (_sp.getDouble('nowDim') ?? 0.5).clamp(0.0, 1.0);
+  double get nowBlur => (_sp.getDouble('nowBlur') ?? 0).clamp(0.0, nowBlurMax);
+  Future<void> setNowDim(double v) async {
+    await _sp.setDouble('nowDim', v.clamp(0.0, 1.0));
+    notifyListeners();
+  }
+
+  Future<void> setNowBlur(double v) async {
+    await _sp.setDouble('nowBlur', v.clamp(0.0, nowBlurMax));
+    notifyListeners();
+  }
+
   /// Share of the screen for the top widgets; the app sheet rests on the rest.
   static const topShareMin = 0.20, topShareMax = 0.50;
   double get topShare => (_sp.getDouble('topShare') ?? 0.25).clamp(topShareMin, topShareMax);

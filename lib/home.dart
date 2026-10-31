@@ -85,7 +85,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   /// Search opening on its own (a tap, or carrying on from a pull): 0 → 1. With [_pull] it
   /// drives the recent searches rising in above the bar.
-  late final AnimationController _reveal = AnimationController(vsync: this, duration: AppDrawerState.awayDuration, reverseDuration: AppDrawerState.backDuration);
+  late final AnimationController _reveal = AnimationController(
+    vsync: this,
+    duration: AppDrawerState.awayDuration,
+    reverseDuration: AppDrawerState.backDuration,
+  );
 
   /// The recent-search pills: in while nothing is typed, out once something is.
   late final AnimationController _pillsIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420), value: 1);
@@ -492,10 +496,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     final cleared = Future<void>.delayed(AppDrawerState.awayDuration * left + const Duration(milliseconds: 40));
     const rise = Duration(milliseconds: 368); // the sheet going full screen (a little quicker than a snap)
     if (_sheet.isAttached) {
-      await Future.any([
-        _sheet.animateTo(1, duration: rise, curve: Motion.settle),
-        Future<void>.delayed(rise + const Duration(milliseconds: 60)),
-      ]);
+      await Future.any([_sheet.animateTo(1, duration: rise, curve: Motion.settle), Future<void>.delayed(rise + const Duration(milliseconds: 60))]);
     }
     await cleared;
     if (mounted && _searching) setState(() => _showResults = true);
@@ -772,27 +773,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                           fit: StackFit.expand,
                                           children: [
                                             // Page 0 (Now) hides the wallpaper edge to edge.
-                                            const IgnorePointer(child: NowStage()),
+                                            IgnorePointer(child: NowStage(prefs: prefs)),
                                             _TopArea(
-                                          chipsHeight: QuickChipsRow.heightOf(prefs),
-                                          carousel: NotificationListener<ScrollNotification>(
-                                            onNotification: _onCarouselScroll, // past its first page → the today panel
-                                            child: TopCarousel(
-                                              prefs: prefs,
-                                              refresh: _refresh,
-                                              onTapClock: () => _openNamed(['clock']),
-                                              onTapDate: () => _openNamed(['calendar', 'google calendar']),
-                                              onBlank: (b) => _topBlank.value = b,
-                                            ),
-                                          ),
-                                          blank: _topBlank,
-                                          onCustomise: () {
-                                            HapticFeedback.mediumImpact();
-                                            showCustomiseTop(context, prefs: prefs);
-                                          },
-                                          padding: prefs.topPadding,
-                                          onSwipeUp: _expand,
-                                          onSwipeDown: Apps.instance.openNotifications,
+                                              chipsHeight: QuickChipsRow.heightOf(prefs),
+                                              carousel: NotificationListener<ScrollNotification>(
+                                                onNotification: _onCarouselScroll, // past its first page → the today panel
+                                                child: TopCarousel(
+                                                  prefs: prefs,
+                                                  refresh: _refresh,
+                                                  onTapClock: () => _openNamed(['clock']),
+                                                  onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                                                  onBlank: (b) => _topBlank.value = b,
+                                                ),
+                                              ),
+                                              blank: _topBlank,
+                                              onCustomise: () {
+                                                HapticFeedback.mediumImpact();
+                                                showCustomiseTop(context, prefs: prefs);
+                                              },
+                                              padding: prefs.topPadding,
+                                              onSwipeUp: _expand,
+                                              onSwipeDown: Apps.instance.openNotifications,
                                             ),
                                           ],
                                         ),
