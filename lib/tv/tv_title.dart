@@ -105,29 +105,24 @@ class TvPoster extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedScale(
-                scale: f ? TvDS.focusScaleCard : 1,
-                duration: Motion.popDuration,
-                curve: Motion.pop,
-                child: AnimatedContainer(
-                  duration: Motion.pressIn * 2,
-                  width: w,
-                  height: h,
-                  // Tiles: the Metro frame and the tile corners.
-                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
-                  decoration: BoxDecoration(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title),
-                        if (t.rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(t.rating!)),
-                      ],
-                    ),
+              AnimatedContainer(
+                duration: Motion.pressIn * 2,
+                width: w,
+                height: h,
+                // Tiles: the Metro frame and the tile corners.
+                foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
+                decoration: BoxDecoration(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
+                ),
+                child: ClipRRect(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title),
+                      if (t.rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(t.rating!)),
+                    ],
                   ),
                 ),
               ),
@@ -761,29 +756,24 @@ class _CastCard extends StatelessWidget {
       width: 96,
       child: Column(
         children: [
-          AnimatedScale(
-            scale: f ? 1.1 : 1,
-            duration: Motion.popDuration,
-            curve: Motion.pop,
-            child: Container(
-              width: 80,
-              height: 80,
-              // Tiles: an accent square with the tile corners and the Metro frame; else a disc.
-              decoration: TvMetro.on
-                  ? BoxDecoration(borderRadius: TvMetro.corners(0), color: TvMetro.tileFill, boxShadow: TvMetro.glow(f))
-                  : BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
-                      border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
-                    ),
-              foregroundDecoration: TvMetro.on ? TvMetro.frame(f) : null,
-              alignment: Alignment.center,
-              child: Text(
-                _initials(person.name),
-                style: TvMetro.on
-                    ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300, color: Colors.white)
-                    : TvDS.panelTitle.copyWith(color: f ? TvDS.onLight : TvDS.ink),
-              ),
+          Container(
+            width: 80,
+            height: 80,
+            // Tiles: an accent square with the tile corners and the Metro frame; else a disc.
+            decoration: TvMetro.on
+                ? BoxDecoration(borderRadius: TvMetro.corners(0), color: TvMetro.tileFill, boxShadow: TvMetro.glow(f))
+                : BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: f ? TvDS.surfaceFocused : tvTint(person.name).withValues(alpha: .55),
+                    border: Border.all(color: f ? TvDS.surfaceFocused : Colors.transparent, width: TvDS.focusRing),
+                  ),
+            foregroundDecoration: TvMetro.on ? TvMetro.frame(f) : null,
+            alignment: Alignment.center,
+            child: Text(
+              _initials(person.name),
+              style: TvMetro.on
+                  ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300, color: Colors.white)
+                  : TvDS.panelTitle.copyWith(color: f ? TvDS.onLight : TvDS.ink),
             ),
           ),
           const SizedBox(height: DS.s8),

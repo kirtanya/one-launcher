@@ -207,6 +207,24 @@ class _TvSearchState extends State<TvSearch> {
     return 'No shows or films called “$raw”.';
   }
 
+  /// Each source's TV app: its icon goes on the source's chip (when the app is installed).
+  static const _chipApps = {
+    'stream': OneStream.package,
+    'youtube': YouTubeSearch.tvPackage,
+    'svc:Netflix': 'com.netflix.ninja',
+    'svc:Prime Video': 'com.amazon.amazonvideo.livingroom',
+    'svc:JioHotstar': 'in.startv.hotstar',
+    'svc:Apple TV+': 'com.apple.atve.androidtv.appletv',
+    'svc:ZEE5': 'com.graymatrix.did',
+    'svc:Sony LIV': 'com.sonyliv',
+  };
+
+  Widget? _chipIcon(String id, Map<String, AppEntry> byPkg) {
+    final app = byPkg[_chipApps[id]];
+    if (app == null) return null;
+    return ClipRRect(borderRadius: BorderRadius.circular(6), child: TvAppIcon(app: app, size: 24));
+  }
+
   /// Services to group by, in this order first (the big ones here), then by how many results.
   static const _servicePriority = ['Netflix', 'Prime Video', 'JioHotstar', 'Apple TV+', 'ZEE5', 'Sony LIV'];
 
@@ -421,6 +439,7 @@ class _TvSearchState extends State<TvSearch> {
                       key: ValueKey('chip:$id'),
                       focusNode: _chip(id),
                       label: label,
+                      leading: _chipIcon(id, byPkg),
                       selected: id == filter,
                       onSelect: () => setState(() => _filter = id),
                     ),
@@ -429,9 +448,11 @@ class _TvSearchState extends State<TvSearch> {
               ),
             ),
             Expanded(
+              // Clipped: scrolled results go under the field and chips, not over them. The top
+              // padding keeps a focused card's ring inside the clip.
               child: SingleChildScrollView(
-                clipBehavior: Clip.none,
-                padding: EdgeInsets.only(bottom: TvDS.safe.bottom + DS.s24),
+                clipBehavior: Clip.hardEdge,
+                padding: EdgeInsets.only(top: DS.s4, bottom: TvDS.safe.bottom + DS.s24),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: body),
               ),
             ),
@@ -471,31 +492,26 @@ class _VideoCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedScale(
-                scale: f ? TvDS.focusScaleCard : 1,
-                duration: Motion.popDuration,
-                curve: Motion.pop,
-                child: AnimatedContainer(
-                  duration: Motion.pressIn * 2,
-                  width: w,
-                  height: h,
-                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
-                  decoration: BoxDecoration(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        ShowImage(urls: [if (v.thumb.isNotEmpty) v.thumb], decodeWidth: 448, fallbackTitle: v.title),
-                        if (v.live)
-                          Positioned(right: DS.s8, bottom: DS.s8, child: badge('LIVE', const Color(0xFFCC0000)))
-                        else if (v.length != null)
-                          Positioned(right: DS.s8, bottom: DS.s8, child: badge(v.length!, const Color(0xCC000000))),
-                      ],
-                    ),
+              AnimatedContainer(
+                duration: Motion.pressIn * 2,
+                width: w,
+                height: h,
+                foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
+                decoration: BoxDecoration(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
+                ),
+                child: ClipRRect(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ShowImage(urls: [if (v.thumb.isNotEmpty) v.thumb], decodeWidth: 448, fallbackTitle: v.title),
+                      if (v.live)
+                        Positioned(right: DS.s8, bottom: DS.s8, child: badge('LIVE', const Color(0xFFCC0000)))
+                      else if (v.length != null)
+                        Positioned(right: DS.s8, bottom: DS.s8, child: badge(v.length!, const Color(0xCC000000))),
+                    ],
                   ),
                 ),
               ),

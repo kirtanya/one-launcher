@@ -816,41 +816,36 @@ class TvTilesStartState extends State<TvTilesStart> {
       onSelect: a.onSelect,
       onLongSelect: a.onOptions,
       onMove: (d) => _moveQuick(i, d),
-      builder: (context, f) => AnimatedScale(
-        scale: f ? 1.06 : 1,
-        duration: TvLook.anim(Motion.popDuration),
-        curve: Motion.pop,
-        child: Container(
-          height: 44,
-          constraints: const BoxConstraints(minWidth: 44),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
-          foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
-          child: ExcludeFocus(
-            child: TileSurface(
-              colour: TvMetro.tileFill,
-              prefs: prefs,
-              onTap: a.onSelect,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: named ? 14 : 0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: named ? null : 44,
-                      // A pinned app: its own icon (cached after the first load, so no flicker).
-                      child: Center(
-                        child: a.app != null
-                            ? SizedBox.square(
-                                dimension: 22,
-                                child: _appIcon(a.app!, fallback: const Icon(Icons.apps_rounded, color: Colors.white, size: 20)),
-                              )
-                            : Icon(a.icon ?? Icons.bolt_rounded, color: Colors.white, size: 20),
-                      ),
+      builder: (context, f) => Container(
+        height: 44,
+        constraints: const BoxConstraints(minWidth: 44),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
+        foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
+        child: ExcludeFocus(
+          child: TileSurface(
+            colour: TvMetro.tileFill,
+            prefs: prefs,
+            onTap: a.onSelect,
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: named ? 14 : 0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: named ? null : 44,
+                    // A pinned app: its own icon (cached after the first load, so no flicker).
+                    child: Center(
+                      child: a.app != null
+                          ? SizedBox.square(
+                              dimension: 22,
+                              child: _appIcon(a.app!, fallback: const Icon(Icons.apps_rounded, color: Colors.white, size: 20)),
+                            )
+                          : Icon(a.icon ?? Icons.bolt_rounded, color: Colors.white, size: 20),
                     ),
-                    if (named) ...[const SizedBox(width: 8), Text(TvMetro.cased(a.label), style: TvDS.tileName.copyWith(fontSize: 14, color: Colors.white))],
-                  ],
-                ),
+                  ),
+                  if (named) ...[const SizedBox(width: 8), Text(TvMetro.cased(a.label), style: TvDS.tileName.copyWith(fontSize: 14, color: Colors.white))],
+                ],
               ),
             ),
           ),
@@ -867,23 +862,18 @@ class TvTilesStartState extends State<TvTilesStart> {
       onSelect: r.onSelect,
       onLongSelect: r.onOptions,
       onMove: (d) => _moveResume(i, d),
-      builder: (context, f) => AnimatedScale(
-        scale: f ? 1.05 : 1,
-        duration: TvLook.anim(Motion.popDuration),
-        curve: Motion.pop,
-        child: Container(
-          width: h * 16 / 9,
-          height: h,
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
-          foregroundDecoration: TvMetro.frame(f, r: prefs.tileRadius),
-          child: ExcludeFocus(
-            child: TileSurface(
-              colour: TvMetro.tileFill,
-              prefs: prefs,
-              onTap: r.onSelect,
-              // Live tiles: only the one that's playing flips.
-              child: _ResumeFace(info: r.info, live: prefs.fx('live') && r.info.playing && TvLook.str('motion') != 'reduced', names: true),
-            ),
+      builder: (context, f) => Container(
+        width: h * 16 / 9,
+        height: h,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: _shadow(f)),
+        foregroundDecoration: TvMetro.frame(f, r: prefs.tileRadius),
+        child: ExcludeFocus(
+          child: TileSurface(
+            colour: TvMetro.tileFill,
+            prefs: prefs,
+            onTap: r.onSelect,
+            // Live tiles: only the one that's playing flips.
+            child: _ResumeFace(info: r.info, live: prefs.fx('live') && r.info.playing && TvLook.str('motion') != 'reduced', names: true),
           ),
         ),
       ),
@@ -918,32 +908,27 @@ class TvTilesStartState extends State<TvTilesStart> {
           child: tile,
         );
         final tilt = f && prefs.fx('tilt') && TvLook.str('motion') != 'reduced';
-        return AnimatedScale(
-          scale: moving ? 1.1 : (f ? (TvMetro.focusStyle == 'lift' ? 1.08 : 1.05) : 1),
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: Transform(
-            alignment: Alignment.center,
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, .0012)
-              ..rotateY(tilt ? -.018 : 0)
-              ..rotateX(tilt ? .01 : 0),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                tile,
-                if (moving)
-                  const IgnorePointer(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Icon(Icons.chevron_left_rounded, color: Colors.white, size: 30),
-                        Icon(Icons.chevron_right_rounded, color: Colors.white, size: 30),
-                      ],
-                    ),
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, .0012)
+            ..rotateY(tilt ? -.018 : 0)
+            ..rotateX(tilt ? .01 : 0),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              tile,
+              if (moving)
+                const IgnorePointer(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Icon(Icons.chevron_left_rounded, color: Colors.white, size: 30),
+                      Icon(Icons.chevron_right_rounded, color: Colors.white, size: 30),
+                    ],
                   ),
-              ],
-            ),
+                ),
+            ],
           ),
         );
       },
@@ -1294,36 +1279,31 @@ class TvTileButton extends StatelessWidget {
         focusNode: focusNode,
         onSelect: onSelect,
         onMove: onMove,
-        builder: (context, f) => AnimatedScale(
-          scale: f ? 1.08 : 1,
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: Container(
-            height: size,
-            constraints: const BoxConstraints(minWidth: size),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: TvMetro.glow(f)),
-            foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
-            child: ExcludeFocus(
-              child: TileSurface(
-                colour: TvMetro.tileFill,
-                prefs: prefs,
-                onTap: onSelect,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 14),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: label == null ? size : null,
-                        child: Icon(icon, color: Colors.white, size: 22),
-                      ),
-                      if (label != null) ...[
-                        const SizedBox(width: 8),
-                        Text(TvMetro.cased(label!), style: TvDS.tileName.copyWith(fontSize: 15, color: Colors.white)),
-                      ],
+        builder: (context, f) => Container(
+          height: size,
+          constraints: const BoxConstraints(minWidth: size),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(prefs.tileRadius), boxShadow: TvMetro.glow(f)),
+          foregroundDecoration: TvMetro.frame(f, width: 2, r: prefs.tileRadius),
+          child: ExcludeFocus(
+            child: TileSurface(
+              colour: TvMetro.tileFill,
+              prefs: prefs,
+              onTap: onSelect,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 14),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: label == null ? size : null,
+                      child: Icon(icon, color: Colors.white, size: 22),
+                    ),
+                    if (label != null) ...[
+                      const SizedBox(width: 8),
+                      Text(TvMetro.cased(label!), style: TvDS.tileName.copyWith(fontSize: 15, color: Colors.white)),
                     ],
-                  ),
+                  ],
                 ),
               ),
             ),

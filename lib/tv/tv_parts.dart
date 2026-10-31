@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'tv_real.dart';
 import '../third/tactile/tactile.dart';
 import '../third/tactile/parts.dart';
@@ -46,25 +47,20 @@ class TvAppTile extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: TvDS.rowPadTop),
-              AnimatedScale(
-                scale: f ? TvDS.focusScale : 1,
-                duration: Motion.popDuration,
-                curve: Motion.pop,
-                child: AnimatedContainer(
-                  duration: Motion.pressIn * 2,
-                  width: TvDS.tileW,
-                  height: TvDS.tileH,
-                  // Ring + glow only on the focused tile (one blur on screen at a time). Tiles: the
-                  // Metro frame and corners.
-                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
-                  decoration: BoxDecoration(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: TvMetro.corners(TvDS.rTile),
-                    child: TvAppArt(app: app, width: TvDS.tileW),
-                  ),
+              AnimatedContainer(
+                duration: Motion.pressIn * 2,
+                width: TvDS.tileW,
+                height: TvDS.tileH,
+                // Ring + glow only on the focused tile (one blur on screen at a time). Tiles: the
+                // Metro frame and corners.
+                foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile),
+                decoration: BoxDecoration(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null),
+                ),
+                child: ClipRRect(
+                  borderRadius: TvMetro.corners(TvDS.rTile),
+                  child: TvAppArt(app: app, width: TvDS.tileW),
                 ),
               ),
               const SizedBox(height: DS.s12),
@@ -221,96 +217,103 @@ Future<void> showTvPanel(
               child: Container(
                 decoration: DS.third ? TvReal.panel : null, // Real: a moulded plate
                 child: SizedBox(
-                width: 440,
-                height: double.infinity,
-                child: FocusTraversalGroup(
-                  child: ListenableBuilder(
-                    listenable: refresh ?? const AlwaysStoppedAnimation(0),
-                    builder: (ctx, _) {
-                      final actions2 = build?.call() ?? actions;
-                      return ListView(
-                        padding: const EdgeInsets.fromLTRB(DS.s32, 40, DS.s32, 40),
-                        children: [
-                          if (leading != null) ...[
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: ClipRRect(borderRadius: TvMetro.corners(TvDS.rTile), child: leading),
-                            ),
-                            const SizedBox(height: DS.s16),
-                          ],
-                          TvMetro.on
-                              ? Text(TvMetro.cased(title), style: TvMetro.title(size: 34), maxLines: 2, overflow: TextOverflow.ellipsis)
-                              : DS.third
-                              ? Text(title.toUpperCase(), style: TvReal.legend(24), maxLines: 2, overflow: TextOverflow.ellipsis)
-                              : Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: DS.s24),
-                          for (final (i, a) in actions2.indexed)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: DS.s8),
-                              child: TvFocusable(
-                                autofocus: i == 0,
-                                onSelect: () {
-                                  if (!a.keepOpen) Navigator.pop(ctx, true);
-                                  a.onSelect();
-                                },
-                                builder: (context, f) => TvMetro.on
-                                    ? _MetroRow(action: a, focused: f)
-                                    : AnimatedContainer(
-                                        duration: Motion.pressIn * 2,
-                                        height: 52,
-                                        padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                                        decoration: DS.third
-                                            ? TvReal.key(focused: f) // Real: the focused row is a key, lit by its indicator
-                                            : BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
-                                        child: Row(
-                                          children: [
-                                            if (a.swatch != null)
-                                              Container(
-                                                width: 22,
-                                                height: 22,
-                                                decoration: BoxDecoration(
-                                                  color: a.swatch,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(color: TvDS.line),
-                                                ),
-                                              )
-                                            else
-                                              Icon(a.icon, size: 22, color: a.danger ? DS.alert : (f ? (DS.third ? Tactile.light : TvDS.onLight) : TvDS.inkMuted)),
-                                            const SizedBox(width: DS.s16),
-                                            Expanded(
-                                              child: Text(
-                                                a.label,
-                                                style: TvDS.panelRow.copyWith(color: f && !DS.third ? TvDS.onLight : TvDS.ink),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            if (a.value != null)
-                                              Text(
-                                                a.value!,
-                                                style: TvDS.panelRow.copyWith(
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w400,
-                                                  color: f && !DS.third ? TvDS.onLightMuted : TvDS.inkMuted,
-                                                ),
-                                              ),
-                                            if (a.selected)
-                                              DS.third
-                                                  ? Padding(padding: const EdgeInsets.only(left: 8), child: TLed(on: true, size: 8)) // Real: the chosen one's lamp
-                                                  : Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
-                                          ],
-                                        ),
-                                      ),
+                  width: 440,
+                  height: double.infinity,
+                  child: FocusTraversalGroup(
+                    child: ListenableBuilder(
+                      listenable: refresh ?? const AlwaysStoppedAnimation(0),
+                      builder: (ctx, _) {
+                        final actions2 = build?.call() ?? actions;
+                        return ListView(
+                          padding: const EdgeInsets.fromLTRB(DS.s32, 40, DS.s32, 40),
+                          children: [
+                            if (leading != null) ...[
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: ClipRRect(borderRadius: TvMetro.corners(TvDS.rTile), child: leading),
                               ),
-                            ),
-                        ],
-                      );
-                    },
+                              const SizedBox(height: DS.s16),
+                            ],
+                            TvMetro.on
+                                ? Text(TvMetro.cased(title), style: TvMetro.title(size: 34), maxLines: 2, overflow: TextOverflow.ellipsis)
+                                : DS.third
+                                ? Text(title.toUpperCase(), style: TvReal.legend(24), maxLines: 2, overflow: TextOverflow.ellipsis)
+                                : Text(title, style: TvDS.panelTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: DS.s24),
+                            for (final (i, a) in actions2.indexed)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: DS.s8),
+                                child: TvFocusable(
+                                  autofocus: i == 0,
+                                  onSelect: () {
+                                    if (!a.keepOpen) Navigator.pop(ctx, true);
+                                    a.onSelect();
+                                  },
+                                  builder: (context, f) => TvMetro.on
+                                      ? _MetroRow(action: a, focused: f)
+                                      : AnimatedContainer(
+                                          duration: Motion.pressIn * 2,
+                                          height: 52,
+                                          padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                                          decoration: DS.third
+                                              ? TvReal.key(focused: f) // Real: the focused row is a key, lit by its indicator
+                                              : BoxDecoration(color: f ? TvDS.surfaceFocused : Colors.transparent, borderRadius: BorderRadius.circular(26)),
+                                          child: Row(
+                                            children: [
+                                              if (a.swatch != null)
+                                                Container(
+                                                  width: 22,
+                                                  height: 22,
+                                                  decoration: BoxDecoration(
+                                                    color: a.swatch,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(color: TvDS.line),
+                                                  ),
+                                                )
+                                              else
+                                                Icon(
+                                                  a.icon,
+                                                  size: 22,
+                                                  color: a.danger ? DS.alert : (f ? (DS.third ? Tactile.light : TvDS.onLight) : TvDS.inkMuted),
+                                                ),
+                                              const SizedBox(width: DS.s16),
+                                              Expanded(
+                                                child: Text(
+                                                  a.label,
+                                                  style: TvDS.panelRow.copyWith(color: f && !DS.third ? TvDS.onLight : TvDS.ink),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              if (a.value != null)
+                                                Text(
+                                                  a.value!,
+                                                  style: TvDS.panelRow.copyWith(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w400,
+                                                    color: f && !DS.third ? TvDS.onLightMuted : TvDS.inkMuted,
+                                                  ),
+                                                ),
+                                              if (a.selected)
+                                                DS.third
+                                                    ? Padding(
+                                                        padding: const EdgeInsets.only(left: 8),
+                                                        child: TLed(on: true, size: 8),
+                                                      ) // Real: the chosen one's lamp
+                                                    : Icon(Icons.check_rounded, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                                            ],
+                                          ),
+                                        ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           ),
         ],
       ),
@@ -482,37 +485,32 @@ class TvActionPill extends StatelessWidget {
         focusNode: focusNode,
         autofocus: autofocus,
         onSelect: onSelect,
-        builder: (context, f) => AnimatedScale(
-          scale: f ? 1.06 : 1,
-          duration: Motion.popDuration,
-          curve: Motion.pop,
-          child: TvMetro.on
-              ? _metro(f)
-              : AnimatedContainer(
-                  duration: Motion.pressIn * 2,
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-                  decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (leading != null)
-                        ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
-                      else if (icon != null)
-                        Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
-                      const SizedBox(width: DS.s12),
-                      Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink)),
-                      if (detail != null) ...[
-                        const SizedBox(width: DS.s8),
-                        Text(
-                          detail!,
-                          style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
-                        ),
-                      ],
+        builder: (context, f) => TvMetro.on
+            ? _metro(f)
+            : AnimatedContainer(
+                duration: Motion.pressIn * 2,
+                height: 48,
+                padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+                decoration: BoxDecoration(color: f ? TvDS.surfaceFocused : TvDS.surface, borderRadius: BorderRadius.circular(24)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (leading != null)
+                      ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
+                    else if (icon != null)
+                      Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
+                    const SizedBox(width: DS.s12),
+                    Text(label, style: TvDS.panelRow.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink)),
+                    if (detail != null) ...[
+                      const SizedBox(width: DS.s8),
+                      Text(
+                        detail!,
+                        style: TvDS.panelRow.copyWith(fontSize: 13, fontWeight: FontWeight.w400, color: f ? TvDS.onLightMuted : TvDS.inkMuted),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
-        ),
+              ),
       ),
     );
   }

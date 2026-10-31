@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
 import 'tv_real.dart';
 import '../third/tactile/tactile.dart';
 import '../third/tactile/parts.dart';
+
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
@@ -1533,7 +1535,9 @@ class _HeroInfo extends StatelessWidget {
           child: child,
         ),
       ),
-      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey('${it.key}$moving${chip?.key}'), child: _content(it)),
+      // Keyed by the item only: moving between chips just changes the hint, the title stays put
+      // (re-keying on the chip re-ran the fade + slide, so the title bobbed on every chip).
+      child: it == null ? const SizedBox.shrink() : KeyedSubtree(key: ValueKey('${it.key}$moving'), child: _content(it)),
     );
   }
 
@@ -1678,10 +1682,8 @@ class _TopBar extends StatelessWidget {
       children: [
         for (final (i, b) in buttons.indexed) ...[if (i > 0) const SizedBox(width: DS.s8), b],
         const Spacer(),
-        Padding(
-          padding: const EdgeInsets.only(top: DS.s8),
-          child: _Clock(prefs: prefs),
-        ),
+        // Centred on the buttons' 40-pt line (their labels hang below it).
+        SizedBox(height: 40, child: Center(child: _Clock(prefs: prefs))),
       ],
     );
   }
@@ -1719,42 +1721,42 @@ class _TopButton extends StatelessWidget {
         builder: (context, f) => Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            AnimatedScale(
-              scale: f ? TvDS.focusScale : 1,
-              duration: TvLook.anim(Motion.popDuration),
-              curve: Motion.pop,
-              child: AnimatedContainer(
-                duration: TvLook.anim(Motion.pressIn * 2),
-                height: 40,
-                width: pill ? null : 40,
-                padding: pill ? const EdgeInsets.symmetric(horizontal: DS.s16) : EdgeInsets.zero,
-                decoration: DS.third
-                    // Real: a key on the set (lit when focused; the warning one has a red cap).
-                    ? BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: Tactile.capFace(warn ? const Color(0xFFB03A36) : null),
-                        border: Border.all(color: f ? Tactile.light : Tactile.rim, width: f ? 1.4 : .6),
-                        boxShadow: [...Tactile.raised(pressed: f), if (f) BoxShadow(color: Tactile.light.withValues(alpha: .4), blurRadius: 16)],
-                      )
-                    : BoxDecoration(
-                        color: f ? TvDS.surfaceFocused : (warn ? DS.alert.withValues(alpha: .22) : TvDS.surface),
-                        border: warn && !f ? Border.all(color: DS.alert.withValues(alpha: .7)) : null,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(icon, size: 22, color: DS.third ? (warn ? Colors.white : Tactile.ink) : (f ? (warn ? DS.alert : TvDS.onLight) : TvDS.ink)),
-                    if (pill) ...[
-                      const SizedBox(width: DS.s8),
-                      Text(
-                        DS.third ? label.toUpperCase() : label,
-                        style: DS.third ? TvReal.legend(13, color: warn ? Colors.white : Tactile.ink) : TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink),
-                      ),
-                    ],
+            AnimatedContainer(
+              duration: TvLook.anim(Motion.pressIn * 2),
+              height: 40,
+              width: pill ? null : 40,
+              padding: pill ? const EdgeInsets.symmetric(horizontal: DS.s16) : EdgeInsets.zero,
+              decoration: DS.third
+                  // Real: a key on the set (lit when focused; the warning one has a red cap).
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: Tactile.capFace(warn ? const Color(0xFFB03A36) : null),
+                      border: Border.all(color: f ? Tactile.light : Tactile.rim, width: f ? 1.4 : .6),
+                      boxShadow: [
+                        ...Tactile.raised(pressed: f),
+                        if (f) BoxShadow(color: Tactile.light.withValues(alpha: .4), blurRadius: 16),
+                      ],
+                    )
+                  : BoxDecoration(
+                      color: f ? TvDS.surfaceFocused : (warn ? DS.alert.withValues(alpha: .22) : TvDS.surface),
+                      border: warn && !f ? Border.all(color: DS.alert.withValues(alpha: .7)) : null,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 22, color: DS.third ? (warn ? Colors.white : Tactile.ink) : (f ? (warn ? DS.alert : TvDS.onLight) : TvDS.ink)),
+                  if (pill) ...[
+                    const SizedBox(width: DS.s8),
+                    Text(
+                      DS.third ? label.toUpperCase() : label,
+                      style: DS.third
+                          ? TvReal.legend(13, color: warn ? Colors.white : Tactile.ink)
+                          : TvDS.hint.copyWith(fontSize: 15, color: f ? TvDS.onLight : TvDS.ink),
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
             // Label hangs under the icon without widening it (keeps the icons evenly spaced).
@@ -1828,7 +1830,11 @@ class _ClockState extends State<_Clock> {
     // Real: the set's channel display — date and time as a lit dot-matrix readout.
     if (DS.third) {
       final read = [if (TvLook.on('date')) '${_days[_now.weekday - 1]} ${_now.day} ${_months[_now.month - 1]}', if (TvLook.on('clock')) time].join('  ');
-      return TLcd(radius: 10, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9), child: DotMatrix(read, dot: 2.6, color: TLcd.text));
+      return TLcd(
+        radius: 10,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        child: DotMatrix(read, dot: 2.6, color: TLcd.text),
+      );
     }
     return ListenableBuilder(
       listenable: widget.prefs,
@@ -1883,43 +1889,37 @@ class _Card extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedScale(
-          // Customise → Focused card: grow + glow / grow / outline only.
-          scale: moving ? TvDS.focusScaleCard + .06 : (f && TvLook.str('focus') != 'outline' ? TvDS.focusScaleCard : 1),
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: TvLook.anim(Motion.pressIn * 2),
-            width: width,
-            height: height,
-            // Ring + glow only on the focused card (one blur on screen at a time).
-            foregroundDecoration: TvRing(on: f, radius: radius),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(radius),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  item.app != null
-                      ? (round ? TvAppIcon(app: item.app!, size: width) : TvAppArt(app: item.app!, width: width))
-                      : _ProgramArt(item: item, width: width, height: height),
-                  // Moving: arrows on both sides say "← → to slide me".
-                  if (moving)
-                    const ColoredBox(
-                      color: Color(0x66000000),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Icon(Icons.chevron_left_rounded, size: 36, color: TvDS.ink),
-                          Icon(Icons.chevron_right_rounded, size: 36, color: TvDS.ink),
-                        ],
-                      ),
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          width: width,
+          height: height,
+          // Ring + glow only on the focused card (one blur on screen at a time).
+          foregroundDecoration: TvRing(on: f, radius: radius),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(radius),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                item.app != null
+                    ? (round ? TvAppIcon(app: item.app!, size: width) : TvAppArt(app: item.app!, width: width))
+                    : _ProgramArt(item: item, width: width, height: height),
+                // Moving: arrows on both sides say "← → to slide me".
+                if (moving)
+                  const ColoredBox(
+                    color: Color(0x66000000),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Icon(Icons.chevron_left_rounded, size: 36, color: TvDS.ink),
+                        Icon(Icons.chevron_right_rounded, size: 36, color: TvDS.ink),
+                      ],
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
@@ -2033,49 +2033,51 @@ class _QuickChip extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedScale(
-          scale: moving ? 1.14 : (f ? TvDS.focusScaleCard : 1),
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: TvLook.anim(Motion.pressIn * 2),
-            height: 40 * k,
-            padding: EdgeInsets.symmetric(horizontal: (edit || labels == 'never' || (labels == 'focus' && !f) ? DS.s12 : DS.s16) * k),
-            decoration: BoxDecoration(
-              color: f ? TvDS.surfaceFocused : const Color(0x33000000),
-              borderRadius: BorderRadius.circular(20 * k),
-              border: Border.all(color: f ? Colors.transparent : TvDS.line),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (moving) Icon(Icons.chevron_left_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
-                if (item.app != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(
-                      width: 32 * k,
-                      height: 18 * k,
-                      child: TvAppArt(app: item.app!, width: 32 * k),
-                    ),
-                  )
-                else if (icon != null)
-                  Icon(icon, size: 20 * k, color: f ? TvDS.onLight : TvDS.ink),
-                if (!edit && (labels == 'always' || (labels == 'focus' && f))) ...[
-                  SizedBox(width: DS.s8 * k),
-                  Text(
-                    item.title,
-                    style: TvDS.hint.copyWith(fontSize: 14 * k, color: f ? TvDS.onLight : TvDS.ink),
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          height: 40 * k,
+          padding: EdgeInsets.symmetric(horizontal: (edit || labels == 'never' || (labels == 'focus' && !f) ? DS.s12 : DS.s16) * k),
+          decoration: BoxDecoration(
+            color: f ? TvDS.surfaceFocused : const Color(0x33000000),
+            borderRadius: BorderRadius.circular(20 * k),
+            border: Border.all(color: f ? Colors.transparent : TvDS.line),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (moving) Icon(Icons.chevron_left_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
+              if (item.app != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    width: 32 * k,
+                    height: 18 * k,
+                    child: TvAppArt(app: item.app!, width: 32 * k),
                   ),
-                ],
-                if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
+                )
+              else if (icon != null)
+                Icon(icon, size: 20 * k, color: f ? TvDS.onLight : TvDS.ink),
+              if (!edit && (labels == 'always' || (labels == 'focus' && f))) ...[
+                SizedBox(width: DS.s8 * k),
+                Text(
+                  item.title,
+                  style: TvDS.hint.copyWith(fontSize: 14 * k, color: f ? TvDS.onLight : TvDS.ink),
+                ),
               ],
-            ),
+              if (moving) Icon(Icons.chevron_right_rounded, size: 18, color: f ? TvDS.onLight : TvDS.ink),
+            ],
           ),
         ),
       ),
     );
   }
+}
+
+/// [preferred] on [bg] when it has text contrast (4.5:1), else near-black or white.
+Color _inkOn(Color bg, Color preferred) {
+  final b = bg.computeLuminance(), p = preferred.computeLuminance();
+  if ((math.max(b, p) + .05) / (math.min(b, p) + .05) >= 4.5) return preferred;
+  return b > .18 ? const Color(0xFF111111) : Colors.white;
 }
 
 /// The big "▶ Resume" button above the quick actions: picks up what's playing / paused.
@@ -2090,6 +2092,9 @@ class _ResumeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = item.appName;
+    // The theme's hero colour at rest; its own ink when that reads on it, else black or white
+    // (some themes pair a grey hero with an ink too close to it).
+    final ink = _inkOn(DS.hero, DS.heroInk);
     return Semantics(
       button: true,
       label: 'Resume ${item.title}',
@@ -2099,40 +2104,35 @@ class _ResumeButton extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedScale(
-          scale: f ? TvDS.focusScaleCard : 1,
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: TvLook.anim(Motion.pressIn * 2),
-            height: 40,
-            padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
-            decoration: BoxDecoration(
-              // Always the strongest thing in its row: theme colour at rest, white when focused.
-              color: f ? TvDS.surfaceFocused : DS.hero,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, size: 24, color: f ? TvDS.onLight : DS.heroInk),
-                const SizedBox(width: DS.s4),
-                Text(
-                  item.playing ? 'Now playing' : 'Resume',
-                  style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? TvDS.onLight : DS.heroInk),
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          height: 40,
+          padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
+          decoration: BoxDecoration(
+            // Always the strongest thing in its row: theme colour at rest, white when focused.
+            color: f ? TvDS.surfaceFocused : DS.hero,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(item.playing ? Icons.graphic_eq_rounded : Icons.play_arrow_rounded, size: 24, color: f ? TvDS.onLight : ink),
+              const SizedBox(width: DS.s4),
+              Text(
+                item.playing ? 'Now playing' : 'Resume',
+                style: TvDS.hint.copyWith(fontSize: 15, fontWeight: FontWeight.w600, color: f ? TvDS.onLight : ink),
+              ),
+              const SizedBox(width: DS.s8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: Text(
+                  [item.title, if (app != null && app.isNotEmpty) 'on $app'].join(' '),
+                  style: TvDS.hint.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: (f ? TvDS.onLight : ink).withValues(alpha: .75)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: DS.s8),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: Text(
-                    [item.title, if (app != null && app.isNotEmpty) 'on $app'].join(' '),
-                    style: TvDS.hint.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: (f ? TvDS.onLight : DS.heroInk).withValues(alpha: .75)),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2164,21 +2164,16 @@ class _MediaButton extends StatelessWidget {
         onSelect: onSelect,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedScale(
-          scale: f ? TvDS.focusScale : 1,
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: TvLook.anim(Motion.pressIn * 2),
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: f ? TvDS.surfaceFocused : const Color(0x33000000),
-              shape: BoxShape.circle,
-              border: Border.all(color: f ? Colors.transparent : TvDS.line),
-            ),
-            child: Icon(icon, size: 24, color: f ? TvDS.onLight : TvDS.ink),
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: f ? TvDS.surfaceFocused : const Color(0x33000000),
+            shape: BoxShape.circle,
+            border: Border.all(color: f ? Colors.transparent : TvDS.line),
           ),
+          child: Icon(icon, size: 24, color: f ? TvDS.onLight : TvDS.ink),
         ),
       ),
     );
@@ -2216,30 +2211,25 @@ class _AllAppsTile extends StatelessWidget {
         onSelect: onSelect,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedScale(
-          scale: f && TvLook.str('focus') != 'outline' ? TvDS.focusScaleCard : 1,
-          duration: TvLook.anim(Motion.popDuration),
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: TvLook.anim(Motion.pressIn * 2),
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              color: f ? TvDS.surfaceFocused : TvDS.surface,
-              borderRadius: BorderRadius.circular(round ? width / 2 : TvDS.rTile),
-              border: Border.all(color: f ? Colors.transparent : TvDS.line),
-            ),
-            child: round
-                ? Icon(Icons.apps_rounded, size: width * .4, color: f ? TvDS.onLight : TvDS.ink) // the title block says "All apps"
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.apps_rounded, size: 32, color: f ? TvDS.onLight : TvDS.ink),
-                      const SizedBox(height: DS.s8),
-                      Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink)),
-                    ],
-                  ),
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: f ? TvDS.surfaceFocused : TvDS.surface,
+            borderRadius: BorderRadius.circular(round ? width / 2 : TvDS.rTile),
+            border: Border.all(color: f ? Colors.transparent : TvDS.line),
           ),
+          child: round
+              ? Icon(Icons.apps_rounded, size: width * .4, color: f ? TvDS.onLight : TvDS.ink) // the title block says "All apps"
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.apps_rounded, size: 32, color: f ? TvDS.onLight : TvDS.ink),
+                    const SizedBox(height: DS.s8),
+                    Text(count.isEmpty ? 'All apps' : 'All apps · $count', style: TvDS.tileName.copyWith(fontSize: 14, color: f ? TvDS.onLight : TvDS.ink)),
+                  ],
+                ),
         ),
       ),
     );

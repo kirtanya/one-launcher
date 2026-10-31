@@ -85,51 +85,46 @@ class TvReviewCard extends StatelessWidget {
         focusNode: focusNode,
         onFocus: onFocus,
         onSelect: onSelect,
-        builder: (context, f) => AnimatedScale(
-          scale: f ? 1.04 : 1,
-          duration: Motion.popDuration,
-          curve: Motion.pop,
-          child: AnimatedContainer(
-            duration: Motion.pressIn * 2,
-            width: w,
-            height: h,
-            padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s16, DS.s12),
-            decoration: BoxDecoration(
-              color: f && !TvMetro.on ? const Color(0x24FFFFFF) : TvDS.surface,
-              borderRadius: TvMetro.corners(TvDS.rTile - 2),
-              boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
-            ),
-            // Focus: a white ring (Tiles: the Metro frame).
-            foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 2),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _Avatar(r.author),
-                    const SizedBox(width: DS.s8),
-                    Expanded(
-                      child: Text(
-                        r.author,
-                        style: TvDS.tileName.copyWith(fontWeight: FontWeight.w600),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+        builder: (context, f) => AnimatedContainer(
+          duration: Motion.pressIn * 2,
+          width: w,
+          height: h,
+          padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s16, DS.s12),
+          decoration: BoxDecoration(
+            color: f && !TvMetro.on ? const Color(0x24FFFFFF) : TvDS.surface,
+            borderRadius: TvMetro.corners(TvDS.rTile - 2),
+            boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
+          ),
+          // Focus: a white ring (Tiles: the Metro frame).
+          foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _Avatar(r.author),
+                  const SizedBox(width: DS.s8),
+                  Expanded(
+                    child: Text(
+                      r.author,
+                      style: TvDS.tileName.copyWith(fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (r.rating != null) ...[const SizedBox(width: DS.s8), ReviewScore(r.rating!)],
-                  ],
-                ),
-                const SizedBox(height: DS.s8),
-                Expanded(
-                  child: Text(
-                    r.text.replaceAll(RegExp(r'\s*\n+\s*'), ' '),
-                    style: TvDS.tileName.copyWith(fontWeight: FontWeight.w400, height: 1.35, color: f ? TvDS.ink : TvDS.inkMuted),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
                   ),
+                  if (r.rating != null) ...[const SizedBox(width: DS.s8), ReviewScore(r.rating!)],
+                ],
+              ),
+              const SizedBox(height: DS.s8),
+              Expanded(
+                child: Text(
+                  r.text.replaceAll(RegExp(r'\s*\n+\s*'), ' '),
+                  style: TvDS.tileName.copyWith(fontWeight: FontWeight.w400, height: 1.35, color: f ? TvDS.ink : TvDS.inkMuted),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -233,8 +228,9 @@ class _TvReviewPageState extends State<TvReviewPage> {
 
 /// "Season 2": a tab over the episode row. OK shows that season; the chosen one stays marked.
 class TvSeasonTab extends StatelessWidget {
-  const TvSeasonTab({super.key, required this.label, required this.selected, required this.onSelect, this.focusNode});
+  const TvSeasonTab({super.key, required this.label, required this.selected, required this.onSelect, this.focusNode, this.leading});
   final String label;
+  final Widget? leading; // e.g. a service's app icon
   final bool selected;
   final VoidCallback onSelect;
   final FocusNode? focusNode;
@@ -247,33 +243,34 @@ class TvSeasonTab extends StatelessWidget {
     child: TvFocusable(
       focusNode: focusNode,
       onSelect: onSelect,
-      builder: (context, f) => AnimatedScale(
-        scale: f ? 1.06 : 1,
-        duration: Motion.popDuration,
-        curve: Motion.pop,
-        child: AnimatedContainer(
-          duration: Motion.pressIn * 2,
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: DS.s16),
-          alignment: Alignment.center,
-          // Classic: white when focused, a soft fill + ring when chosen. Tiles: the accent when
-          // chosen, the Metro frame for focus.
-          decoration: TvMetro.on
-              ? BoxDecoration(color: selected ? TvMetro.tileFill : TvDS.surface, borderRadius: TvMetro.corners(0), boxShadow: TvMetro.glow(f))
-              : BoxDecoration(
-                  color: f ? TvDS.surfaceFocused : (selected ? const Color(0x29FFFFFF) : TvDS.surface),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: selected && !f ? const Color(0x99FFFFFF) : Colors.transparent, width: 1.5),
-                ),
-          foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: 2) : null,
-          child: Text(
-            TvMetro.cased(label),
-            style: TvDS.panelRow.copyWith(
-              fontSize: 15,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: !TvMetro.on && f ? TvDS.onLight : (selected || f ? TvDS.ink : TvDS.inkMuted),
+      builder: (context, f) => AnimatedContainer(
+        duration: Motion.pressIn * 2,
+        height: 40,
+        padding: EdgeInsets.only(left: leading != null ? DS.s8 : DS.s16, right: DS.s16),
+        alignment: Alignment.center,
+        // Classic: white when focused, a soft fill + ring when chosen. Tiles: the accent when
+        // chosen, the Metro frame for focus.
+        decoration: TvMetro.on
+            ? BoxDecoration(color: selected ? TvMetro.tileFill : TvDS.surface, borderRadius: TvMetro.corners(0), boxShadow: TvMetro.glow(f))
+            : BoxDecoration(
+                color: f ? TvDS.surfaceFocused : (selected ? const Color(0x29FFFFFF) : TvDS.surface),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: selected && !f ? const Color(0x99FFFFFF) : Colors.transparent, width: 1.5),
+              ),
+        foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: 2) : null,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: DS.s8)],
+            Text(
+              TvMetro.cased(label),
+              style: TvDS.panelRow.copyWith(
+                fontSize: 15,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: !TvMetro.on && f ? TvDS.onLight : (selected || f ? TvDS.ink : TvDS.inkMuted),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     ),
@@ -310,28 +307,23 @@ class TvEpisodeCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedScale(
-                scale: f ? TvDS.focusScaleCard : 1,
-                duration: Motion.popDuration,
-                curve: Motion.pop,
-                child: AnimatedContainer(
-                  duration: Motion.pressIn * 2,
-                  width: w,
-                  height: stillH,
-                  foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 4),
-                  decoration: BoxDecoration(
-                    borderRadius: TvMetro.corners(TvDS.rTile - 4),
-                    boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: TvMetro.corners(TvDS.rTile - 4),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        ShowImage(urls: [?e.still], decodeWidth: 400, fallbackTitle: 'Episode ${e.episode}'),
-                        if (rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(rating!)),
-                      ],
-                    ),
+              AnimatedContainer(
+                duration: Motion.pressIn * 2,
+                width: w,
+                height: stillH,
+                foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: TvDS.rTile - 4),
+                decoration: BoxDecoration(
+                  borderRadius: TvMetro.corners(TvDS.rTile - 4),
+                  boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
+                ),
+                child: ClipRRect(
+                  borderRadius: TvMetro.corners(TvDS.rTile - 4),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ShowImage(urls: [?e.still], decodeWidth: 400, fallbackTitle: 'Episode ${e.episode}'),
+                      if (rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(rating!)),
+                    ],
                   ),
                 ),
               ),

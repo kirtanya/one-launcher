@@ -12,6 +12,8 @@ Flutter Android launcher, two flavours from one codebase:
   Search (`tv/tv_search.dart`): filter chips (All · One Stream · YouTube · services · Apps); All =
   a row per source, One Stream + YouTube first. YouTube via `tv/youtube_search.dart` (youtubei
   search endpoint, no key; POST through TvActivity "httpGet" with a body); opens in the YouTube TV app.
+  **TV focus never scales** (user, 2026-10-31: scaling breaks the layout): show focus with an outline,
+  fill or glow only. Backdrop Ken Burns zooms are fine.
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 
