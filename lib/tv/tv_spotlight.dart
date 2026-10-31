@@ -39,9 +39,15 @@ class _SpotlightState extends State<_Spotlight> {
   final _at = <String, int>{}; // each column's focused card
   final _nodes = <String, FocusNode>{};
   final _top = <String, FocusNode>{};
-  final _scroll = ScrollController();
+  final _scrolls = <String, ScrollController>{}; // one per column (old and new overlap while switching)
+  int _dir = 1; // the last ← / → : the new column slides in from that side
 
   static const _cardH = 158.0, _gap = 16.0, _colW = 300.0;
+  static const _chipH = 60.0, _chipGap = 10.0; // quick actions: small cards
+
+  ScrollController _scrollOf(String row) => _scrolls[row] ??= ScrollController();
+  static bool _small(TvRow row) => row.id == 'quick';
+  static double _extent(TvRow row) => _small(row) ? _chipH + _chipGap : _cardH + _gap;
 
   List<TvRow> get _rows => widget.rows;
   TvRow? get _row => _rows.isEmpty ? null : _rows[_col.clamp(0, _rows.length - 1)];
@@ -77,7 +83,9 @@ class _SpotlightState extends State<_Spotlight> {
     for (final n in [..._nodes.values, ..._top.values]) {
       n.dispose();
     }
-    _scroll.dispose();
+    for (final c in _scrolls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -96,20 +104,21 @@ class _SpotlightState extends State<_Spotlight> {
     _at[row.id] = at;
     _node(row.id, at).requestFocus();
     // The focused card keeps its place near the top of the column; the rest slide past it.
-    if (_scroll.hasClients) {
-      final y = (at * (_cardH + _gap) - _cardH * .4).clamp(0.0, _scroll.position.maxScrollExtent);
-      animate ? _scroll.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic) : _scroll.jumpTo(y);
+    final sc = _scrollOf(row.id);
+    if (sc.hasClients) {
+      final y = (at * _extent(row) - _cardH * .4).clamp(0.0, sc.position.maxScrollExtent);
+      animate ? sc.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic) : sc.jumpTo(y);
     }
   }
 
   void _switch(int dir) {
     if (_rows.length < 2) return;
     HapticFeedback.selectionClick();
-    setState(() => _col = (_col + dir) % _rows.length);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(0);
-      _focusCard(_at[_row!.id] ?? 0, animate: false);
+    setState(() {
+      _dir = dir;
+      _col = (_col + dir) % _rows.length;
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusCard(_at[_row!.id] ?? 0, animate: false));
   }
 
   /// Moves inside the column: ↑ ↓ cards, ← → columns, ↑ from the top card to the top bar.
@@ -164,7 +173,7 @@ class _SpotlightState extends State<_Spotlight> {
           // ---- Title block: only to read ----
           Positioned(
             left: TvDS.safe.left,
-            bottom: TvDS.safe.bottom + DS.s24,
+            bottom: TvDS.safe.bottom + DS.s48,
             width: math.min(TvDS.heroW + 60, c.maxWidth - _colW - TvDS.safe.horizontal - DS.s48),
             child: ExcludeFocus(
               child: _HeroInfo(item: TvLook.on('hero') ? widget.hero : null, chip: null, rowTitle: row?.title),
@@ -172,9 +181,43 @@ class _SpotlightState extends State<_Spotlight> {
           ),
 
           // ---- The column ----
-          Positioned(top: TvDS.safe.top + 64, right: TvDS.safe.right, bottom: 0, width: _colW, child: row == null ? const SizedBox.shrink() : _column(row)),
+          Positioned(
+            top: TvDS.safe.top + 64,
+            right: TvDS.safe.right,
+            bottom: 0,
+            width: _colW,
+            child: row == null
+                ? const SizedBox.shrink()
+                // ← → : the new column slides in from that side as the old one leaves.
+                : AnimatedSwitcher(
+                    duration: TvLook.anim(const Duration(milliseconds: 280)),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    layoutBuilder: (current, previous) => Stack(alignment: Alignment.topLeft, children: [...previous, ?current]),
+                    transitionBuilder: (child, a) {
+                      final incoming = child.key == ValueKey('col:${row.id}');
+                      final from = Offset((incoming ? .25 : -.25) * _dir, 0);
+                      return FadeTransition(
+                        opacity: a,
+                        child: SlideTransition(
+                          position: Tween(begin: from, end: Offset.zero).animate(a),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: KeyedSubtree(key: ValueKey('col:${row.id}'), child: _column(row)),
+                  ),
+          ),
 
-          // ---- Top bar: everything on the right ----
+          // ---- Clock, top left; search · voice · customise, top right ----
+          Positioned(
+            top: TvDS.safe.top,
+            left: TvDS.safe.left,
+            child: SizedBox(
+              height: 40,
+              child: Center(child: _Clock(prefs: widget.prefs)),
+            ),
+          ),
           Positioned(
             top: TvDS.safe.top,
             right: TvDS.safe.right,
@@ -182,20 +225,16 @@ class _SpotlightState extends State<_Spotlight> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final (i, id) in widget.header.indexed) ...[
-                  if (i > 0) const SizedBox(width: DS.s8),
+                  if (i > 0) const SizedBox(width: DS.s12),
                   _TopButton(
                     id: id,
+                    compact: true,
                     text: id == 'perms' ? widget.missingLabel : null,
                     focusNode: _topNode(id),
                     onSelect: () => widget.onHeader(id),
                     onMove: (d) => _moveTop(i, d),
                   ),
                 ],
-                const SizedBox(width: DS.s20),
-                SizedBox(
-                  height: 40,
-                  child: Center(child: _Clock(prefs: widget.prefs)),
-                ),
               ],
             ),
           ),
@@ -241,30 +280,44 @@ class _SpotlightState extends State<_Spotlight> {
             blendMode: BlendMode.dstIn,
             child: ListView.builder(
               key: ValueKey('spotlight:${row.id}'),
-              controller: _scroll,
+              controller: _scrollOf(row.id),
               clipBehavior: Clip.none,
               physics: const NeverScrollableScrollPhysics(), // the remote steers it (_focusCard)
               padding: EdgeInsets.only(top: 4, bottom: _cardH * 2),
               itemCount: row.items.length,
-              itemExtent: _cardH + _gap,
+              itemExtent: _extent(row),
               itemBuilder: (context, i) {
                 final item = row.items[i];
+                void focus() {
+                  _at[row.id] = i;
+                  widget.onShow(item);
+                }
+
                 return Align(
                   alignment: Alignment.topCenter,
-                  child: _Card(
-                    key: ValueKey('${row.id}:${item.key}'),
-                    item: item,
-                    width: _colW,
-                    height: _cardH,
-                    focusNode: _node(row.id, i),
-                    onSelect: () => widget.onOpen(item),
-                    onOptions: () => widget.onOptions(row, i),
-                    onMove: (d) => _move(i, d),
-                    onFocus: () {
-                      _at[row.id] = i;
-                      widget.onShow(item);
-                    },
-                  ),
+                  child: _small(row)
+                      ? _QuickCard(
+                          key: ValueKey('${row.id}:${item.key}'),
+                          item: item,
+                          width: _colW,
+                          height: _chipH,
+                          focusNode: _node(row.id, i),
+                          onSelect: () => widget.onOpen(item),
+                          onOptions: () => widget.onOptions(row, i),
+                          onMove: (d) => _move(i, d),
+                          onFocus: focus,
+                        )
+                      : _Card(
+                          key: ValueKey('${row.id}:${item.key}'),
+                          item: item,
+                          width: _colW,
+                          height: _cardH,
+                          focusNode: _node(row.id, i),
+                          onSelect: () => widget.onOpen(item),
+                          onOptions: () => widget.onOptions(row, i),
+                          onMove: (d) => _move(i, d),
+                          onFocus: focus,
+                        ),
                 );
               },
             ),
@@ -290,8 +343,8 @@ class _SpotlightScrims extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.centerRight,
               end: Alignment.centerLeft,
-              colors: [Color(0xF2000000), Color(0x99000000), Color(0x00000000)],
-              stops: [0, .34, .62],
+              colors: [Color(0xF5000000), Color(0xA6000000), Color(0x00000000)],
+              stops: [0, .36, .66],
             ),
           ),
         ),
@@ -300,8 +353,8 @@ class _SpotlightScrims extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
-              colors: [Color(0xFF000000), Color(0xB3000000), Color(0x00000000)],
-              stops: [0, .32, .7],
+              colors: [Color(0xFF000000), Color(0xBF000000), Color(0x00000000)],
+              stops: [0, .3, .62],
             ),
           ),
         ),
@@ -313,4 +366,74 @@ class _SpotlightScrims extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// A quick action in Spotlight's column: a small card — its icon (or the app's banner) and name.
+/// Outline + fill on focus, never a size change.
+class _QuickCard extends StatelessWidget {
+  const _QuickCard({
+    super.key,
+    required this.item,
+    required this.width,
+    required this.height,
+    required this.focusNode,
+    required this.onSelect,
+    required this.onOptions,
+    this.onMove,
+    this.onFocus,
+  });
+  final TvItem item;
+  final double width, height;
+  final FocusNode focusNode;
+  final VoidCallback onSelect, onOptions;
+  final bool Function(AxisDirection)? onMove;
+  final VoidCallback? onFocus;
+
+  @override
+  Widget build(BuildContext context) {
+    final edit = item.key == 'q:edit';
+    final icon = edit ? Icons.add_rounded : tvActions[item.key]?.$2;
+    return Semantics(
+      button: true,
+      label: edit ? 'Edit quick actions' : item.title,
+      child: TvFocusable(
+        focusNode: focusNode,
+        onSelect: onSelect,
+        onLongSelect: onOptions,
+        onMove: onMove,
+        onFocus: onFocus,
+        builder: (context, f) => AnimatedContainer(
+          duration: TvLook.anim(Motion.pressIn * 2),
+          width: width,
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: DS.s16),
+          decoration: BoxDecoration(
+            color: f ? TvDS.surfaceFocused : const Color(0x14FFFFFF),
+            borderRadius: BorderRadius.circular(height / 2),
+            border: Border.all(color: f ? Colors.transparent : const Color(0x1FFFFFFF)),
+          ),
+          child: Row(
+            children: [
+              if (item.app != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(width: 48, height: 27, child: TvAppArt(app: item.app!, width: 48)),
+                )
+              else
+                Icon(icon ?? Icons.bolt_rounded, size: 24, color: f ? TvDS.onLight : TvDS.ink),
+              const SizedBox(width: DS.s12),
+              Expanded(
+                child: Text(
+                  edit ? 'Edit quick actions' : item.title,
+                  style: TvDS.panelRow.copyWith(fontSize: 16, color: f ? TvDS.onLight : TvDS.ink),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

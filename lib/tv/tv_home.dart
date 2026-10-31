@@ -480,6 +480,16 @@ class _TvHomeState extends State<TvHome> {
   bool get _tilesView => prefs.homeView == 'tiles';
   bool get _spotlightView => prefs.homeView == 'spotlight'; // TV only: tv_spotlight.dart
   final _spotlightKey = GlobalKey<_SpotlightState>();
+
+  /// Spotlight's columns: Classic's content rows, with the quick actions as a column of small
+  /// cards after Your apps (the Resume button is the first Continue watching card already).
+  List<TvRow> _spotlightRows() {
+    final content = [for (final r in _rows) if (!r.chips && r.items.isNotEmpty) r];
+    final quick = _rows.where((r) => r.id == 'quick' && r.items.isNotEmpty).firstOrNull;
+    if (quick == null) return content;
+    final at = content.indexWhere((r) => r.id == 'fav');
+    return [...content]..insert(at < 0 ? content.length : at + 1, quick);
+  }
   TvItem? _resumeItem;
   List<TvItem> _cont = const []; // everything to resume (Tiles view: the Resume row)
 
@@ -1143,7 +1153,7 @@ class _TvHomeState extends State<TvHome> {
                   TvLook.read(prefs);
                   return _Spotlight(
                     key: _spotlightKey,
-                    rows: [for (final r in _rows) if (!r.chips && r.items.isNotEmpty) r],
+                    rows: _spotlightRows(),
                     prefs: prefs,
                     hero: _hero,
                     backdrop: _backdrop,
@@ -1724,8 +1734,9 @@ class _TopBar extends StatelessWidget {
 /// Search is a pill with a label (the thing people use most); the rest are icons that say
 /// what they are when focused.
 class _TopButton extends StatelessWidget {
-  const _TopButton({required this.id, required this.focusNode, required this.onSelect, this.onMove, this.onFocus, this.text});
+  const _TopButton({required this.id, required this.focusNode, required this.onSelect, this.onMove, this.onFocus, this.text, this.compact = false});
   final String id;
+  final bool compact; // Spotlight: Search is an icon too (its name shows under it on focus)
   final String? text; // "2 permissions needed"
   final FocusNode focusNode;
   final VoidCallback onSelect;
@@ -1740,7 +1751,7 @@ class _TopButton extends StatelessWidget {
       'perms' => (Icons.warning_amber_rounded, text ?? 'Permissions needed'),
       _ => (Icons.tune_rounded, 'Customise'),
     };
-    final pill = id == 'search' || id == 'perms';
+    final pill = id == 'perms' || (id == 'search' && !compact);
     final warn = id == 'perms'; // the alert colour until focused
     return Semantics(
       button: true,

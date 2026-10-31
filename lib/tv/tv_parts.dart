@@ -191,11 +191,14 @@ Future<void> showTvPanel(
   VoidCallback? onBack,
 }) {
   VoidCallback? back() => onBack ?? (build?.call() ?? actions).where((a) => a.icon == Icons.arrow_back_rounded).firstOrNull?.onSelect;
+  // Spotlight: the column is on the right, so the panel comes in on the left — see-through, the
+  // picture stays in view behind it.
+  final left = TvMetro.prefs?.homeView == 'spotlight';
   return showGeneralDialog(
     context: context,
     barrierDismissible: false, // a tap beside the panel closes it (below); Back goes up a level
     barrierLabel: 'Close',
-    barrierColor: const Color(0x99000000),
+    barrierColor: left ? const Color(0x33000000) : const Color(0x99000000),
     transitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (ctx, _, _) => PopScope(
       // A row picked or a tap beside the panel closes with `true`; Back on the remote (no result)
@@ -211,9 +214,11 @@ Future<void> showTvPanel(
             child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => Navigator.pop(ctx, true)),
           ),
           Align(
-            alignment: Alignment.centerRight,
+            alignment: left ? Alignment.centerLeft : Alignment.centerRight,
             child: Material(
-              color: DS.third ? Colors.transparent : (TvMetro.on ? DS.card : const Color(0xFF1C1C1C)), // Tiles: Metro's near-black, flat
+              color: DS.third
+                  ? Colors.transparent
+                  : (TvMetro.on ? DS.card : (left ? const Color(0xC70E0E0E) : const Color(0xFF1C1C1C))), // Tiles: Metro's near-black, flat
               child: Container(
                 decoration: DS.third ? TvReal.panel : null, // Real: a moulded plate
                 child: SizedBox(
@@ -319,7 +324,7 @@ Future<void> showTvPanel(
       ),
     ),
     transitionBuilder: (ctx, a, _, child) => SlideTransition(
-      position: Tween(begin: const Offset(.3, 0), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+      position: Tween(begin: Offset(left ? -.3 : .3, 0), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
       child: FadeTransition(opacity: a, child: child),
     ),
   );

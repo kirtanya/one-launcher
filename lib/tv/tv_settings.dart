@@ -50,7 +50,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('cardScale', 'Card size', [(.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
       // Circles keep apps apart from shows and films at a glance.
       TvOption('appCards', 'App cards', [('round', 'Circle (app icon)'), ('banner', 'Big card (banner)')], 'round'),
-      TvOption('focus', 'Focused card', [('glow', 'Grow + glow'), ('grow', 'Grow'), ('outline', 'Outline only')], 'glow'),
+      TvOption('focus', 'Focused card', [('glow', 'Outline + glow'), ('outline', 'Outline only')], 'glow'), // never scales
       TvOption('motion', 'Animations', [('full', 'Full'), ('reduced', 'Reduced')], 'full'),
       TvOption('rowTitles', 'Row titles', [(true, 'On'), (false, 'Off')], true),
     ],
@@ -311,13 +311,15 @@ class TvLook {
 /// the panel updates as you go). [extras] adds the sections that live in the home screen
 /// (quick actions editor, colours, apps).
 void showTvCustomise(BuildContext context, {required Prefs prefs, required List<TvAction> extras}) {
+  final view = prefs.homeView;
   showTvPanel(
     context,
     title: 'Customise',
     actions: [
-      _optionRow(prefs, tvTilesHomeView), // Home view: Cinematic / Tiles
-      for (final (name, icon, opts) in tvSections) TvAction(icon, name, () => _section(context, prefs, name, opts, extras)),
-      TvAction(Icons.grid_view_rounded, 'Tiles', () => _tilesSection(context, prefs, extras)),
+      _optionRow(prefs, tvTilesHomeView), // Home view: Cinematic / Spotlight / Tiles / Real
+      // Only what the home view in use reads (Tiles has its own groups).
+      for (final (name, icon, opts) in tvSectionsFor(view)) TvAction(icon, name, () => _section(context, prefs, name, opts, extras)),
+      if (view == 'tiles') TvAction(Icons.grid_view_rounded, 'Tiles', () => _tilesSection(context, prefs, extras)),
       TvAction(Icons.search_rounded, 'Search', () => _section(context, prefs, 'Search', tvSearchOptions, extras)),
       ...extras,
       TvAction(
@@ -337,6 +339,39 @@ void showTvCustomise(BuildContext context, {required Prefs prefs, required List<
       ),
     ],
   );
+}
+
+/// Customise's sections for a home view, each with only the options that view reads.
+/// Spotlight names them its own way (its rows are columns).
+List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
+  if (view == 'tiles') {
+    final remote = tvSections.firstWhere((s) => s.$1 == 'Remote & behaviour');
+    return [
+      (
+        remote.$1,
+        remote.$2,
+        [
+          for (final o in remote.$3)
+            if (o.key != 'landing') o,
+        ],
+      ),
+    ];
+  }
+  if (view != 'spotlight') return tvSections;
+  const skip = {'rowsAt', 'cardScale', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
+  const names = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions', 'Cards & motion': 'Focus & motion'};
+  return [
+    for (final (name, icon, opts) in tvSections)
+      if (opts.any((o) => !skip.contains(o.key)))
+        (
+          names[name] ?? name,
+          icon,
+          [
+            for (final o in opts)
+              if (!skip.contains(o.key)) o,
+          ],
+        ),
+  ];
 }
 
 /// Extra rows at the end of Customise → Tiles (Add a tile, Reset Start), set by the home screen.
