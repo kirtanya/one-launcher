@@ -36,6 +36,8 @@ import 'tv_tiles.dart';
 import '../tiles/tiles_home.dart' show TileSpec;
 import 'tv_settings.dart';
 
+part 'tv_spotlight.dart';
+
 enum TvKind { app, resume, program, action }
 
 /// Anything on the home screen: an app, the show that's playing/paused, or a streaming
@@ -476,6 +478,8 @@ class _TvHomeState extends State<TvHome> {
 
   final _tilesKey = GlobalKey<TvTilesStartState>();
   bool get _tilesView => prefs.homeView == 'tiles';
+  bool get _spotlightView => prefs.homeView == 'spotlight'; // TV only: tv_spotlight.dart
+  final _spotlightKey = GlobalKey<_SpotlightState>();
   TvItem? _resumeItem;
   List<TvItem> _cont = const []; // everything to resume (Tiles view: the Resume row)
 
@@ -1088,6 +1092,7 @@ class _TvHomeState extends State<TvHome> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_moving != null) return _endMove(); // Back while moving an app = done
+        if (_spotlightView) return _spotlightKey.currentState?.land();
         if (_tilesView) {
           final tiles = _tilesKey.currentState;
           if (tiles == null || tiles.endMove()) return;
@@ -1128,6 +1133,28 @@ class _TvHomeState extends State<TvHome> {
                 onTop: () => _focus(-1, 0),
                 quick: _tilesQuick(),
                 resumeCards: _tilesResume(),
+              ),
+            )
+          : _spotlightView
+          ? Scaffold(
+              backgroundColor: const Color(0xFF000000),
+              body: Builder(
+                builder: (context) {
+                  TvLook.read(prefs);
+                  return _Spotlight(
+                    key: _spotlightKey,
+                    rows: [for (final r in _rows) if (!r.chips && r.items.isNotEmpty) r],
+                    prefs: prefs,
+                    hero: _hero,
+                    backdrop: _backdrop,
+                    header: _header,
+                    missingLabel: _missingLabel,
+                    onShow: _show,
+                    onOpen: _open,
+                    onOptions: _options,
+                    onHeader: _headerAction,
+                  );
+                },
               ),
             )
           : Scaffold(

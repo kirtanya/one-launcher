@@ -44,7 +44,7 @@ class Prefs extends ChangeNotifier {
     'themeSource', 'themeSeed', 'themeStyle', 'cardStyle', 'wallpaperDim', 'photoBlur', //
     'glassBlur', 'glassTint', 'glassEdge', 'glassSheen', 'themedIcons', 'chipLook',
   };
-  String _k(String key) => !perView.contains(key) || homeView == 'classic' ? key : '$homeView.$key'; // 'tiles.…', 'third.…'
+  String _k(String key) => !perView.contains(key) || homeView == 'classic' || homeView == 'spotlight' ? key : '$homeView.$key'; // 'tiles.…', 'third.…' (TV Spotlight shares Classic's)
   String? _viewString(String key) => _sp.getString(_k(key)) ?? _sp.getString(key);
   double? _viewDouble(String key) => _sp.getDouble(_k(key)) ?? _sp.getDouble(key);
   int? _viewInt(String key) => _sp.getInt(_k(key)) ?? _sp.getInt(key);

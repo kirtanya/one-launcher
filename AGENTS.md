@@ -14,6 +14,16 @@ Flutter Android launcher, two flavours from one codebase:
   search endpoint, no key; POST through TvActivity "httpGet" with a body); opens in the YouTube TV app.
   **TV focus never scales** (user, 2026-10-31: scaling breaks the layout): show focus with an outline,
   fill or glow only. Backdrop Ken Burns zooms are fine.
+  **Spotlight** (`tv/tv_spotlight.dart`, part of tv_home; homeView 'spotlight', shares Classic's
+  look/prefs): pure black, focused item's picture full screen, title bottom-left (display only),
+  one column on the right (Classic's content rows on their side); ↑↓ in it, ←→ columns, ↑ top bar.
+  Debug on the TV (hot reload, data kept): debug builds are signed with the release key, so
+  `flutter build apk --debug --flavor tv -t lib/main_tv.dart --build-number=<above installed>` →
+  `adb install -r` (never let flutter install: a failed install uninstalls = data wiped) →
+  start the app → `flutter attach -d <tv> --app-id com.kirtanya.one_launcher.tv -t lib/main_tv.dart
+  --pid-file <f>` (flutter run can't read the TV launcher activity). If attach keeps losing the
+  TV, pass `--debug-url` from logcat's "Dart VM service is listening on". SIGUSR1 = hot reload,
+  SIGUSR2 = hot restart.
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 

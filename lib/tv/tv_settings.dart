@@ -101,7 +101,7 @@ const tvSearchOptions = <TvOption>[
 final tvTilesHomeView = TvOption(
   'homeView',
   'Home view',
-  const [('classic', 'Cinematic'), ('tiles', 'Tiles'), ('third', 'Real')],
+  const [('classic', 'Cinematic'), ('spotlight', 'Spotlight'), ('tiles', 'Tiles'), ('third', 'Real')],
   'classic',
   read: (p) => p.homeView,
   write: (p, v) => p.setHomeView(v as String),
