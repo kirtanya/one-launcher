@@ -374,7 +374,7 @@ class _TvSearchState extends State<TvSearch> {
     void down() => _chip(filter).requestFocus();
 
     return Scaffold(
-      backgroundColor: TvDS.canvas,
+      backgroundColor: const Color(0xFF000000), // pure black: the big type and the posters carry the page
       body: Padding(
         padding: EdgeInsets.fromLTRB(TvDS.safe.left, TvDS.safe.top, TvDS.safe.right, 0),
         child: Column(
@@ -398,31 +398,25 @@ class _TvSearchState extends State<TvSearch> {
                 // Enter / Done on the keyboard: straight to Google TV's results (unless our own
                 // shows & films search is on — then into the results).
                 onSubmitted: (_) => raw.isNotEmpty && !searchOn ? TvApps.instance.searchEverywhere(raw) : down(),
-                style: (metro ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300) : TvDS.panelTitle).copyWith(fontSize: 20),
+                // No box: the query is the page's headline, big and light.
+                style: TvDS.panelTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, height: 1.15),
                 cursorColor: TvDS.ink,
+                cursorWidth: 3,
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: TvMetro.cased(_hasYouTube ? 'Shows, films, YouTube, apps' : 'Shows, films, apps'),
-                  hintStyle: (metro ? TvDS.panelTitle.copyWith(fontWeight: FontWeight.w300) : TvDS.panelTitle).copyWith(fontSize: 20, color: TvDS.inkMuted),
-                  prefixIcon: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: DS.s16),
-                    child: Icon(Icons.search_rounded, color: TvDS.inkMuted, size: 24),
-                  ),
+                  hintText: TvMetro.cased(_hasYouTube ? 'Search shows, films, YouTube, apps' : 'Search shows, films, apps'),
+                  hintStyle: TvDS.panelTitle.copyWith(fontSize: 44, fontWeight: FontWeight.w300, height: 1.15, color: const Color(0x66FFFFFF)),
                   suffixIcon: _loading
                       ? const Padding(
                           padding: EdgeInsets.all(DS.s16),
-                          child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: TvDS.inkMuted)),
+                          child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2, color: TvDS.inkMuted)),
                         )
                       : null,
-                  filled: true,
-                  fillColor: TvDS.surface,
-                  contentPadding: const EdgeInsets.symmetric(vertical: DS.s16),
-                  // Tiles: a flat field with the tile corners and the Metro focus frame.
-                  border: OutlineInputBorder(borderRadius: TvMetro.corners(28), borderSide: BorderSide.none),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: TvMetro.corners(28),
-                    borderSide: BorderSide(color: metro ? TvMetro.focus : TvDS.ink, width: 2),
-                  ),
+                  filled: false,
+                  contentPadding: const EdgeInsets.symmetric(vertical: DS.s8),
+                  border: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  enabledBorder: InputBorder.none,
                 ),
               ),
             ),

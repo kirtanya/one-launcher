@@ -2073,13 +2073,6 @@ class _QuickChip extends StatelessWidget {
   }
 }
 
-/// [preferred] on [bg] when it has text contrast (4.5:1), else near-black or white.
-Color _inkOn(Color bg, Color preferred) {
-  final b = bg.computeLuminance(), p = preferred.computeLuminance();
-  if ((math.max(b, p) + .05) / (math.min(b, p) + .05) >= 4.5) return preferred;
-  return b > .18 ? const Color(0xFF111111) : Colors.white;
-}
-
 /// The big "▶ Resume" button above the quick actions: picks up what's playing / paused.
 class _ResumeButton extends StatelessWidget {
   const _ResumeButton({super.key, required this.item, required this.focusNode, required this.onSelect, required this.onOptions, this.onMove, this.onFocus});
@@ -2092,9 +2085,7 @@ class _ResumeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = item.appName;
-    // The theme's hero colour at rest; its own ink when that reads on it, else black or white
-    // (some themes pair a grey hero with an ink too close to it).
-    final ink = _inkOn(DS.hero, DS.heroInk);
+    const ink = TvDS.ink;
     return Semantics(
       button: true,
       label: 'Resume ${item.title}',
@@ -2108,10 +2099,12 @@ class _ResumeButton extends StatelessWidget {
           duration: TvLook.anim(Motion.pressIn * 2),
           height: 40,
           padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
+          // Outlined at rest (a light ring over a soft shade, like the chips), white when focused.
+          // The border keeps its width either way, so nothing shifts on focus.
           decoration: BoxDecoration(
-            // Always the strongest thing in its row: theme colour at rest, white when focused.
-            color: f ? TvDS.surfaceFocused : DS.hero,
+            color: f ? TvDS.surfaceFocused : const Color(0x33000000),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: f ? Colors.transparent : const Color(0xCCFFFFFF), width: 1.5),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
