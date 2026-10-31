@@ -42,8 +42,12 @@ class _SpotlightState extends State<_Spotlight> {
   final _scrolls = <String, ScrollController>{}; // one per column (old and new overlap while switching)
   int _dir = 1; // the last ← / → : the new column slides in from that side
 
-  static const _cardH = 158.0, _gap = 16.0, _colW = 300.0;
-  static const _chipH = 60.0, _chipGap = 10.0; // quick actions: small cards
+  // Customise → Cards & motion → Card size scales the column and its cards.
+  static double get _k => TvLook.number('cardScale');
+  static double get _cardH => 158 * _k;
+  static double get _colW => 300 * _k;
+  static double get _chipH => 60 * _k; // quick actions: small cards
+  static const _gap = 16.0, _chipGap = 10.0;
 
   ScrollController _scrollOf(String row) => _scrolls[row] ??= ScrollController();
   static bool _small(TvRow row) => row.id == 'quick';

@@ -358,7 +358,7 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
     ];
   }
   if (view != 'spotlight') return tvSections;
-  const skip = {'rowsAt', 'cardScale', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
+  const skip = {'rowsAt', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'};
   const names = _spotlightNames;
   return [
     for (final (name, icon, opts) in tvSections)
@@ -374,7 +374,7 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
   ];
 }
 
-const _spotlightNames = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions', 'Cards & motion': 'Focus & motion'};
+const _spotlightNames = {'Rows': 'Columns', 'Resume & quick actions': 'Quick actions'};
 
 /// Straight to one Customise section (Hold OK → "Customise …" on a row): [section] is its
 /// Cinematic name ('Rows', 'Resume & quick actions'); the home view's own name and options are
