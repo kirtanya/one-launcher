@@ -178,7 +178,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   `top/` (top carousel pages, clock fonts), `tiles/` (Tiles/Metro home, today panel, landing).
 - `smart_home.dart` (model + `SmartHome` service, channel `one_launcher/home`, contract in its header) · `smart_home_sheet.dart` (sheet, detail, setup card) · `top/smart_home_page.dart`.
   Entry points: chip `b:home` (also Tiles `qa:b:home`), top page `smart_home`; both off by default.
-  Kotlin bridge pending (needs the Home APIs SDK from developers.home.google.com/apis/android/sdk); until then status = unavailable. Debug: long-press the setup card = fake devices.
+  Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
+  from the local maven repo `android/home-sdk/` (190 MB, gitignored; repo + `phoneImplementation` deps only added when it exists, else the phone builds without the bridge → status unavailable).
+  MainActivity attaches it reflectively (`Class.forName(...SmartHomeBridge).attach`; keep rule in `app/proguard-rules.pro`). Matter units: setpoints 0.01 °C, level 0..254. Debug: long-press the setup card = fake devices.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).
 - `apps.dart`: the main platform channel `one_launcher/apps` (apps, icons, launching,
   shortcuts, widgets, notification counts, settings intents…).

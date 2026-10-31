@@ -99,6 +99,8 @@ class MainActivity : FlutterActivity() {
         // Android app widgets shown in the top carousel.
         flutterEngine.platformViewsController.registry.registerViewFactory(WidgetHost.VIEW_TYPE, widgets.factory)
         MediaListener.onCounts = { counts -> if (::channel.isInitialized) channel.invokeMethod("notifCounts", counts) }
+        // Smart home (phone flavour only; the class doesn't exist in the TV build): Google Home APIs bridge.
+        runCatching { Class.forName("com.kirtanya.one_launcher.SmartHomeBridge").getMethod("attach", FlutterEngine::class.java, android.content.Context::class.java).invoke(null, flutterEngine, applicationContext) }
         channel.setMethodCallHandler { call, result ->
             if (widgets.handle(call, result)) return@setMethodCallHandler
             if (backups.handle(call, result)) return@setMethodCallHandler

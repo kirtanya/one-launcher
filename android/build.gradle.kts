@@ -2,6 +2,9 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Google Home APIs SDK (phone flavour's smart home); a local repo, gitignored. Optional.
+        val homeSdk = file("$rootDir/home-sdk")
+        if (homeSdk.exists()) maven { url = uri(homeSdk) }
     }
 }
 

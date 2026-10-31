@@ -59,3 +59,6 @@ omdb.key
 # Alexa skill relay topic (a secret: whoever knows it can search on the TV) and the filled-in skill code
 alexa.topic
 alexa/out/
+
+# Google Home APIs SDK local maven repo (190 MB; never commit)
+android/home-sdk/

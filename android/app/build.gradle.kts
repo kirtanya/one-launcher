@@ -83,12 +83,30 @@ android {
             // The permanent key when key.properties is present; otherwise the debug key so
             // release builds still work on a machine without it (those can't update installs).
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            proguardFiles("proguard-rules.pro") // keeps the reflectively attached SmartHomeBridge
         }
         debug {
             // Same key as release when present, so a debug build (hot reload on the TV) installs
             // over the release one and keeps its data — and back again.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
+    }
+}
+
+// Smart home (phone flavour only): Google's Home APIs SDK from the local repo android/home-sdk
+// (gitignored, ~190 MB). Without it the phone app builds without the bridge and the Dart side
+// reports "unavailable".
+val homeSdkPresent = rootProject.file("home-sdk").exists()
+if (!homeSdkPresent) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        if (name.contains("Phone")) exclude("**/SmartHomeBridge.kt", "**/HomeConnectActivity.kt")
+    }
+    android.sourceSets.getByName("phone").manifest.srcFile("src/phone/AndroidManifest.absent.xml")
+}
+dependencies {
+    if (homeSdkPresent) {
+        "phoneImplementation"("com.google.android.gms:play-services-home:17.1.0")
+        "phoneImplementation"("com.google.android.gms:play-services-home-types:17.1.0")
     }
 }
 
