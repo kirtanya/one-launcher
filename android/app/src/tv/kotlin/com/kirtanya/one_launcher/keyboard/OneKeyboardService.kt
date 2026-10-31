@@ -1,14 +1,20 @@
 package com.kirtanya.one_launcher.keyboard
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.inputmethodservice.InputMethodService
+import android.inputmethodservice.InputMethodService.Insets
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import com.kirtanya.one_launcher.OneStream
 import java.util.concurrent.Executors
 
@@ -39,7 +45,31 @@ class OneKeyboardService : InputMethodService() {
     private var remoteFor = ""
     private val search = Runnable { searchOneStream() }
 
-    override fun onCreateInputView(): View = KeyboardView(this).also { view = it }
+    /**
+     * The panel floats in the bottom-right corner (TV safe area), only as big as its keys; the rest of
+     * the keyboard window is see-through. Search fields and first results sit top-left on TV apps.
+     */
+    override fun onCreateInputView(): View {
+        window.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        view = KeyboardView(this)
+        val dp = resources.displayMetrics.density
+        return FrameLayout(this).apply {
+            addView(view, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
+                marginEnd = (48 * dp).toInt()
+                bottomMargin = (27 * dp).toInt()
+            })
+        }
+    }
+
+    // Tell the app nothing is covered, so it keeps its full screen (no squeezing its results into the
+    // top half); the panel just sits over one corner. The TV has no touch, so nothing to hit-test.
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val h = window.window?.decorView?.height ?: return
+        outInsets.contentTopInsets = h
+        outInsets.visibleTopInsets = h
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+    }
 
     // The TV reports the remote as a keyboard; without this Android would hide the soft keyboard.
     override fun onEvaluateInputViewShown(): Boolean = true

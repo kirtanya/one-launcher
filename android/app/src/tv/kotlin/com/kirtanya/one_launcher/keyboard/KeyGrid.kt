@@ -35,32 +35,39 @@ object KeyGrid {
         if (col == COLS - 1) actions[row]
         else Key.Text((if (mode == Mode.LETTERS) letters else symbols)[row][col].toString())
 
-    /** Where the focus starts when the keyboard opens: "a" (top left), the first thing people look for. */
-    val START = Pos(0, 0)
+    /** Where the focus starts when the keyboard opens: "o", mid-grid, so any letter is a few presses away. */
+    val START = Pos(2, 2)
 
     /**
-     * A D-pad press from [p]. Row -1 is the suggestion strip ([chips] of them; 0 = none, then Up from the
-     * top row does nothing). Left / Right wrap inside a row; Up / Down stop at the edges. Leaving the strip
-     * downwards lands on the key under the chip's share of the width.
+     * A D-pad press from [p]. Row -1 is the suggestion strip ([chips] of them; 0 = no strip). Everything
+     * wraps: Left / Right inside a row, Up / Down round the column (strip → top row … bottom row → strip,
+     * skipping the strip when it's empty). Entering or leaving the strip keeps the share of the width.
      */
     fun move(p: Pos, dir: Dir, chips: Int): Pos = when {
         p.row < 0 -> when (dir) {
             Dir.LEFT -> if (chips == 0) p else p.copy(col = (p.col - 1 + chips) % chips)
             Dir.RIGHT -> if (chips == 0) p else p.copy(col = (p.col + 1) % chips)
-            Dir.DOWN -> Pos(0, if (chips == 0) 0 else (p.col * COLS / chips).coerceIn(0, COLS - 1))
-            Dir.UP -> p
+            Dir.DOWN -> Pos(0, keyUnder(p.col, chips))
+            Dir.UP -> Pos(ROWS - 1, keyUnder(p.col, chips))
         }
         else -> when (dir) {
             Dir.LEFT -> p.copy(col = (p.col - 1 + COLS) % COLS)
             Dir.RIGHT -> p.copy(col = (p.col + 1) % COLS)
-            Dir.DOWN -> if (p.row < ROWS - 1) p.copy(row = p.row + 1) else p
+            Dir.DOWN -> when {
+                p.row < ROWS - 1 -> p.copy(row = p.row + 1)
+                chips > 0 -> Pos(-1, chipOver(p.col, chips))
+                else -> p.copy(row = 0)
+            }
             Dir.UP -> when {
                 p.row > 0 -> p.copy(row = p.row - 1)
-                chips > 0 -> Pos(-1, (p.col * chips / COLS).coerceIn(0, chips - 1))
-                else -> p
+                chips > 0 -> Pos(-1, chipOver(p.col, chips))
+                else -> p.copy(row = ROWS - 1)
             }
         }
     }
+
+    private fun keyUnder(chip: Int, chips: Int) = if (chips == 0) 0 else (chip * COLS / chips).coerceIn(0, COLS - 1)
+    private fun chipOver(col: Int, chips: Int) = (col * chips / COLS).coerceIn(0, chips - 1)
 }
 
 data class Pos(val row: Int, val col: Int)
