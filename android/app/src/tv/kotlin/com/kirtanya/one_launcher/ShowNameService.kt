@@ -44,6 +44,7 @@ class ShowNameService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
+        if (pkg == GOOGLE_SEARCH) return takeVoiceSearch(event)
         val now = SystemClock.uptimeMillis()
         if (now - (lastLook[pkg] ?: 0L) < 1500) return // overlays redraw often; a look every 1.5 s is plenty
         val titles = playing(pkg)
@@ -57,6 +58,33 @@ class ShowNameService : AccessibilityService() {
         val show = showBeside(root, titles)
         android.util.Log.i("OneShow", "$pkg playing $titles → ${show?.second ?: "no show beside it on screen"}")
         if (show != null) save(this, pkg, show.first, show.second)
+    }
+
+    // ---- The remote's mic → One Launcher search ----
+    // The mic button belongs to Google (it never reaches apps), but what was said shows at the top of
+    // Google TV's results page: read it there, close the page and open our search with it.
+    // Customise → Remote & behaviour → "Remote's mic searches in" (tvSettings.remoteMic, default ours).
+    private var lastWords: String? = null
+    private var lastTaken = 0L
+
+    private fun takeVoiceSearch(event: AccessibilityEvent) {
+        val now = SystemClock.uptimeMillis()
+        if (now < googleUntil || !wanted(this)) return
+        val root = try { rootInActiveWindow } catch (e: Exception) { null } ?: return
+        if (root.packageName?.toString() != GOOGLE_SEARCH) return
+        // The results page's headline is what was said (the listening screen has none).
+        val words = root.findAccessibilityNodeInfosByViewId("$GOOGLE_SEARCH:id/super_header")
+            .firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()
+        if (words.isNullOrEmpty() || (words == lastWords && now - lastTaken < 5000)) return
+        lastWords = words
+        lastTaken = now
+        android.util.Log.i("OneVoice", "remote mic said '$words' → One Launcher search (${event.eventType})")
+        performGlobalAction(GLOBAL_ACTION_BACK) // closes Google's page
+        startActivity(
+            android.content.Intent(this, TvActivity::class.java)
+                .putExtra(TvActivity.EXTRA_SEARCH, words)
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
     }
 
     /** Titles the app's media sessions are playing / paused on (needs Notification access). */
@@ -117,6 +145,16 @@ class ShowNameService : AccessibilityService() {
 
     companion object {
         @Volatile private var instance: ShowNameService? = null
+        private const val GOOGLE_SEARCH = "com.google.android.katniss"
+
+        /** Until then Google's results are left alone: we sent the user there ("search everywhere"). */
+        @Volatile var googleUntil = 0L
+
+        /** tvSettings.remoteMic (Flutter prefs): 'ours' (default) or 'google'. */
+        private fun wanted(c: Context): Boolean {
+            val json = c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getString("flutter.tvSettings", null) ?: return true
+            return try { JSONObject(json).optString("remoteMic", "ours") != "google" } catch (e: Exception) { true }
+        }
 
         /** The app on screen (Alexa's "search …" goes into it when it can), if it isn't us or the system's. */
         fun onScreen(c: Context): String? {

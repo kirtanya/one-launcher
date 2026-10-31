@@ -211,6 +211,7 @@ class TvActivity : FlutterActivity() {
                 }
                 "searchEverywhere" -> {
                     val q = call.argument<String>("query") ?: ""
+                    ShowNameService.googleUntil = android.os.SystemClock.uptimeMillis() + 15_000 // ours to Google: stay there
                     result.success(
                         open(Intent("android.search.action.GLOBAL_SEARCH").putExtra(SearchManager.QUERY, q)) ||
                             open(Intent(Intent.ACTION_ASSIST).putExtra(SearchManager.QUERY, q)),

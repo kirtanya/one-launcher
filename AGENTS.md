@@ -44,6 +44,10 @@ Flutter Android launcher, two flavours from one codebase:
   this TV — Netflix closes on links, Prime ignores them, JioHotstar's ACTION_SEARCH drops the words
   (`IGNORES_WORDS`); those land in our search. Cold start: TvActivity holds EXTRA_SEARCH for Dart's `takeSearch` (the channel
   exists before Dart listens). Incoming searches hide the keyboard.
+  **Remote's mic → our search** (`ShowNameService.takeVoiceSearch`, setting `remoteMic` ours|google):
+  the mic still goes to Google; on any com.google.android.katniss event the service reads the results
+  page's headline (`id/super_header` = what was said), presses Back and opens our search with it.
+  `googleUntil` (set by TvActivity "searchEverywhere") leaves Google alone when we sent the user there.
   **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
   accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service
   opens Google search itself. In-app mic on the TV = phone-as-mic. Gboard's voice typing crashes that

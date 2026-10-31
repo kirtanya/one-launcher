@@ -119,6 +119,8 @@ const tvSections = <(String, IconData, List<TvOption>)>[
       TvOption('landing', 'Start on', [('quick', 'First quick action'), ('resume', 'Resume'), ('app', 'First app'), ('search', 'Search')], 'quick'),
       TvOption('back', 'Back button', [('home', 'Go to start'), ('search', 'Go to Search'), ('none', 'Do nothing')], 'home'),
       TvOption('history', 'Remember what I watch', [(true, 'On'), (false, 'Off')], true),
+      // ShowNameService reads Google's results page and hands the words over (needs "Read show names" on).
+      TvOption('remoteMic', 'Remote’s mic searches in', [('ours', 'One Launcher'), ('google', 'Google')], 'ours'),
     ],
   ),
 ];
