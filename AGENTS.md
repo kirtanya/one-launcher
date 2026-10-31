@@ -165,6 +165,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 `NotificationFeed.kt` (channel `one_launcher/notifications`: list/open/action/reply/dismiss/snooze),
 `TvRemote.kt`, `RemoteNotification.kt` (remote in shade + QS tile), `NowPlayingServer.kt`,
 `WidgetHost.kt`, `QuickActions.kt`, `LockService.kt`, `OneStream.kt`, `BackupFiles.kt`.
+**App icon** = the shared "One" family, "Glass O, centred" (green, 2×2 grid): source `~/one-logos`
+(`make.sh` regenerates). Adaptive layers are bitmaps in `res/mipmap-*` (`ic_launcher_bg` / `_foreground` /
+`_monochrome`, plus legacy `ic_launcher`), TV banner `src/tv/res/drawable-xhdpi/tv_banner.png` (640×360),
+`docs/app_icon.png`. `tool/make_icon.py` (old "1" mark) is retired; don't run it.
 
 ## Gotchas (learned the hard way)
 - Opacity over a large subtree didn't render its middle frames on the phone. Fade solid content
