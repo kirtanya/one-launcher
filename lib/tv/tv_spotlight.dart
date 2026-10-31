@@ -146,10 +146,21 @@ class _SpotlightState extends State<_Spotlight> {
     _at[row.id] = at;
     _node(row.id, at).requestFocus();
     // The focused card keeps its place near the top of the column; the rest slide past it.
+    // The column holds still while focus moves inside what's in view; it scrolls only when the
+    // card would leave it — past the clear part at the bottom (the last fifth fades), or above.
     final sc = _scrollOf(row.id);
     if (sc.hasClients) {
-      final y = (at * _extent(row) - _cardH * .4).clamp(0.0, sc.position.maxScrollExtent);
-      animate ? sc.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic) : sc.jumpTo(y);
+      final p = sc.position;
+      final ext = _extent(row);
+      final top = 4 + at * ext, bottom = top + ext;
+      final clear = p.viewportDimension * .78;
+      var y = p.pixels;
+      if (bottom > y + clear) y = bottom - clear;
+      if (top < y) y = top - 4;
+      y = y.clamp(0.0, p.maxScrollExtent);
+      if (y != p.pixels) {
+        animate ? sc.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic) : sc.jumpTo(y);
+      }
     }
   }
 
@@ -312,68 +323,73 @@ class _SpotlightState extends State<_Spotlight> {
         const SizedBox(height: DS.s12),
         Expanded(
           // Cards fade out toward the bottom of the screen.
-          child: ShaderMask(
-            shaderCallback: (r) => const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
-              stops: [0, .78, 1],
-            ).createShader(r),
-            blendMode: BlendMode.dstIn,
-            child: ListView.builder(
-              key: ValueKey('spotlight:${row.id}'),
-              controller: _scrollOf(row.id),
-              clipBehavior: Clip.none,
-              physics: const NeverScrollableScrollPhysics(), // the remote steers it (_focusCard)
-              padding: EdgeInsets.only(top: 4, bottom: _cardH * 2),
-              itemCount: row.items.length,
-              itemExtent: _extent(row),
-              itemBuilder: (context, i) {
-                final item = row.items[i];
-                void focus() {
-                  _at[row.id] = i;
-                  widget.onShow(item);
-                }
+          // Cards scrolled past go under the column's top edge (with a little room for the focus
+          // ring, and wide open sideways for it) instead of drawing over the title and top bar.
+          child: ClipRect(
+            clipper: const _ColumnClip(),
+            child: ShaderMask(
+              shaderCallback: (r) => const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+                stops: [0, .78, 1],
+              ).createShader(r),
+              blendMode: BlendMode.dstIn,
+              child: ListView.builder(
+                key: ValueKey('spotlight:${row.id}'),
+                controller: _scrollOf(row.id),
+                clipBehavior: Clip.none,
+                physics: const NeverScrollableScrollPhysics(), // the remote steers it (_focusCard)
+                padding: EdgeInsets.only(top: 4, bottom: _cardH * 2),
+                itemCount: row.items.length,
+                itemExtent: _extent(row),
+                itemBuilder: (context, i) {
+                  final item = row.items[i];
+                  void focus() {
+                    _at[row.id] = i;
+                    widget.onShow(item);
+                  }
 
-                return Align(
-                  alignment: Alignment.topCenter,
-                  child: _compact(row)
-                      ? _SmallCard(
-                          key: ValueKey('${row.id}:${item.key}'),
-                          item: item,
-                          width: _colW,
-                          height: _pillH,
-                          focusNode: _node(row.id, i),
-                          onSelect: () => widget.onOpen(item),
-                          onOptions: () => widget.onOptions(row, i),
-                          onMove: (d) => _move(i, d),
-                          onFocus: focus,
-                        )
-                      : _small(row)
-                      ? _QuickCard(
-                          key: ValueKey('${row.id}:${item.key}'),
-                          item: item,
-                          width: _colW,
-                          height: _chipH,
-                          focusNode: _node(row.id, i),
-                          onSelect: () => widget.onOpen(item),
-                          onOptions: () => widget.onOptions(row, i),
-                          onMove: (d) => _move(i, d),
-                          onFocus: focus,
-                        )
-                      : _Card(
-                          key: ValueKey('${row.id}:${item.key}'),
-                          item: item,
-                          width: _colW,
-                          height: _cardH,
-                          focusNode: _node(row.id, i),
-                          onSelect: () => widget.onOpen(item),
-                          onOptions: () => widget.onOptions(row, i),
-                          onMove: (d) => _move(i, d),
-                          onFocus: focus,
-                        ),
-                );
-              },
+                  return Align(
+                    alignment: Alignment.topCenter,
+                    child: _compact(row)
+                        ? _SmallCard(
+                            key: ValueKey('${row.id}:${item.key}'),
+                            item: item,
+                            width: _colW,
+                            height: _pillH,
+                            focusNode: _node(row.id, i),
+                            onSelect: () => widget.onOpen(item),
+                            onOptions: () => widget.onOptions(row, i),
+                            onMove: (d) => _move(i, d),
+                            onFocus: focus,
+                          )
+                        : _small(row)
+                        ? _QuickCard(
+                            key: ValueKey('${row.id}:${item.key}'),
+                            item: item,
+                            width: _colW,
+                            height: _chipH,
+                            focusNode: _node(row.id, i),
+                            onSelect: () => widget.onOpen(item),
+                            onOptions: () => widget.onOptions(row, i),
+                            onMove: (d) => _move(i, d),
+                            onFocus: focus,
+                          )
+                        : _Card(
+                            key: ValueKey('${row.id}:${item.key}'),
+                            item: item,
+                            width: _colW,
+                            height: _cardH,
+                            focusNode: _node(row.id, i),
+                            onSelect: () => widget.onOpen(item),
+                            onOptions: () => widget.onOptions(row, i),
+                            onMove: (d) => _move(i, d),
+                            onFocus: focus,
+                          ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -492,9 +508,8 @@ class _QuickCard extends StatelessWidget {
   }
 }
 
-/// Spotlight's small card (Customise → Columns → Small cards). An app: a pill with its round
-/// icon and name, white when focused. A show: a short card over its still, faded, the title and
-/// app small on it, a thin progress line; an outline when focused.
+/// Spotlight's small card (Customise → a column's page → Cards: Small). A pill, white when
+/// focused: an app's round icon and name, or a show's still and title.
 class _SmallCard extends StatelessWidget {
   const _SmallCard({
     super.key,
@@ -566,62 +581,66 @@ class _SmallCard extends StatelessWidget {
     ),
   );
 
+  /// A show as a pill like the apps': its still as the icon, the title. The left panel says the
+  /// rest (episode, time left); this is just the way in.
   Widget _show(bool f) {
-    final r = BorderRadius.circular(TvDS.rTile);
+    final h = height * .62;
     Widget picture;
     if (item.art != null) {
-      picture = Image(image: item.art!, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => const SizedBox.shrink());
+      picture = Image(
+        image: item.art!,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => ColoredBox(color: tvTint(item.title)),
+      );
     } else if (item.image != null) {
       final ready = TvApps.instance.imageNow(item.image!);
       picture = FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(item.image!),
-        builder: (context, s) => s.data == null ? const SizedBox.shrink() : Image(image: s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+        builder: (context, s) => s.data == null ? ColoredBox(color: tvTint(item.title)) : Image(image: s.data!, fit: BoxFit.cover, gaplessPlayback: true),
       );
     } else {
-      picture = const SizedBox.shrink();
+      picture = ColoredBox(color: tvTint(item.title));
     }
     return AnimatedContainer(
       duration: TvLook.anim(Motion.pressIn * 2),
       width: width,
       height: height,
-      foregroundDecoration: TvRing(on: f, radius: TvDS.rTile),
-      decoration: BoxDecoration(borderRadius: r, color: tvTint(item.title).withValues(alpha: .35)),
-      child: ClipRRect(
-        borderRadius: r,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Opacity(opacity: f ? .55 : .35, child: picture),
-            // Darker toward the text.
-            const DecoratedBox(
-              decoration: BoxDecoration(gradient: LinearGradient(colors: [Color(0xCC000000), Color(0x33000000)])),
+      padding: EdgeInsets.symmetric(horizontal: height * .14),
+      decoration: BoxDecoration(
+        color: f ? TvDS.surfaceFocused : const Color(0x14FFFFFF),
+        borderRadius: BorderRadius.circular(height / 2),
+        border: Border.all(color: f ? Colors.transparent : const Color(0x1FFFFFFF)),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(h / 2),
+            child: SizedBox(width: h * 16 / 9, height: h, child: picture),
+          ),
+          SizedBox(width: height * .2),
+          Expanded(
+            child: Text(
+              item.title,
+              style: TvDS.panelRow.copyWith(fontSize: 16, color: f ? TvDS.onLight : TvDS.ink),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: DS.s16, vertical: height * .14),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    style: TvDS.panelRow.copyWith(fontSize: 15, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (item.appName != null)
-                    Text(
-                      item.appName!,
-                      style: TvDS.tileName.copyWith(fontSize: 12, color: TvDS.inkMuted),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            if (item.progress != null) Positioned(left: 0, right: 0, bottom: 0, child: _Progress(value: item.progress!)),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+/// The column's clip: cut at the top (6 pt of room for the focus ring) and bottom, never at the
+/// sides (the ring sits just outside the cards).
+class _ColumnClip extends CustomClipper<Rect> {
+  const _ColumnClip();
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(-48, -6, size.width + 48, size.height);
+
+  @override
+  bool shouldReclip(_ColumnClip old) => false;
 }
