@@ -1,4 +1,4 @@
-// One TV: "Alexa, ask One TV to search Panchayat" / "… to open YouTube".
+// One TV: "Alexa, ask One TV to search Panchayat" / "… to search Dune on YouTube" / "… to open YouTube".
 // Posts the words to a secret ntfy.sh topic; One Launcher TV listens there (AlexaRelay.kt).
 // Template: alexa/make.sh writes alexa/out/index.js with the real topic (never commit that one).
 const https = require('https');
@@ -16,6 +16,14 @@ function send(msg) {
     req.on('timeout', () => { req.destroy(); resolve(false); });
     req.end(body);
   });
+}
+
+// "dune on netflix" heard as one search: split the app off the end (only names we know, so
+// "murder on the orient express" stays whole).
+const APPS = /\s+(?:on|in)\s+(you ?tube(?: music)?|net ?flix|(?:amazon )?prime(?: video)?|amazon video|(?:jio |disney )?hot ?star|jio ?hotstar|jio cinema|one ?stream|nuvio|zee ?(?:5|five)|sony ?liv)$/i;
+function splitApp(q) {
+  const m = q.match(APPS);
+  return m ? { q: q.slice(0, m.index).trim(), app: m[1] } : { q, app: '' };
 }
 
 function say(text, keepOpen) {
@@ -36,10 +44,14 @@ exports.handler = async (event) => {
   const intent = req.intent || {};
   const slot = (n) => ((intent.slots || {})[n] || {}).value || '';
   switch (intent.name) {
-    case 'SearchIntent': {
-      const q = slot('query').trim();
+    case 'SearchIntent':
+    case 'SearchOnIntent': {
+      let q = slot('query').trim();
+      let app = slot('app').trim();
+      if (!app) ({ q, app } = splitApp(q));
       if (!q) return say('What should I search for?', true);
-      return (await send({ type: 'search', q })) ? say(`Searching ${q} on the TV.`) : say('I couldn’t reach the TV.');
+      const where = app ? ` on ${app}` : '';
+      return (await send({ type: 'search', q, ...(app ? { app } : {}) })) ? say(`Searching ${q}${where}.`) : say('I couldn’t reach the TV.');
     }
     case 'OpenIntent': {
       const app = slot('app').trim();
@@ -47,7 +59,7 @@ exports.handler = async (event) => {
       return (await send({ type: 'open', app })) ? say(`Opening ${app}.`) : say('I couldn’t reach the TV.');
     }
     case 'AMAZON.HelpIntent':
-      return say('Say: search Panchayat. Or: open YouTube.', true);
+      return say('Say: search Panchayat. Or: search Dune on YouTube. Or: open Netflix.', true);
     case 'AMAZON.FallbackIntent':
       return say('Say search, then a name. Or open, then an app.', true);
     default:

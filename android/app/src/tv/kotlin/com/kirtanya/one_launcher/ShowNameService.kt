@@ -31,7 +31,15 @@ class ShowNameService : AccessibilityService() {
     override fun onInterrupt() {}
 
     // Bound by the system, so the process (and Alexa's relay) stays up while other apps play.
-    override fun onServiceConnected() = AlexaRelay.start(this)
+    override fun onServiceConnected() {
+        instance = this
+        AlexaRelay.start(this)
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
@@ -108,6 +116,16 @@ class ShowNameService : AccessibilityService() {
             t.none { it in '\uE000'..'\uF8FF' } // icon-font glyphs
 
     companion object {
+        @Volatile private var instance: ShowNameService? = null
+
+        /** The app on screen (Alexa's "search …" goes into it when it can), if it isn't us or the system's. */
+        fun onScreen(c: Context): String? {
+            val pkg = try { instance?.rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null } ?: return null
+            if (pkg == c.packageName) return null
+            val pm = c.packageManager
+            return pkg.takeIf { pm.getLeanbackLaunchIntentForPackage(it) != null || pm.getLaunchIntentForPackage(it) != null }
+        }
+
         /** Told when a new show name is read (the launcher redraws its artwork). */
         @Volatile var onChange: (() -> Unit)? = null
 

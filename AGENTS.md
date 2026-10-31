@@ -39,7 +39,10 @@ Flutter Android launcher, two flavours from one codebase:
   in alexa/README.md) posts to a secret ntfy.sh topic (`./alexa.topic`, gitignored, Gradle →
   `R.string.alexa_topic`; empty = off); `AlexaRelay.kt` streams that topic (started by TvActivity
   and ShowNameService, which keeps the process up) → search via TvActivity EXTRA_SEARCH, open =
-  best label match. Cold start: TvActivity holds EXTRA_SEARCH for Dart's `takeSearch` (the channel
+  best label match (+ ALIASES). Search goes inside the named app ("… on YouTube") or the app on
+  screen (`ShowNameService.onScreen`) when it really takes searches: only YouTube (search link) on
+  this TV — Netflix closes on links, Prime ignores them, JioHotstar's ACTION_SEARCH drops the words
+  (`IGNORES_WORDS`); those land in our search. Cold start: TvActivity holds EXTRA_SEARCH for Dart's `takeSearch` (the channel
   exists before Dart listens). Incoming searches hide the keyboard.
   **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
   accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service

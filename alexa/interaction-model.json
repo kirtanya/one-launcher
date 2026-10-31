@@ -5,7 +5,12 @@
       "intents": [
         {
           "name": "SearchIntent",
-          "slots": [{ "name": "query", "type": "AMAZON.SearchQuery" }],
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
           "samples": [
             "search {query}",
             "search for {query}",
@@ -22,8 +27,48 @@
           ]
         },
         {
+          "name": "SearchOnIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            },
+            {
+              "name": "app",
+              "type": "TV_APP"
+            }
+          ],
+          "samples": [
+            "search {query} on {app}",
+            "to search {query} on {app}",
+            "search for {query} on {app}",
+            "to search for {query} on {app}",
+            "search {query} in {app}",
+            "to search {query} in {app}",
+            "search for {query} in {app}",
+            "to search for {query} in {app}",
+            "search {app} for {query}",
+            "to search {app} for {query}",
+            "find {query} on {app}",
+            "to find {query} on {app}",
+            "find {query} in {app}",
+            "to find {query} in {app}",
+            "look for {query} on {app}",
+            "to look for {query} on {app}",
+            "show me {query} on {app}",
+            "to show me {query} on {app}",
+            "play {query} on {app}",
+            "to play {query} on {app}"
+          ]
+        },
+        {
           "name": "OpenIntent",
-          "slots": [{ "name": "app", "type": "AMAZON.SearchQuery" }],
+          "slots": [
+            {
+              "name": "app",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
           "samples": [
             "open {app}",
             "to open {app}",
@@ -33,13 +78,113 @@
             "to start {app}"
           ]
         },
-        { "name": "AMAZON.HelpIntent", "samples": [] },
-        { "name": "AMAZON.CancelIntent", "samples": [] },
-        { "name": "AMAZON.StopIntent", "samples": [] },
-        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
-        { "name": "AMAZON.FallbackIntent", "samples": [] }
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
       ],
-      "types": []
+      "types": [
+        {
+          "name": "TV_APP",
+          "values": [
+            {
+              "name": {
+                "value": "YouTube",
+                "synonyms": [
+                  "you tube",
+                  "youtube tv"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Netflix",
+                "synonyms": [
+                  "net flix"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Prime Video",
+                "synonyms": [
+                  "prime",
+                  "amazon prime",
+                  "amazon prime video",
+                  "amazon video"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "JioHotstar",
+                "synonyms": [
+                  "hotstar",
+                  "jio hotstar",
+                  "disney hotstar",
+                  "jio cinema"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "One Stream",
+                "synonyms": [
+                  "onestream"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "YouTube Music",
+                "synonyms": [
+                  "you tube music"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Nuvio",
+                "synonyms": []
+              }
+            },
+            {
+              "name": {
+                "value": "Zee5",
+                "synonyms": [
+                  "zee five",
+                  "zee 5"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "SonyLIV",
+                "synonyms": [
+                  "sony liv",
+                  "sony"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   }
 }
