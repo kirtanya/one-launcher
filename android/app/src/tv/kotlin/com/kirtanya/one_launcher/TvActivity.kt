@@ -192,13 +192,21 @@ class TvActivity : FlutterActivity() {
                     val intent = Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                         .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH)
                         .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search")
+                    // Straight to the Google app's voice input (the remote's own voice path): with two
+                    // handlers Android asks which one, and Speech Services' newer builds crash on
+                    // 32-bit TVs (SIGILL in their on-device model).
+                    val katniss = Intent(intent).setPackage("com.google.android.katniss")
+                    listening?.success("")
+                    listening = result
                     try {
-                        listening?.success("")
-                        listening = result
-                        startActivityForResult(intent, REQUEST_LISTEN)
+                        startActivityForResult(katniss, REQUEST_LISTEN)
                     } catch (e: Exception) {
-                        listening = null
-                        result.success(null)
+                        try {
+                            startActivityForResult(intent, REQUEST_LISTEN)
+                        } catch (e2: Exception) {
+                            listening = null
+                            result.success(null)
+                        }
                     }
                 }
                 "searchEverywhere" -> {
