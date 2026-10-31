@@ -586,11 +586,12 @@ void main() {
     await tv(tester);
     await tester.pumpWidget(tvApp(TvOneStreamPage(title: series())));
     await settle(tester);
-    expect(find.text('SERIES · ONE STREAM'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^SERIES · ')), findsOneWidget, reason: 'the details line');
     expect(find.text('Season 2'), findsOneWidget);
     expect(find.text('E2 · Two Wolves'), findsOneWidget);
     expect(find.text('Play S1 E2'), findsOneWidget);
-    expect(find.text('2160p · Best'), findsOneWidget);
+    expect(find.text('Recommended'), findsOneWidget, reason: 'the best source is the highlighted card');
+    expect(find.text('2160p'), findsWidgets);
     expect(find.text('Coming 2024-11-14'), findsOneWidget, reason: 'not out yet');
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_17_one_stream_page.png'));
     // OK on a source → the side panel → Download.
@@ -602,12 +603,16 @@ void main() {
     await settle(tester);
     expect(lastAct('download')['extras'], {'token': 'tok-1080'});
     expect(find.text('Download started'), findsOneWidget);
+    await tester.ensureVisible(find.text('Add to watchlist'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Add to watchlist'));
     await settle(tester);
     expect(find.text('In watchlist'), findsOneWidget);
     expect(lastAct('watchlist_add')['extras'], {'type': 'tv', 'tmdb': 1399});
     // Play (with the remote: it starts focused).
     expect(FocusManager.instance.primaryFocus?.context?.widget, isNotNull);
+    await tester.ensureVisible(find.text('Play S1 E2'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Play S1 E2'));
     await settle(tester);
     expect(calls.lastWhere((c) => c.method == 'oneStreamOpen').arguments, {'link': 'onestream://play?source=tok-best&type=tv&tmdb=1399&season=1&episode=2'});
