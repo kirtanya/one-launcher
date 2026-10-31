@@ -277,6 +277,7 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         }
         socket = s
         out = s.outputStream
+        imeReady = false // a new connection: wait for the TV to name a field again
         val input = s.inputStream
         Thread({ readLoop(s, input) }, "tv-remote").start()
         return true
@@ -342,13 +343,20 @@ class TvRemote(private val context: Context, private val events: () -> MethodCha
         // 21 from the TV is only its keyboard's on/off state ({1=1, 2=1} shown, {1=0} hidden) — not
         // the counters: taking them made the TV drop every edit ("input field has changed from 1
         // to 43"). The counters come from 20 (the app's counter) and 20/22 (the field's).
-        if (m.containsKey(21)) imeReady = imeReady || imeCounter != 0L
+        // Hidden ({1=0}) also ends the field: once the TV's keyboard isn't Google's (One Launcher's own),
+        // it goes quiet and drops IME edits, so typing must fall back to keys.
+        m[21]?.firstOrNull()?.let { raw ->
+            imeReady = ((Pb.parse(raw as ByteArray)[1]?.firstOrNull() as? Long) ?: 0L) != 0L && (imeReady || imeCounter != 0L)
+        }
         m[22]?.firstOrNull()?.let { raw ->
             val req = Pb.parse(raw as ByteArray)
             (req[2]?.firstOrNull() as? ByteArray)?.let { field ->
                 imeReady = true
                 emitIme(Pb.parse(field))
-            } ?: emit("ime", mapOf("text" to "", "label" to ""))
+            } ?: run {
+                imeReady = false
+                emit("ime", mapOf("text" to "", "label" to ""))
+            }
         }
         Log.i("TvRemote", "IME counters now ime=$imeCounter field=$fieldCounter")
     }

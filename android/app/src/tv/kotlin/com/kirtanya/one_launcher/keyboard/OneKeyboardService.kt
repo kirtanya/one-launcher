@@ -129,14 +129,21 @@ class OneKeyboardService : InputMethodService() {
             }
             KeyEvent.KEYCODE_DEL -> delete()
             in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> type(('0' + (keyCode - KeyEvent.KEYCODE_0)).toString())
-            else -> return super.onKeyDown(keyCode, event)
+            // Letters pressed on a phone remote (it sends keys once this keyboard is active).
+            else -> typed(event)?.let { type(it) } ?: return super.onKeyDown(keyCode, event)
         }
         return true
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (isInputViewShown && keyCode in HANDLED) return true
+        if (isInputViewShown && (keyCode in HANDLED || typed(event) != null)) return true
         return super.onKeyUp(keyCode, event)
+    }
+
+    /** The character a key press types (letters, space, symbols), or null for other keys. */
+    private fun typed(event: KeyEvent): String? {
+        val ch = event.unicodeChar
+        return if (ch == 0 || Character.isISOControl(ch)) null else String(Character.toChars(ch))
     }
 
     private fun move(dir: Dir) {
