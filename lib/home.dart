@@ -105,8 +105,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// only for a moment: the one leaving while the next comes in.
   final _pages = <_TabPage>[];
   int _pageSeq = 0;
-  double _pageFrom = 1; // the side the next page comes in from (1 = right)
-  static const _navOrder = ['settings', 'home', 'smart', 'remote', 'search'];
+  double _pageFrom = 1; // the side the next page comes in from (1 = right, 0 = rises from the bottom)
+  double _homeSide = 0; // where home's own content went while tab pages are up (-1 left, 1 right, 0 stayed)
+  static const _navOrder = ['now', 'settings', 'home', 'smart', 'remote', 'search'];
   bool get _pageOpen => _pages.any((p) => !p.leaving);
 
   /// Pull-to-search: how far the drawer is pulled down past its top (px of finger travel).
@@ -254,6 +255,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // At the bottom the dock is the nav (Home · Smart home · Search; Settings = long-press Home); in the drawer, just search.
     tab: _tab,
     onHome: inline ? null : _navHome,
+    onNow: inline ? null : _openNow,
     pull: _pull, // pull-to-search drives the nav → search morph
     pullFull: pullToOpen,
   );
@@ -390,16 +392,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// With the nav at the bottom it's a page under the nav: the page you're on slides out one way
   /// and fades as the new one slides in from the other, by the tabs' order (Home · Search ·
   /// Remote · Settings).
-  Future<void> _openTab(String tab, Future<void> Function() open, {double? from}) async {
+  Future<void> _openTab(String tab, Future<void> Function() open, {double? from, bool rise = false}) async {
     if (_tab == tab && _pageOpen) return;
     final forward = from != null ? from > 0 : _navOrder.indexOf(tab) > _navOrder.indexOf(_tab);
+    // Leaving home itself: its content slides off the other way (a rising page just covers it).
+    if (!_pageOpen) _homeSide = rise ? 0 : (forward ? -1 : 1);
     setState(() => _tab = tab);
     SearchDock.shrunk.value = false; // a new page starts at its top
     _closePages(toward: forward ? -1 : 1, replaced: true);
-    _pageFrom = forward ? 1 : -1;
-    if (prefs.searchPosition != 'top') TabPageHost.arm(TabPageHost(present: _presentPage, navRoom: SearchDock.height + DS.s12 * 2));
+    _pageFrom = rise ? 0 : (forward ? 1 : -1);
+    if (prefs.searchPosition != 'top') TabPageHost.arm(TabPageHost(present: _presentPage, navRoom: SearchDock.height + DS.s12 * 2, rise: rise));
     await open();
-    if (mounted && _tab == tab && !_pageOpen) setState(() => _tab = 'home');
+    if (mounted && _tab == tab && !_pageOpen) setState(() => _tab = nowAway.value < .5 ? 'now' : 'home');
   }
 
   Future<Object?> _presentPage(Widget Function(VoidCallback close) build) {
@@ -407,6 +411,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     page = _TabPage(
       id: ++_pageSeq,
       side: _pageFrom,
+      rise: _pageFrom == 0,
       motion: AnimationController(vsync: this, duration: const Duration(milliseconds: 420), reverseDuration: const Duration(milliseconds: 340)),
     );
     page.body = build(() => _closePages(toward: 1)); // closed from inside (back): towards Home
@@ -449,13 +454,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     _drawerKey.currentState?.reset();
     _collapse();
     _toPanel(1);
+    if (nowAway.value < 1) jumpTop(1); // off the Now page too
     if (_tab != 'home') setState(() => _tab = 'home');
+  }
+
+  /// The nav's Now (left of Home): home on the top carousel's Now page.
+  void _openNow() {
+    HapticFeedback.selectionClick();
+    SearchDock.shrunk.value = false;
+    _closePages(toward: 1); // Now is left of every page: they go off to the right
+    _stopSearch();
+    _drawerKey.currentState?.reset();
+    _collapse();
+    _toPanel(1);
+    jumpTop(0);
+    if (_tab != 'now') setState(() => _tab = 'now');
+  }
+
+  /// Home ⇄ Now follows the carousel (swiping it lights the right tab).
+  void _syncNowTab() {
+    if (_pageOpen || _searching || (_tab != 'home' && _tab != 'now')) return;
+    final want = nowAway.value < .5 ? 'now' : 'home';
+    if (_tab != want) setState(() => _tab = want);
   }
 
   @override
   void initState() {
     super.initState();
     _query.addListener(_syncPills);
+    nowAway.addListener(_syncNowTab);
     prefs.addListener(_rebuild);
     if (!widget.preview) {
       openToday.addListener(_openToday);
@@ -521,6 +548,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     TvRemote.instance.status.removeListener(_syncTvNotification);
     TvRemote.instance.power.removeListener(_syncTvNotification);
     openToday.removeListener(_openToday);
+    nowAway.removeListener(_syncNowTab);
     _panel.dispose();
     _sheet.dispose();
     _land.dispose();
@@ -750,7 +778,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   void _settings() {
     HapticFeedback.mediumImpact();
-    _openTab('settings', () => showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme));
+    _openTab('settings', () => showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme), rise: true);
   }
 
   // ---- Build ---------------------------------------------------------------
@@ -881,170 +909,193 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
-                                  Positioned(
-                                    top: 0,
-                                    left: 0,
-                                    right: 0,
-                                    height: topHeight,
-                                    child: ValueListenableBuilder<double>(
-                                      valueListenable: _expanded,
-                                      builder: (context, e, child) => IgnorePointer(
-                                        ignoring: e > 0.3,
-                                        child: Opacity(
-                                          // Lighter effects: no fade (an offscreen layer every frame) — the sheet covers it.
-                                          opacity: Perf.lite.value ? (e > .95 ? 0 : 1) : (1 - e * 1.6).clamp(0.0, 1.0),
-                                          child: Transform.translate(
-                                            offset: Offset(0, -topHeight * 0.18 * e),
-                                            child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
-                                          ),
-                                        ),
-                                      ),
-                                      child: RepaintBoundary(
-                                        // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
-                                        child: Stack(
-                                          fit: StackFit.expand,
-                                          children: [
-                                            // Page 0 (Now) hides the wallpaper edge to edge.
-                                            IgnorePointer(child: NowStage(prefs: prefs)),
-                                            _TopArea(
-                                              chipsHeight: QuickChipsRow.heightOf(prefs),
-                                              carousel: NotificationListener<ScrollNotification>(
-                                                onNotification: _onCarouselScroll, // past its first page → the today panel
-                                                child: TopCarousel(
-                                                  prefs: prefs,
-                                                  refresh: _refresh,
-                                                  onTapClock: () => _openNamed(['clock']),
-                                                  onTapDate: () => _openNamed(['calendar', 'google calendar']),
-                                                  onBlank: (b) => _topBlank.value = b,
-                                                ),
-                                              ),
-                                              blank: _topBlank,
-                                              onCustomise: () {
-                                                HapticFeedback.mediumImpact();
-                                                showCustomiseTop(context, prefs: prefs);
-                                              },
-                                              padding: prefs.topPadding,
-                                              onSwipeUp: _expand,
-                                              onSwipeDown: Apps.instance.openNotifications,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // ---- Bottom half: the app view sheet. ----
-                                  NotificationListener<ScrollEndNotification>(
-                                    onNotification: (_) {
-                                      if (_collapseOnRelease) {
-                                        _collapseOnRelease = false;
-                                        _collapse();
-                                      }
-                                      return false;
-                                    },
-                                    child: NotificationListener<DraggableScrollableNotification>(
-                                      // Dragging the whole sheet down while searching also ends the search.
-                                      onNotification: (n) {
-                                        if (_showResults && n.extent < 0.97) _dismissSearch();
-                                        return false;
-                                      },
-                                      child: _sheetWidget,
-                                    ),
-                                  ),
-
-                                  // ---- Quick action chips: on the wallpaper, just above the sheet's top edge. ----
-                                  // They ride along with the sheet and fade out as it expands.
-                                  ValueListenableBuilder<double>(
-                                    valueListenable: _expanded,
-                                    builder: (context, e, child) {
-                                      final sheetTop = c.maxHeight * (1 - (_rest + e * (1 - _rest)));
-                                      return Positioned(
-                                        left: 0,
-                                        right: 0,
-                                        top: sheetTop - QuickChipsRow.heightOf(prefs) - QuickChipsRow.gap,
-                                        height: QuickChipsRow.heightOf(prefs),
-                                        child: IgnorePointer(
-                                          ignoring: e > .2,
-                                          child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
-                                        ),
-                                      );
-                                    },
-                                    child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
-                                  ),
-
-                                  // ---- Fade under the dock, so it reads as floating above the cards. ----
-                                  if (prefs.searchPosition != 'top')
-                                    Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      bottom: 0,
-                                      height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
-                                      child: IgnorePointer(
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            // Sheet colour (follows the theme), fading in under the dock.
-                                            gradient: LinearGradient(
-                                              begin: Alignment.topCenter,
-                                              end: Alignment.bottomCenter,
-                                              colors: [DS.sheet.withValues(alpha: 0), DS.sheet.withValues(alpha: .9)],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-
-                                  // ---- Recent searches: pills just above the bar, popping in one after another as
-                                  // search opens (with the pull, or on their own after a tap); typing or closing
-                                  // search takes them back out. ----
-                                  // Quick lights sit just above them (when Google Home has lights).
-                                  if (prefs.searchPosition != 'top')
-                                    AnimatedBuilder(
-                                      animation: Listenable.merge([_reveal, _pull, _pillsIn, SmartHome.instance.state]),
-                                      builder: (context, _) {
-                                        final t = _revealed * _pillsIn.value;
-                                        final lights = SmartHome.instance.state.value.lights.isNotEmpty;
-                                        final pills = RecentSearches.shows(prefs);
-                                        if (t == 0 || !(lights || pills)) return const SizedBox.shrink();
-                                        final mq = MediaQuery.of(context);
-                                        return Positioned(
-                                          left: 0,
-                                          right: 0,
-                                          bottom: math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12 + SearchDock.height + DS.s12,
-                                          child: IgnorePointer(
-                                            ignoring: !_searching || t < 1,
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                                              children: [
-                                                if (lights)
-                                                  Opacity(
-                                                    opacity: Curves.easeOut.transform(t),
-                                                    child: Transform.translate(
-                                                      offset: Offset(0, 16 * (1 - t)),
-                                                      child: Padding(
-                                                        padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
-                                                        child: Container(
-                                                          padding: const EdgeInsets.symmetric(vertical: DS.s8),
-                                                          decoration: ShapeDecoration(
-                                                            color: DS.card,
-                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: DS.hairline)),
-                                                          ),
-                                                          child: QuickLights(ink: DS.ink, soft: DS.inkMuted, full: false, onOpen: () {
-                                                            _stopSearch();
-                                                            _openSmart();
-                                                          }),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                if (pills) RecentSearchPills(prefs: prefs, progress: t, onPick: _setQuery),
-                                              ],
-                                            ),
+                                  // ---- Home's own content: slides off the other way (and dims) while a tab page is up,
+                                  // so going to Smart home is a move, not an overlay. A rising page (Settings) just covers it.
+                                  Positioned.fill(
+                                    child: AnimatedBuilder(
+                                      animation: _backdrop,
+                                      builder: (context, child) {
+                                        // Same shape every frame (no state lost); at rest it's a no-op.
+                                        final t = _homeSide == 0 ? 0.0 : Curves.easeOutCubic.transform(_backdrop.value);
+                                        return IgnorePointer(
+                                          ignoring: t > 0 && _pageOpen,
+                                          child: Opacity(
+                                            opacity: (1 - t).clamp(0.0, 1.0),
+                                            child: Transform.translate(offset: Offset(_homeSide * MediaQuery.sizeOf(context).width * .32 * t, 0), child: child),
                                           ),
                                         );
                                       },
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                      // ---- Top half: clock + options. Scales down and fades as the sheet rises. ----
+                                      Positioned(
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        height: topHeight,
+                                        child: ValueListenableBuilder<double>(
+                                          valueListenable: _expanded,
+                                          builder: (context, e, child) => IgnorePointer(
+                                            ignoring: e > 0.3,
+                                            child: Opacity(
+                                              // Lighter effects: no fade (an offscreen layer every frame) — the sheet covers it.
+                                              opacity: Perf.lite.value ? (e > .95 ? 0 : 1) : (1 - e * 1.6).clamp(0.0, 1.0),
+                                              child: Transform.translate(
+                                                offset: Offset(0, -topHeight * 0.18 * e),
+                                                child: Transform.scale(scale: 1 - 0.3 * e, alignment: Alignment.topCenter, child: child),
+                                              ),
+                                            ),
+                                          ),
+                                          child: RepaintBoundary(
+                                            // Cached as a layer: fading/scaling it while the sheet moves just re-composites it.
+                                            child: Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                // Page 0 (Now) hides the wallpaper edge to edge.
+                                                IgnorePointer(child: NowStage(prefs: prefs)),
+                                                _TopArea(
+                                                  chipsHeight: QuickChipsRow.heightOf(prefs),
+                                                  carousel: NotificationListener<ScrollNotification>(
+                                                    onNotification: _onCarouselScroll, // past its first page → the today panel
+                                                    child: TopCarousel(
+                                                      prefs: prefs,
+                                                      refresh: _refresh,
+                                                      onTapClock: () => _openNamed(['clock']),
+                                                      onTapDate: () => _openNamed(['calendar', 'google calendar']),
+                                                      onBlank: (b) => _topBlank.value = b,
+                                                    ),
+                                                  ),
+                                                  blank: _topBlank,
+                                                  onCustomise: () {
+                                                    HapticFeedback.mediumImpact();
+                                                    showCustomiseTop(context, prefs: prefs);
+                                                  },
+                                                  padding: prefs.topPadding,
+                                                  onSwipeUp: _expand,
+                                                  onSwipeDown: Apps.instance.openNotifications,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+
+                                      // ---- Bottom half: the app view sheet. ----
+                                      NotificationListener<ScrollEndNotification>(
+                                        onNotification: (_) {
+                                          if (_collapseOnRelease) {
+                                            _collapseOnRelease = false;
+                                            _collapse();
+                                          }
+                                          return false;
+                                        },
+                                        child: NotificationListener<DraggableScrollableNotification>(
+                                          // Dragging the whole sheet down while searching also ends the search.
+                                          onNotification: (n) {
+                                            if (_showResults && n.extent < 0.97) _dismissSearch();
+                                            return false;
+                                          },
+                                          child: _sheetWidget,
+                                        ),
+                                      ),
+
+                                      // ---- Quick action chips: on the wallpaper, just above the sheet's top edge. ----
+                                      // They ride along with the sheet and fade out as it expands.
+                                      ValueListenableBuilder<double>(
+                                        valueListenable: _expanded,
+                                        builder: (context, e, child) {
+                                          final sheetTop = c.maxHeight * (1 - (_rest + e * (1 - _rest)));
+                                          return Positioned(
+                                            left: 0,
+                                            right: 0,
+                                            top: sheetTop - QuickChipsRow.heightOf(prefs) - QuickChipsRow.gap,
+                                            height: QuickChipsRow.heightOf(prefs),
+                                            child: IgnorePointer(
+                                              ignoring: e > .2,
+                                              child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
+                                            ),
+                                          );
+                                        },
+                                        child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                                      ),
+
+                                      // ---- Fade under the dock, so it reads as floating above the cards. ----
+                                      if (prefs.searchPosition != 'top')
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          bottom: 0,
+                                          height: SearchDock.height + MediaQuery.paddingOf(context).bottom + DS.s48,
+                                          child: IgnorePointer(
+                                            child: DecoratedBox(
+                                              decoration: BoxDecoration(
+                                                // Sheet colour (follows the theme), fading in under the dock.
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topCenter,
+                                                  end: Alignment.bottomCenter,
+                                                  colors: [DS.sheet.withValues(alpha: 0), DS.sheet.withValues(alpha: .9)],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+
+                                      // ---- Recent searches: pills just above the bar, popping in one after another as
+                                      // search opens (with the pull, or on their own after a tap); typing or closing
+                                      // search takes them back out. ----
+                                      // Quick lights sit just above them (when Google Home has lights).
+                                      if (prefs.searchPosition != 'top')
+                                        AnimatedBuilder(
+                                          animation: Listenable.merge([_reveal, _pull, _pillsIn, SmartHome.instance.state]),
+                                          builder: (context, _) {
+                                            final t = _revealed * _pillsIn.value;
+                                            final lights = SmartHome.instance.state.value.lights.isNotEmpty;
+                                            final pills = RecentSearches.shows(prefs);
+                                            if (t == 0 || !(lights || pills)) return const SizedBox.shrink();
+                                            final mq = MediaQuery.of(context);
+                                            return Positioned(
+                                              left: 0,
+                                              right: 0,
+                                              bottom: math.max(mq.viewInsets.bottom, mq.padding.bottom) + DS.s12 + SearchDock.height + DS.s12,
+                                              child: IgnorePointer(
+                                                ignoring: !_searching || t < 1,
+                                                child: Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                                  children: [
+                                                    if (lights)
+                                                      Opacity(
+                                                        opacity: Curves.easeOut.transform(t),
+                                                        child: Transform.translate(
+                                                          offset: Offset(0, 16 * (1 - t)),
+                                                          child: Padding(
+                                                            padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
+                                                            child: Container(
+                                                              padding: const EdgeInsets.symmetric(vertical: DS.s8),
+                                                              decoration: ShapeDecoration(
+                                                                color: DS.card,
+                                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: DS.hairline)),
+                                                              ),
+                                                              child: QuickLights(ink: DS.ink, soft: DS.inkMuted, full: false, onOpen: () {
+                                                                _stopSearch();
+                                                                _openSmart();
+                                                              }),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    if (pills) RecentSearchPills(prefs: prefs, progress: t, onPick: _setQuery),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        ],
+                                      ),
                                     ),
+                                  ),
 
                                   // ---- Remote / Settings: pages under the nav. ----
                                   // Their backdrop stays put and fades; only the content slides.
@@ -1099,7 +1150,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 // ---- Nav tab pages ----------------------------------------------------------
 
 class _TabPage {
-  _TabPage({required this.id, required this.side, required this.motion});
+  _TabPage({required this.id, required this.side, required this.motion, this.rise = false});
+  final bool rise; // comes up from the bottom and goes back down (Settings)
   final int id;
   final AnimationController motion; // 0 → 1 coming in; back to 0 leaving
   double side; // where it slides from (coming in) or to (leaving): -1 left, 1 right
@@ -1119,13 +1171,18 @@ class _TabPageMotion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final w = MediaQuery.sizeOf(context).width;
+    final size = MediaQuery.sizeOf(context);
+    final w = size.width;
     return AnimatedBuilder(
       animation: Listenable.merge([page.motion, drag]),
       child: RepaintBoundary(child: page.body),
       builder: (context, child) {
         final v = page.motion.value;
         final t = (page.leaving ? Curves.easeInCubic : Curves.easeOutCubic).transform(v);
+        if (page.rise) {
+          // Up from the bottom like a sheet, back down when it closes.
+          return Transform.translate(offset: Offset(0, size.height * (1 - t)), child: child);
+        }
         final dx = page.leaving ? page.dx : drag.value;
         return Opacity(
           opacity: (t * (1 - (dx.abs() / w) * .7)).clamp(0.0, 1.0),

@@ -34,6 +34,7 @@ class SearchDock extends StatelessWidget {
     this.onRemote,
     this.onRemoteLongPress,
     this.tab = 'home',
+    this.onNow,
     this.onHome,
     this.pull,
     this.pullFull = 1,
@@ -44,10 +45,11 @@ class SearchDock extends StatelessWidget {
   final ValueListenable<double>? pull;
   final double pullFull;
 
-  /// The bottom nav's selected tab at rest: 'home', 'smart', 'remote', 'search' or 'settings'.
+  /// The bottom nav's selected tab at rest: 'now', 'home', 'smart', 'remote', 'search' or 'settings'.
   final String tab;
 
   /// The nav's Home tab (back to the clock); null = the plain search dock (inside the drawer).
+  final VoidCallback? onNow;
   final VoidCallback? onHome;
 
   /// TV remote button between the bar and settings (null = hidden, Settings → TV remote).
@@ -121,6 +123,7 @@ class SearchDock extends StatelessWidget {
                   selected: tab == 'remote' ? 'smart' : (tab == 'settings' ? 'home' : tab), // the remote lives in Smart home; Settings under Home
                   tabs: [
                     // Settings has no tab: long-press Home.
+                    if (onNow != null) _NavTab('now', Icons.graphic_eq_rounded, 'Now', onNow!, tooltip: 'Now: what\'s playing'),
                     _NavTab('home', Icons.home_rounded, 'Home', onHome!, onLongPress: onSettings, tooltip: 'Home screen · hold for Settings'),
                     if (onRemote != null)
                       _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),

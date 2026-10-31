@@ -27,6 +27,10 @@ class TopCarousel extends StatefulWidget {
   State<TopCarousel> createState() => _TopCarouselState();
 }
 
+/// Asks the carousel to glide to a page: the bottom nav's Now tab (page 0) and Home (page 1).
+final _topJump = ValueNotifier<(int, int)>((1, 0)); // (page, request number)
+void jumpTop(int page) => _topJump.value = (page, _topJump.value.$2 + 1);
+
 class _TopCarouselState extends State<TopCarousel> {
   final _pages = PageController(initialPage: 1);
   int _index = 1;
@@ -51,6 +55,11 @@ class _TopCarouselState extends State<TopCarousel> {
   void initState() {
     super.initState();
     _pages.addListener(_track);
+    _topJump.addListener(_jump);
+  }
+
+  void _jump() {
+    if (_pages.hasClients) _pages.animateToPage(_topJump.value.$1, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
   void _track() {
@@ -59,6 +68,7 @@ class _TopCarouselState extends State<TopCarousel> {
 
   @override
   void dispose() {
+    _topJump.removeListener(_jump);
     nowAway.value = 1;
     _hideDots?.cancel();
     _pages.dispose();

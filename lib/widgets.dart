@@ -173,7 +173,7 @@ Future<Object?> showOneSheetWith(
   final host = SheetHost.maybeOf(context);
   if (host != null) return host.push(builder, scrollable: scrollable);
   if (tab != null) {
-    return tab.present((close) => _TabPageBody(builder: builder, scrollable: scrollable, underNav: underNav, navRoom: tab.navRoom, close: close));
+    return tab.present((close) => _TabPageBody(builder: builder, scrollable: scrollable, underNav: underNav, navRoom: tab.navRoom, rise: tab.rise, close: close));
   }
   final paged = height != null;
   final nav = GlobalKey<NavigatorState>();
@@ -358,7 +358,10 @@ class SheetHost extends InheritedWidget {
 /// instead of sheets from the bottom. The home arms it ([arm]) right before opening the tab's
 /// sheet; that one [showOneSheetWith] call (only) then hands its content to [present] as a page.
 class TabPageHost {
-  TabPageHost({required this.present, required this.navRoom});
+  TabPageHost({required this.present, required this.navRoom, this.rise = false});
+
+  /// Rises from the bottom (Settings, from a long-press on Home) with Back always at the top.
+  final bool rise;
 
   /// Shows the page (built with a `close` for it); completes when the page is closed.
   final Future<Object?> Function(Widget Function(VoidCallback close) build) present;
@@ -378,9 +381,9 @@ class TabPageHost {
 /// A nav tab's page: a paged sheet's content (pages slide in, back arrow below the first) on a
 /// full-screen card, leaving room for the nav. Back on its first page closes it.
 class _TabPageBody extends StatefulWidget {
-  const _TabPageBody({required this.builder, required this.scrollable, required this.underNav, required this.navRoom, required this.close});
+  const _TabPageBody({required this.builder, required this.scrollable, required this.underNav, required this.navRoom, this.rise = false, required this.close});
   final WidgetBuilder builder;
-  final bool scrollable, underNav;
+  final bool scrollable, underNav, rise;
   final double navRoom;
   final VoidCallback close;
 
@@ -432,7 +435,7 @@ class _TabPageBodyState extends State<_TabPageBody> {
                           duration: Motion.snapDuration,
                           curve: Curves.easeOutCubic,
                           alignment: Alignment.topLeft,
-                          child: pages > 1
+                          child: pages > 1 || widget.rise
                               ? SizedBox(
                                   height: 52,
                                   child: Align(

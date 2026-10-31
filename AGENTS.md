@@ -151,7 +151,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `home.dart`: Classic/Real home. Top area + app sheet (`DraggableScrollableSheet`), pull-to-search
   (`_pull`, `_reveal`, `_onPull/_onPullEnd`), search state (`_searching`, `_showResults`),
   tab pages under the nav (`_TabPage`, `_presentPage`, `_openTab`, `_navOrder`), status-bar style.
-  Nav order: Home · Smart home · Search (no Settings or Notifications tab: long-press Home opens Settings).
+  Nav order: Now · Home · Smart home · Search (no Settings or Notifications tab: long-press Home opens Settings,
+  which rises from the bottom with Back at the top: `_openTab(rise: true)` → `TabPageHost.rise`). Now = the top
+  carousel's page 0 (`jumpTop(0)` in top_carousel.dart; `_syncNowTab` lights Now/Home as the carousel moves).
+  While a side-sliding tab page is up, home's own content slides off the other way and dims (`_homeSide`, driven by `_backdrop`).
   `_onPagesScroll` (around the home pager): vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons
   unchanged; back at the top / on tab change). Horizontal swipes walk `_swipeOrder` (Today ← Home ↔ Smart home ↔
   Search; Settings counts as Home, the remote as Smart home) via `_swipeNav`: the Today pager takes them on home,
