@@ -1498,11 +1498,11 @@ class _TrendingShow extends StatefulWidget {
 }
 
 class _TrendingShowState extends State<_TrendingShow> {
-  static const every = Duration(seconds: 2), fade = Duration(milliseconds: 700);
+  static const every = Duration(seconds: 10), fade = Duration(milliseconds: 700); // each picture stays 10 s
   List<({String title, String image})> _titles = const [];
   int _i = -1; // showing
   MemoryImage? _shown;
-  Timer? _timer;
+  Timer? _timer, _retry;
 
   @override
   void initState() {
@@ -1521,7 +1521,13 @@ class _TrendingShowState extends State<_TrendingShow> {
     final n = (_i + 1) % _titles.length;
     final img = TvApps.instance.imageNow(_src(n), width: ArtQuality.width);
     if (img == null) {
-      TvApps.instance.image(_src(n), width: ArtQuality.width); // ready by the next tick
+      // Not loaded yet: the next turn tries again — except the very first picture, asked again
+      // every second (nothing shows until it's in).
+      TvApps.instance.image(_src(n), width: ArtQuality.width);
+      if (_shown == null) {
+        _retry?.cancel();
+        _retry = Timer(const Duration(seconds: 1), _next);
+      }
       return;
     }
     setState(() {
@@ -1538,6 +1544,7 @@ class _TrendingShowState extends State<_TrendingShow> {
   @override
   void dispose() {
     _timer?.cancel();
+    _retry?.cancel();
     // After this frame: the caption listens to it, and the tree is locked while widgets go away.
     final mine = AppTrending.instance.showing.value;
     if (mine?.package == widget.package) {
