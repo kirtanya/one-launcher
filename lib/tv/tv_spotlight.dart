@@ -19,6 +19,9 @@ class _Spotlight extends StatefulWidget {
     required this.onOpen,
     required this.onOptions,
     required this.onHeader,
+    required this.moving,
+    required this.onShift,
+    required this.onEndMove,
   });
   final List<TvRow> rows; // the content rows (no chip rows)
   final Prefs prefs;
@@ -29,6 +32,11 @@ class _Spotlight extends StatefulWidget {
   final void Function(TvItem item) onOpen;
   final void Function(TvRow row, int i) onOptions;
   final void Function(String id) onHeader;
+
+  /// Move mode (Hold OK → Move): the moving app's key ('row:item'); ↑ ↓ slide it, OK / Back end.
+  final String? moving;
+  final void Function(TvRow row, int i, int by) onShift;
+  final VoidCallback onEndMove;
 
   @override
   State<_Spotlight> createState() => _SpotlightState();
@@ -177,6 +185,17 @@ class _SpotlightState extends State<_Spotlight> {
   /// Moves inside the column: ↑ ↓ cards, ← → columns, ↑ from the top card to the top bar.
   bool _move(int i, AxisDirection d) {
     final n = _row?.items.length ?? 0;
+    final row = _row;
+    if (widget.moving != null && row != null) {
+      // "Edit" / "All apps" stay at the end; ← → do nothing until OK / Back.
+      final last = row.items.last.key == 'q:edit' || row.items.last.key == 'all-apps' ? n - 2 : n - 1;
+      final by = d == AxisDirection.up && i > 0 ? -1 : (d == AxisDirection.down && i < last ? 1 : 0);
+      if (by != 0) {
+        widget.onShift(row, i, by);
+        WidgetsBinding.instance.addPostFrameCallback((_) => _focusCard(i + by)); // focus is per place: follow the app
+      }
+      return true;
+    }
     switch (d) {
       case AxisDirection.up:
         if (i == 0) {
@@ -352,14 +371,16 @@ class _SpotlightState extends State<_Spotlight> {
 
                   return Align(
                     alignment: Alignment.topCenter,
-                    child: _compact(row)
+                    child: _MoveMark(
+                      on: widget.moving == '${row.id}:${item.key}',
+                      child: _compact(row)
                         ? _SmallCard(
                             key: ValueKey('${row.id}:${item.key}'),
                             item: item,
                             width: _colW,
                             height: _pillH,
                             focusNode: _node(row.id, i),
-                            onSelect: () => widget.onOpen(item),
+                            onSelect: () => widget.moving != null ? widget.onEndMove() : widget.onOpen(item),
                             onOptions: () => widget.onOptions(row, i),
                             onMove: (d) => _move(i, d),
                             onFocus: focus,
@@ -371,7 +392,7 @@ class _SpotlightState extends State<_Spotlight> {
                             width: _colW,
                             height: _chipH,
                             focusNode: _node(row.id, i),
-                            onSelect: () => widget.onOpen(item),
+                            onSelect: () => widget.moving != null ? widget.onEndMove() : widget.onOpen(item),
                             onOptions: () => widget.onOptions(row, i),
                             onMove: (d) => _move(i, d),
                             onFocus: focus,
@@ -382,11 +403,12 @@ class _SpotlightState extends State<_Spotlight> {
                             width: _colW,
                             height: _cardH,
                             focusNode: _node(row.id, i),
-                            onSelect: () => widget.onOpen(item),
+                            onSelect: () => widget.moving != null ? widget.onEndMove() : widget.onOpen(item),
                             onOptions: () => widget.onOptions(row, i),
                             onMove: (d) => _move(i, d),
                             onFocus: focus,
                           ),
+                    ),
                   );
                 },
               ),
@@ -643,4 +665,34 @@ class _ColumnClip extends CustomClipper<Rect> {
 
   @override
   bool shouldReclip(_ColumnClip old) => false;
+}
+
+/// Move mode's mark on the moving app: ↕ at its right edge (↑ ↓ move it, OK / Back done).
+class _MoveMark extends StatelessWidget {
+  const _MoveMark({required this.on, required this.child});
+  final bool on;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => on
+      ? Stack(
+          clipBehavior: Clip.none,
+          children: [
+            child,
+            Positioned(
+              right: -14,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(color: TvDS.ink, shape: BoxShape.circle),
+                  child: const Icon(Icons.unfold_more_rounded, size: 20, color: Color(0xFF000000)),
+                ),
+              ),
+            ),
+          ],
+        )
+      : child;
 }

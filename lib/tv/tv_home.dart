@@ -676,7 +676,7 @@ class _TvHomeState extends State<TvHome> {
   void _startMove(int r, int i) {
     HapticFeedback.mediumImpact();
     setState(() => _moving = _key(r, i));
-    _focus(r, i);
+    if (!_spotlightView) _focus(r, i); // Spotlight's column keeps its own focus (its card stays focused)
   }
 
   void _endMove() {
@@ -1197,6 +1197,9 @@ class _TvHomeState extends State<TvHome> {
                     onOpen: _open,
                     onOptions: _options,
                     onHeader: _headerAction,
+                    moving: _moving,
+                    onShift: (row, i, by) => _shift(_rows.indexOf(row), i, by),
+                    onEndMove: _endMove,
                   );
                 },
               ),
