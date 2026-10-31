@@ -152,7 +152,13 @@ class _SpotlightState extends State<_Spotlight> {
     if (row == null || row.items.isEmpty) return;
     final at = i.clamp(0, row.items.length - 1);
     _at[row.id] = at;
-    _node(row.id, at).requestFocus();
+    final node = _node(row.id, at);
+    // Already focused (Home pressed on it, back from an app): no focus change will name it, so say it here.
+    if (node.hasFocus) {
+      widget.onShow(row.items[at]);
+    } else {
+      node.requestFocus();
+    }
     // The focused card keeps its place near the top of the column; the rest slide past it.
     // The column holds still while focus moves inside what's in view; it scrolls only when the
     // card would leave it — past the clear part at the bottom (the last fifth fades), or above.

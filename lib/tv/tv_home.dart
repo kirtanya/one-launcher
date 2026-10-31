@@ -611,6 +611,9 @@ class _TvHomeState extends State<TvHome> {
   /// quick actions — the first app. (Search is one ↑ away from either.)
   void _focusDefault() {
     if (_tilesView) return _tilesKey.currentState?.land();
+    // Spotlight keeps its own focus and picture: the rows below aren't on screen there, and showing
+    // their first item left Continue watching's picture behind One Stream (bug, 2026-10-31).
+    if (_spotlightView) return _spotlightKey.currentState?.land();
     final quick = _rows.indexWhere((r) => r.id == 'quick' && r.items.any((it) => it.key != 'q:edit'));
     final resume = _rows.indexWhere((r) => r.id == 'resume');
     final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
