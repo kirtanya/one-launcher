@@ -1583,46 +1583,104 @@ class _TrendingShowState extends State<_TrendingShow> {
 /// A full-screen backdrop picture: the picture on the left 70% (so the rows and column on the
 /// right don't cut into it), then the same picture flipped, carrying on from its right edge —
 /// one continuous image, the mirrored part sunk under black so it reads as shade, not a copy.
-class _Wide extends StatelessWidget {
+class _Wide extends StatefulWidget {
   const _Wide({required this.image, this.onError, this.opacity = 1});
   final ImageProvider image;
   final Widget Function()? onError;
   final double opacity;
 
-  /// The whole picture at 75% of the screen (top-left, nothing cropped on a 16:9 picture), and
-  /// flipped copies filling the rest: beside it, below it, and both ways in the corner, each
-  /// starting at its edge like a reflection (user's mockup, 2026-10-31).
+  /// The whole picture as big as fits in 75% of the width and 75% of the height (top-left, its
+  /// own shape, nothing cropped), and flipped copies repeated outward to fill the screen: beside
+  /// it, below it, and both ways in the corners, each starting at an edge like a reflection
+  /// (user's mockup, 2026-10-31). A 16:9 picture fills exactly 75% × 75%; a poster gets several
+  /// copies across.
   static const share = .75;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, c) {
-      final w = c.maxWidth * share, h = c.maxHeight * share;
-      Widget pic({bool x = false, bool y = false}) {
-        final img = Image(
-          image: image,
-          fit: BoxFit.cover,
-          alignment: _Backdrop._focusPoint,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
-          opacity: opacity < 1 ? AlwaysStoppedAnimation(opacity) : null,
-          errorBuilder: onError == null ? null : (_, _, _) => onError!(),
-        );
-        return x || y ? Transform.flip(flipX: x, flipY: y, child: img) : img;
-      }
+  State<_Wide> createState() => _WideState();
+}
 
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(left: 0, top: 0, width: w, height: h, child: pic()),
-          Positioned(left: w, top: 0, width: w, height: h, child: pic(x: true)),
-          Positioned(left: 0, top: h, width: w, height: h, child: pic(y: true)),
-          Positioned(left: w, top: h, width: w, height: h, child: pic(x: true, y: true)),
-          CustomPaint(painter: _MirrorShade(w, h)),
-        ],
-      );
-    },
+class _WideState extends State<_Wide> {
+  double? _aspect; // width / height, once the picture is known
+  ImageStream? _stream;
+  late final _listener = ImageStreamListener(
+    (info, _) => _set(() => _aspect = info.image.width / info.image.height),
+    onError: (_, _) => _set(() => _failed = true),
   );
+  bool _failed = false;
+  bool _resolving = false; // a decoded picture answers inside addListener, mid-build: no setState then
+
+  void _set(VoidCallback f) => _resolving || !mounted ? f() : setState(f);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(_Wide old) {
+    super.didUpdateWidget(old);
+    if (old.image != widget.image) _resolve();
+  }
+
+  void _resolve() {
+    final s = widget.image.resolve(createLocalImageConfiguration(context));
+    if (s.key == _stream?.key) return;
+    _stream?.removeListener(_listener);
+    _resolving = true;
+    _stream = s..addListener(_listener); // a decoded picture answers at once
+    _resolving = false;
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed && widget.onError != null) return widget.onError!();
+    final aspect = _aspect;
+    if (aspect == null) return const SizedBox.expand(); // a moment until its shape is known
+    return LayoutBuilder(
+      builder: (context, c) {
+        // As big as fits in the 75% box, keeping its shape.
+        final bw = c.maxWidth * _Wide.share, bh = c.maxHeight * _Wide.share;
+        final w = math.min(bw, bh * aspect), h = w / aspect;
+        // Copies across and down until the screen is full (a very narrow picture stops at 8).
+        final cols = math.min(8, (c.maxWidth / w).ceil()), rows = math.min(8, (c.maxHeight / h).ceil());
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            for (var j = 0; j < rows; j++)
+              for (var i = 0; i < cols; i++)
+                Positioned(
+                  left: i * w,
+                  top: j * h,
+                  width: w,
+                  height: h,
+                  // Odd places are flipped: each copy mirrors its neighbour at the shared edge.
+                  child: _pic(flipX: i.isOdd, flipY: j.isOdd),
+                ),
+            CustomPaint(painter: _MirrorShade(w, h)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _pic({required bool flipX, required bool flipY}) {
+    final img = Image(
+      image: widget.image,
+      fit: BoxFit.fill, // the box already has the picture's shape: nothing cropped or stretched
+      gaplessPlayback: true,
+      filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
+      opacity: widget.opacity < 1 ? AlwaysStoppedAnimation(widget.opacity) : null,
+    );
+    return flipX || flipY ? Transform.flip(flipX: flipX, flipY: flipY, child: img) : img;
+  }
 }
 
 /// Darkens the flipped copies (50%), clear at the picture's edge and full 9% of the screen width

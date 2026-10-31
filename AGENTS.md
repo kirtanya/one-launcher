@@ -34,8 +34,8 @@ Flutter Android launcher, two flavours from one codebase:
   at ~22 fps (26% CPU) idle; now a 1.8 s settle then still (idle ~2 fps, ~8% CPU). Backdrop
   crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
   48 MB / 80, media updates rebuild the home only when more than the position changed.
-  **Backdrop picture** (`_Wide`, Cinematic + Spotlight): the whole picture at 75% (top-left) + flipped
-  copies right / below / corner; `_MirrorShade` darkens them 50%, clear at the picture's edge and
+  **Backdrop picture** (`_Wide`, Cinematic + Spotlight): the whole picture, its own shape, as big as fits
+  in 75% × 75% (top-left; posters / 4:3 / 21:9 never cropped) + flipped copies tiled out to fill; `_MirrorShade` darkens them 50%, clear at the picture's edge and
   full 9% of the width out (one layer, so the corner isn't darker). Mockup the user tuned:
   claude.ai/artifact/SJRv1UZt2X55XkkvCNqEs6.
   `io.flutter.embedding.android.ImpellerBackend=opengles` had no effect on Flutter 3.47.
