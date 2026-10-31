@@ -1683,14 +1683,14 @@ class _WideState extends State<_Wide> {
   }
 }
 
-/// Darkens the flipped copies (50%), clear at the picture's edge and full 9% of the screen width
+/// Darkens the flipped copies (95%), clear at the picture's edge and full 9% of the screen width
 /// further out, so nothing marks where they begin. Both fades go into one layer before it's
 /// darkened, so the corner (where they meet) is no darker than the strips.
 class _MirrorShade extends CustomPainter {
   const _MirrorShade(this.w, this.h);
   final double w, h;
 
-  static const dark = .5, fade = .09;
+  static const dark = .95, fade = .09;
 
   @override
   void paint(Canvas canvas, Size size) {
