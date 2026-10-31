@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -27,6 +29,22 @@ class TopCarousel extends StatefulWidget {
 class _TopCarouselState extends State<TopCarousel> {
   final _pages = PageController(initialPage: 1);
   int _index = 1;
+  bool _dots = false; // page dots show only while swiping, then fade out
+  Timer? _hideDots;
+
+  bool _scrolled(ScrollNotification n) {
+    if (n.depth != 0) return false;
+    if (n is ScrollStartNotification || (n is ScrollUpdateNotification && n.dragDetails != null)) {
+      _hideDots?.cancel();
+      if (!_dots) setState(() => _dots = true);
+    } else if (n is ScrollEndNotification) {
+      _hideDots?.cancel();
+      _hideDots = Timer(const Duration(milliseconds: 900), () {
+        if (mounted) setState(() => _dots = false);
+      });
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -41,6 +59,7 @@ class _TopCarouselState extends State<TopCarousel> {
   @override
   void dispose() {
     nowAway.value = 1;
+    _hideDots?.cancel();
     _pages.dispose();
     super.dispose();
   }
@@ -70,34 +89,38 @@ class _TopCarouselState extends State<TopCarousel> {
           Expanded(
             child: HeaderFontScope(
               style: clockStyleOf(widget.prefs),
-              child: PageView.builder(
-                controller: _pages,
-                itemCount: ids.length,
-                onPageChanged: (i) {
-                  HapticFeedback.selectionClick();
-                  setState(() => _index = i);
-                  widget.onBlank?.call(ids[i] == 'blank');
-                },
-                itemBuilder: (context, i) => AnimatedBuilder(
-                  animation: _pages,
-                  child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
-                  builder: (context, child) {
-                    final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
-                    final d = Perf.lite.value ? 0.0 : (page - i).abs().clamp(0.0, 1.0); // lighter effects: no page fade
-                    return Opacity(
-                      opacity: 1 - d * .6,
-                      child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
-                    );
+              child: NotificationListener<ScrollNotification>(
+                onNotification: _scrolled,
+                child: PageView.builder(
+                  controller: _pages,
+                  itemCount: ids.length,
+                  onPageChanged: (i) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _index = i);
+                    widget.onBlank?.call(ids[i] == 'blank');
                   },
+                  itemBuilder: (context, i) => AnimatedBuilder(
+                    animation: _pages,
+                    child: KeyedSubtree(key: ValueKey(ids[i]), child: _page(ids[i])),
+                    builder: (context, child) {
+                      final page = _pages.hasClients && _pages.position.haveDimensions ? (_pages.page ?? 0) : index.toDouble();
+                      final d = Perf.lite.value ? 0.0 : (page - i).abs().clamp(0.0, 1.0); // lighter effects: no page fade
+                      return Opacity(
+                        opacity: 1 - d * .6,
+                        child: Transform.scale(scale: 1 - d * .08, alignment: Alignment.centerLeft, child: child),
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
           ),
-          // Page dots (only when there's more than one page); hidden on the wallpaper-only page.
+          // Page dots (only when there's more than one page): hidden at rest, shown while
+          // swiping. Their row keeps its space so nothing shifts when they appear.
           if (ids.length > 1 && box.maxHeight >= 48)
             AnimatedOpacity(
               duration: Motion.snapDuration,
-              opacity: ids[index] == 'blank' ? 0 : 1,
+              opacity: _dots && ids[index] != 'blank' ? 1 : 0,
               child: Padding(
                 padding: const EdgeInsets.only(top: DS.s4),
                 child: Row(
@@ -105,16 +128,19 @@ class _TopCarouselState extends State<TopCarousel> {
                   children: [
                     for (var i = 0; i < ids.length; i++)
                       if (DS.third) // Tactile: a row of LEDs, the current page lit
-                        Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: TLed(on: i == index, size: 6))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: TLed(on: i == index, size: 6),
+                        )
                       else
-                      AnimatedContainer(
-                        duration: Motion.snapDuration,
-                        curve: Motion.settle,
-                        width: i == index ? 18 : 6,
-                        height: 6,
-                        margin: const EdgeInsets.symmetric(horizontal: 3),
-                        decoration: BoxDecoration(color: i == index ? DS.onWallpaper : DS.glassLine, borderRadius: BorderRadius.circular(3)),
-                      ),
+                        AnimatedContainer(
+                          duration: Motion.snapDuration,
+                          curve: Motion.settle,
+                          width: i == index ? 18 : 6,
+                          height: 6,
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          decoration: BoxDecoration(color: i == index ? DS.onWallpaper : DS.glassLine, borderRadius: BorderRadius.circular(3)),
+                        ),
                   ],
                 ),
               ),

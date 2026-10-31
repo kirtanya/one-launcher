@@ -656,73 +656,98 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
     }
     final progress = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
 
-    // Tapping anywhere but the controls opens the player.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: Apps.instance.mediaOpen,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: DS.s8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (h >= 72) header('Now playing · ${m['app'] ?? ''}'),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final artSize = c.maxHeight.clamp(40.0, 72.0);
-                  return Row(
-                    children: [
-                      Semantics(button: true, label: 'Open ${m['app']}', child: _art(m['art'] as Uint8List?, artSize)),
-                      const SizedBox(width: DS.s12),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${m['title'] ?? ''}',
-                              style: label.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if ((m['artist'] as String?)?.isNotEmpty ?? false) Text('${m['artist']}', style: sub, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                      _Control(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
-                      _Control(
-                        icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        label: playing ? 'Pause' : 'Play',
-                        primary: true,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _playingOverride = !playing);
-                          Apps.instance.mediaPlayPause();
-                        },
-                      ),
-                      _Control(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
-                    ],
-                  );
-                },
-              ),
-            ),
-            if (duration > 0 && h >= 84) ...[
-              const SizedBox(height: DS.s8),
-              // Thin glass track, filled as the song plays.
-              Container(
-                height: 4,
-                decoration: BoxDecoration(color: DS.glass, borderRadius: BorderRadius.circular(2)),
-                alignment: Alignment.centerLeft,
-                child: FractionallySizedBox(
-                  widthFactor: progress,
-                  child: Container(
-                    decoration: BoxDecoration(color: DS.onWallpaper, borderRadius: BorderRadius.circular(2)),
+    final art = m['art'] as Uint8List?;
+    final artist = (m['artist'] as String?) ?? '';
+    final onArt = sub.copyWith(color: DS.clockInk, shadows: const []);
+    final showBar = duration > 0 && h >= 96;
+
+    // The cover fills the card edge to edge under dark scrims, so the text and controls get the
+    // whole width. Tapping anywhere but the controls opens the player.
+    return Semantics(
+      button: true,
+      label: 'Open ${m['app']}',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: Apps.instance.mediaOpen,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(DS.rMedia),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (art == null) const DecoratedBox(decoration: BoxDecoration(color: DS.glass)) else Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
+              // Darker top (header) and bottom (title, controls); the cover shows through the middle.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0x80000000), Color(0x26000000), Color(0xCC000000)],
+                    stops: [0, .4, 1],
                   ),
                 ),
               ),
-              const SizedBox(height: DS.s4),
+              Padding(
+                padding: EdgeInsets.fromLTRB(DS.s16, h >= 72 ? DS.s12 : DS.s8, DS.s8, showBar ? DS.s12 : DS.s4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (h >= 72)
+                      Text(DS.cased('Now playing · ${m['app'] ?? ''}'), style: onArt.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${m['title'] ?? ''}',
+                                style: label.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: DS.onWallpaper, shadows: const []),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (artist.isNotEmpty) Text(artist, style: onArt, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
+                        ),
+                        _Control(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
+                        _Control(
+                          icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          label: playing ? 'Pause' : 'Play',
+                          primary: true,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _playingOverride = !playing);
+                            Apps.instance.mediaPlayPause();
+                          },
+                        ),
+                        _Control(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
+                      ],
+                    ),
+                    if (showBar) ...[
+                      const SizedBox(height: DS.s8),
+                      // Thin track across the card, filled as the song plays.
+                      Padding(
+                        padding: const EdgeInsets.only(right: DS.s8),
+                        child: Container(
+                          height: 3,
+                          decoration: BoxDecoration(color: const Color(0x40FFFFFF), borderRadius: BorderRadius.circular(2)),
+                          alignment: Alignment.centerLeft,
+                          child: FractionallySizedBox(
+                            widthFactor: progress,
+                            child: Container(
+                              decoration: BoxDecoration(color: DS.onWallpaper, borderRadius: BorderRadius.circular(2)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
-          ],
+          ),
         ),
       ),
     );

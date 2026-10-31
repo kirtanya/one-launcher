@@ -13,7 +13,7 @@ import 'pages.dart' show ForegroundTimer, GlassPill;
 /// the wallpaper is hidden behind [NowStage] (the blurred cover art), [NowPage] sits on it.
 ///
 /// [away]: 0 while page 0 shows, 1 once you've swiped to page 1 or beyond. The carousel writes
-/// it; home's [NowStage] slides with it so the stage moves with the page, not over it.
+/// it; home's [NowStage] dissolves with it while only the page's content slides.
 final nowAway = ValueNotifier<double>(1);
 
 /// The full-bleed backdrop behind the top area. Nothing is built while the page is off screen.
@@ -25,12 +25,11 @@ class NowStage extends StatelessWidget {
     valueListenable: nowAway,
     builder: (context, away, _) {
       if (away >= 1) return const SizedBox.shrink();
-      return LayoutBuilder(
-        // Slides out with the page (no fade: big Opacity layers drop frames on the phone).
-        builder: (context, c) => Transform.translate(
-          offset: Offset(-c.maxWidth * away, 0),
-          child: const ClipRect(child: _Backdrop()),
-        ),
+      // Stays put and dissolves while the page's content slides. The blurred backdrop is
+      // drawn once into its own layer, so the fade only re-composites it.
+      return Opacity(
+        opacity: (1 - away).clamp(0.0, 1.0),
+        child: const RepaintBoundary(child: _Backdrop()),
       );
     },
   );
