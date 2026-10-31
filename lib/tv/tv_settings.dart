@@ -106,7 +106,7 @@ const tvSections = <(String, IconData, List<TvOption>)>[
     Icons.view_carousel_outlined,
     [
       TvOption('cardScale', 'Card size', [(.7, 'Extra small'), (.85, 'Small'), (1.0, 'Medium'), (1.15, 'Large')], 1.0),
-      TvOption('focus', 'Focused card', [('glow', 'Outline + glow'), ('outline', 'Outline only')], 'glow'), // never scales
+      TvOption('focus', 'Focused card', [('glow', 'Outline + glow'), ('outline', 'Outline only')], 'outline'), // never scales; glow = 2 blurs per move (GPU)
       TvOption('rowTitles', 'Row titles', [(true, 'On'), (false, 'Off')], true),
       TvOption('rowsAt', 'Rows start', [(.45, 'Higher'), (.55, 'Middle'), (.65, 'Lower')], .55),
       TvOption('motion', 'Animations', [('full', 'Full'), ('reduced', 'Reduced')], 'full'),

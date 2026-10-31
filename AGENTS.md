@@ -35,6 +35,10 @@ Flutter Android launcher, two flavours from one codebase:
   crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
   48 MB / 80, media updates rebuild the home only when more than the position changed.
   `io.flutter.embedding.android.ImpellerBackend=opengles` had no effect on Flutter 3.47.
+  **TV voice key** (tested 2026-10-31, RC710): the remote's mic button never reaches apps — an
+  accessibility key filter saw every other key but no 219/231/84; com.google.android.tv.remote.service
+  opens Google search itself. In-app mic on the TV = phone-as-mic. Gboard's voice typing crashes that
+  remote service ("Failed to register audio policy").
   TV build numbers run ahead of the phone's (TV had 5730 when the phone was 5709): check before installing.
 Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`).
 
