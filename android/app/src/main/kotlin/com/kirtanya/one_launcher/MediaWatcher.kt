@@ -1,6 +1,7 @@
 package com.kirtanya.one_launcher
 
 import android.app.Activity
+import android.app.ActivityOptions
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
@@ -190,12 +191,23 @@ class MediaWatcher(
             "mediaNext" -> { t?.skipToNext(); result.success(true) }
             "mediaPrev" -> { t?.skipToPrevious(); result.success(true) }
             "mediaOpen" -> {
+                // The player's own "now playing" screen (its session activity), else its launcher
+                // entry. Android 14+ only starts another app's PendingIntent from here when the
+                // sender opts in to lending its foreground privilege.
                 val c = controller
+                val launch = { c?.packageName?.let { pkg ->
+                    activity.packageManager.getLaunchIntentForPackage(pkg)?.let { activity.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                } }
                 try {
-                    c?.sessionActivity?.send() ?: activity.packageManager.getLaunchIntentForPackage(c?.packageName ?: "")
-                        ?.let { activity.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    val pi = c?.sessionActivity
+                    if (pi == null) launch()
+                    else if (Build.VERSION.SDK_INT >= 34) {
+                        val opts = ActivityOptions.makeBasic()
+                            .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                        pi.send(activity, 0, null, null, null, null, opts.toBundle())
+                    } else pi.send()
                 } catch (e: Exception) {
-                    c?.packageName?.let { pkg -> activity.packageManager.getLaunchIntentForPackage(pkg)?.let { activity.startActivity(it) } }
+                    launch()
                 }
                 result.success(true)
             }

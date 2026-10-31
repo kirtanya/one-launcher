@@ -130,7 +130,10 @@ class _NowPageState extends State<NowPage> {
           children: [
             Text(DS.cased('NOW'), style: eyebrow),
             const Spacer(),
-            Text(granted ? 'All quiet' : 'See what’s playing', style: DS.wallpaperDate.copyWith(fontSize: 28, fontWeight: FontWeight.w600, shadows: const [])),
+            Text(
+              granted ? 'All quiet' : 'See what’s playing',
+              style: DS.wallpaperDate.copyWith(fontSize: 28, fontWeight: FontWeight.w600, shadows: const []),
+            ),
             const SizedBox(height: DS.s4),
             Text(
               granted ? 'Play some music and it shows up here.' : 'Allow notification access and music shows up here.',
@@ -140,7 +143,10 @@ class _NowPageState extends State<NowPage> {
             ),
             if (!granted) ...[
               const SizedBox(height: DS.s12),
-              GlassPill(onTap: Apps.instance.openNotificationAccess, child: Text('Allow access', style: sub.copyWith(color: DS.onWallpaper))),
+              GlassPill(
+                onTap: Apps.instance.openNotificationAccess,
+                child: Text('Allow access', style: sub.copyWith(color: DS.onWallpaper)),
+              ),
             ],
             const Spacer(),
           ],
@@ -163,21 +169,24 @@ class _NowPageState extends State<NowPage> {
     final showEyebrow = h >= 150;
     final art = (h * .42).clamp(56.0, 120.0);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: DS.s8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (showEyebrow) Text(DS.cased('NOW PLAYING · ${(m['app'] ?? '').toString().toUpperCase()}'), style: eyebrow, maxLines: 1, overflow: TextOverflow.ellipsis),
-          const Spacer(),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Semantics(
-                button: true,
-                label: 'Open ${m['app']}',
-                child: GestureDetector(
-                  onTap: Apps.instance.mediaOpen,
+    // Tapping anywhere but the controls opens the player.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: Apps.instance.mediaOpen,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (showEyebrow)
+              Text(DS.cased('NOW PLAYING · ${(m['app'] ?? '').toString().toUpperCase()}'), style: eyebrow, maxLines: 1, overflow: TextOverflow.ellipsis),
+            const Spacer(),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Semantics(
+                  button: true,
+                  label: 'Open ${m['app']}',
                   child: Container(
                     width: art,
                     height: art,
@@ -192,67 +201,64 @@ class _NowPageState extends State<NowPage> {
                         : Icon(Icons.music_note_rounded, color: DS.onWallpaper, size: art * .4),
                   ),
                 ),
-              ),
-              const SizedBox(width: DS.s16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '${m['title'] ?? ''}',
-                      style: DS.wallpaperDate.copyWith(fontSize: 24, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (artist.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(width: DS.s16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${m['title'] ?? ''}',
+                        style: DS.wallpaperDate.copyWith(fontSize: 24, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (artist.isNotEmpty) ...[const SizedBox(height: 2), Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis)],
                     ],
-                  ],
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            if (showBar) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 4,
+                  backgroundColor: const Color(0x33FFFFFF),
+                  valueColor: const AlwaysStoppedAnimation(DS.onWallpaper),
                 ),
               ),
-            ],
-          ),
-          const Spacer(),
-          if (showBar) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 4,
-                backgroundColor: const Color(0x33FFFFFF),
-                valueColor: const AlwaysStoppedAnimation(DS.onWallpaper),
+              const SizedBox(height: DS.s4),
+              Row(
+                children: [
+                  Text(_time(position), style: sub.copyWith(fontSize: 12)),
+                  const Spacer(),
+                  Text(_time(duration), style: sub.copyWith(fontSize: 12)),
+                ],
               ),
-            ),
-            const SizedBox(height: DS.s4),
+            ],
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(_time(position), style: sub.copyWith(fontSize: 12)),
-                const Spacer(),
-                Text(_time(duration), style: sub.copyWith(fontSize: 12)),
+                _Button(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
+                const SizedBox(width: DS.s24),
+                _Button(
+                  icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  label: playing ? 'Pause' : 'Play',
+                  primary: true,
+                  onTap: () {
+                    setState(() => _playingOverride = !playing);
+                    Apps.instance.mediaPlayPause();
+                  },
+                ),
+                const SizedBox(width: DS.s24),
+                _Button(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
               ],
             ),
           ],
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _Button(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
-              const SizedBox(width: DS.s24),
-              _Button(
-                icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                label: playing ? 'Pause' : 'Play',
-                primary: true,
-                onTap: () {
-                  setState(() => _playingOverride = !playing);
-                  Apps.instance.mediaPlayPause();
-                },
-              ),
-              const SizedBox(width: DS.s24),
-              _Button(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
