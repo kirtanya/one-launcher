@@ -125,15 +125,22 @@ class TvActivity : FlutterActivity() {
                 }
                 // Network for the shows & films catalog (Stremio addons) through Android's own stack —
                 // the same one the streaming apps use (Flutter's sockets failed on some TVs).
+                // With a "body" it's a POST (YouTube's search).
                 "httpGet" -> {
                     val url = call.argument<String>("url")!!
                     val headers = call.argument<Map<String, String>>("headers") ?: emptyMap()
+                    val body = call.argument<String>("body")
                     net.execute {
                         val res = try {
                             (java.net.URL(url).openConnection() as java.net.HttpURLConnection).run {
                                 connectTimeout = 8000
                                 readTimeout = 12000
                                 headers.forEach { (k, v) -> setRequestProperty(k, v) }
+                                if (body != null) {
+                                    requestMethod = "POST"
+                                    doOutput = true
+                                    outputStream.use { it.write(body.toByteArray()) }
+                                }
                                 val code = responseCode
                                 val body = (if (code in 200..299) inputStream else errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
                                 mapOf("status" to code, "body" to body)

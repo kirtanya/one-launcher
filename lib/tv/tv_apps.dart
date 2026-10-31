@@ -238,6 +238,12 @@ class TvApps {
     return ((m?['status'] as int?) ?? -1, (m?['body'] as String?) ?? '');
   }
 
+  /// POST [body] the same way (the native "httpGet" with a body) → (status, body).
+  Future<(int, String)> httpPost(String url, String body, {Map<String, String> headers = const {}}) async {
+    final m = await _ch.invokeMapMethod<String, Object?>('httpGet', {'url': url, 'headers': headers, 'body': body});
+    return ((m?['status'] as int?) ?? -1, (m?['body'] as String?) ?? '');
+  }
+
   /// Opens a show's link in an app: WatchHub's "watch on" links (intent://… or https://…) or
   /// "Open in Nuvio" (stremio:///detail/…), in [package] when given; [fallback] (the web link)
   /// when the first doesn't open. → whether something opened.

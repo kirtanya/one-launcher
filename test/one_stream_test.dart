@@ -309,7 +309,7 @@ void main() {
     home: home,
   );
 
-  testWidgets('TV search: "In One Stream" posters before "Shows & films"; OK opens the title in One Stream', (tester) async {
+  testWidgets('TV search: chips; One Stream row, then YouTube; OK opens the title in One Stream', (tester) async {
     await tv(tester);
     SharedPreferences.setMockInitialValues({});
     await tester.runAsync(() async => Catalog.instance.start(await Prefs.load())); // reads its files for real
@@ -318,12 +318,18 @@ void main() {
     await tester.enterText(find.byType(TextField), 'dune');
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
-    expect(find.text('In One Stream'), findsOneWidget);
-    expect(find.text('Shows & films'), findsOneWidget);
-    expect(tester.getTopLeft(find.text('In One Stream')).dy, lessThan(tester.getTopLeft(find.text('Shows & films')).dy));
+    final streamRow = find.textContaining(RegExp(r'^One Stream · '));
+    final ytRow = find.textContaining(RegExp(r'^YouTube · ')); // the demo's videos
+    expect(streamRow, findsOneWidget);
+    expect(find.text('One Stream'), findsOneWidget, reason: 'its filter chip');
+    expect(find.text('YouTube'), findsOneWidget, reason: 'its filter chip');
+    expect(tester.getTopLeft(streamRow).dy, lessThan(tester.getTopLeft(ytRow).dy), reason: 'One Stream leads, then YouTube');
     expect(find.text('Dune: Part Two'), findsWidgets);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/tv_15_one_stream_search.png'));
-    // ↓ from the box lands on One Stream's first poster; OK opens it.
+    // ↓ from the box lands on the "All" chip, ↓ again on One Stream's first poster; OK opens it.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'chip:all');
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pumpAndSettle();
     expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TvPoster>()?.title.title, 'Dune: Part Two');
