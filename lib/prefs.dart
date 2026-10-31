@@ -101,7 +101,7 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Top carousel pages, in order, and which are switched on.
-  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'tv_remote', 'blank'];
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'tv_remote', 'smart_home', 'blank'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
     bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));

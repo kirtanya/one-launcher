@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import '../apps.dart';
 import '../one_stream_widgets.dart';
 import '../search.dart';
+import '../smart_home_sheet.dart';
 import '../search_history.dart';
 import '../system_settings.dart';
 import '../quick_actions.dart';
@@ -1979,6 +1980,10 @@ Future<String?> pickTileColour(BuildContext context, {String? current, String? a
 /// Runs a quick action from Start (our own TV remote opens here; the rest go to the phone).
 Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String label) async {
   HapticFeedback.selectionClick();
+  if (id == 'b:home') {
+    await showSmartHome(context);
+    return;
+  }
   if (id == 'b:remote') return showTvRemote(context, prefs: prefs);
   final ok = await Apps.instance.quickAction(id);
   if (!ok && context.mounted) {

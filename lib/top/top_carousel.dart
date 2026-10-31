@@ -11,6 +11,7 @@ import '../ui/perf.dart';
 import 'header_fonts.dart';
 import 'now_page.dart';
 import 'pages.dart';
+import 'smart_home_page.dart';
 
 /// The swipeable top half: Clock, Screen time, Battery, Up next — whichever the user
 /// switched on, in their order. Pages snap; neighbours fade and shrink a little as you swipe.
@@ -72,6 +73,7 @@ class _TopCarouselState extends State<TopCarousel> {
     'up_next' => UpNextPage(refresh: widget.refresh),
     'now_playing' => const NowPlayingPage(),
     'now' => NowPage(prefs: widget.prefs),
+    'smart_home' => SmartHomePage(refresh: widget.refresh),
     'tv_remote' => TvRemotePage(prefs: widget.prefs),
     'blank' => const SizedBox.expand(), // only the wallpaper
     _ when id.startsWith('widget:') => AppWidgetPage(widgetId: int.parse(id.substring(7)), label: widget.prefs.widgetLabels[id] ?? 'Widget'),

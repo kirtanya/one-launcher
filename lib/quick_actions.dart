@@ -10,6 +10,7 @@ const builtInActions = <String, (String, IconData)>{
   'b:internet': ('Internet', Icons.wifi_rounded),
   'b:bluetooth': ('Bluetooth', Icons.bluetooth_rounded),
   'b:note': ('New note', Icons.edit_note_rounded),
+  'b:home': ('Smart home', Icons.lightbulb_outline_rounded), // Google Home lights, plugs, AC
   'b:remote': ('TV remote', Icons.settings_remote_rounded), // opens One Launcher's own remote
 };
 

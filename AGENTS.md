@@ -176,6 +176,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - `quick_chips.dart` (chips row + look), `quick_actions.dart`, `folders.dart`, `search.dart`,
   `system_settings.dart`, `photo_wallpaper.dart`, `one_stream*.dart` (One Stream integration),
   `top/` (top carousel pages, clock fonts), `tiles/` (Tiles/Metro home, today panel, landing).
+- `smart_home.dart` (model + `SmartHome` service, channel `one_launcher/home`, contract in its header) · `smart_home_sheet.dart` (sheet, detail, setup card) · `top/smart_home_page.dart`.
+  Entry points: chip `b:home` (also Tiles `qa:b:home`), top page `smart_home`; both off by default.
+  Kotlin bridge pending (needs the Home APIs SDK from developers.home.google.com/apis/android/sdk); until then status = unavailable. Debug: long-press the setup card = fake devices.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).
 - `apps.dart`: the main platform channel `one_launcher/apps` (apps, icons, launching,
   shortcuts, widgets, notification counts, settings intents…).

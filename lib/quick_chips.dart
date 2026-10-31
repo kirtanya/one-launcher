@@ -8,6 +8,7 @@ import 'prefs.dart';
 import 'remote_sheet.dart';
 import 'quick_actions.dart';
 import 'sheets.dart';
+import 'smart_home_sheet.dart';
 import 'third/tactile/parts.dart';
 import 'third/tactile/tactile.dart';
 import 'ui/ds.dart';
@@ -196,6 +197,10 @@ class QuickChipsRow extends StatelessWidget {
 
   Future<void> _run(BuildContext context, String id, String label) async {
     HapticFeedback.selectionClick();
+    if (id == 'b:home') {
+      await showSmartHome(context);
+      return;
+    }
     if (id == 'b:remote') return showTvRemote(context, prefs: prefs); // ours, not the phone's
     final ok = await Apps.instance.quickAction(id);
     if (!ok && context.mounted) {
