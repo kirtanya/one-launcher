@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -549,6 +550,8 @@ class NowPlayingPage extends StatefulWidget {
 class _NowPlayingPageState extends State<NowPlayingPage> {
   ForegroundTimer? _tick; // moves the progress bar while playing
   bool? _playingOverride; // instant feedback after tapping play/pause
+  ColorScheme? _scheme; // from the cover
+  int? _schemeKey;
 
   @override
   void initState() {
@@ -658,11 +661,109 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
 
     final art = m['art'] as Uint8List?;
     final artist = (m['artist'] as String?) ?? '';
-    final onArt = sub.copyWith(color: DS.clockInk, shadows: const []);
-    final showBar = duration > 0 && h >= 96;
+    final pkg = m['package'] as String?;
+    final canSeek = m['canSeek'] == true && duration > 0;
+    final actions = [
+      for (final a in (m['actions'] as List?) ?? const [])
+        if (a is Map && a['icon'] is Uint8List) a,
+    ].take(2).toList();
+    final cs = _schemeFor(art);
+    final ink = cs.onSurface, soft = cs.onSurface.withValues(alpha: .78);
 
-    // The cover fills the card edge to edge under dark scrims, so the text and controls get the
-    // whole width. Tapping anywhere but the controls opens the player.
+    // Like Android's media controls: the cover edge to edge under a dark tint of its own colours;
+    // app + output on top, title + a big play pill in the middle, ⏮ wavy seek ⏭ (+ the app's own
+    // actions) along the bottom. Short top areas drop the top row, then the bottom one.
+    final tall = h >= 172, mid = h >= 100;
+    // Compact: one row, padded only as much as the height allows.
+    final vPad = mid ? DS.s8 : ((h - 44) / 2).clamp(0.0, DS.s8);
+    final rowH = tall ? DS.tap : 40.0, mainH = mid ? null : math.min(DS.tap, h - vPad * 2);
+    final pillH = tall ? 64.0 : math.min(44.0, h - vPad * 2);
+    final title = label.copyWith(fontSize: tall ? 22 : 18, fontWeight: FontWeight.w600, color: ink, shadows: const [], height: 1.15);
+    final sub2 = sub.copyWith(fontSize: tall ? 16 : 14, color: soft, shadows: const []);
+
+    Widget iconButton(IconData icon, String label, VoidCallback? onTap, {double size = 26}) => Semantics(
+      button: true,
+      label: label,
+      child: Pressable(
+        scale: .88,
+        enabled: onTap != null,
+        child: InkResponse(
+          onTap: onTap,
+          radius: 22,
+          child: SizedBox.square(
+            dimension: DS.tap,
+            child: Icon(icon, size: size, color: ink.withValues(alpha: onTap == null ? .35 : 1)),
+          ),
+        ),
+      ),
+    );
+
+    final playPill = Semantics(
+      button: true,
+      label: playing ? 'Pause' : 'Play',
+      child: Pressable(
+        scale: .92,
+        child: Material(
+          color: cs.primary,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _playingOverride = !playing);
+              Apps.instance.mediaPlayPause();
+            },
+            child: AnimatedContainer(
+              duration: DS.medium,
+              curve: Curves.easeOutCubic,
+              // Playing: a rounder, narrower pill; paused: the long one (Material's shape change).
+              width: playing ? pillH * 1.5 : pillH * 1.9,
+              height: pillH,
+              alignment: Alignment.center,
+              child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: pillH * .5, color: cs.onPrimary),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final bottom = SizedBox(height: rowH, child: Row(
+      children: [
+        iconButton(Icons.skip_previous_rounded, 'Previous', m['canPrev'] == false ? null : Apps.instance.mediaPrev),
+        Expanded(
+          child: WavySeekBar(
+            progress: progress,
+            playing: playing,
+            color: ink,
+            track: ink.withValues(alpha: .3),
+            onSeek: canSeek ? (p) => Apps.instance.mediaSeek((p * duration).round()) : null,
+          ),
+        ),
+        iconButton(Icons.skip_next_rounded, 'Next', m['canNext'] == false ? null : Apps.instance.mediaNext),
+        for (final a in actions)
+          Semantics(
+            button: true,
+            label: '${a['name']}',
+            child: Pressable(
+              scale: .88,
+              child: InkResponse(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  Apps.instance.mediaAction('${a['id']}');
+                },
+                radius: 22,
+                child: SizedBox.square(
+                  dimension: DS.tap,
+                  child: Center(
+                    child: Image.memory(a['icon'] as Uint8List, width: 24, height: 24, color: ink, colorBlendMode: BlendMode.srcIn, gaplessPlayback: true),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ));
+
     return Semantics(
       button: true,
       label: 'Open ${m['app']}',
@@ -670,79 +771,64 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
         behavior: HitTestBehavior.opaque,
         onTap: Apps.instance.mediaOpen,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(DS.rMedia),
+          borderRadius: BorderRadius.circular(DS.rMedia + 4),
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (art == null) const DecoratedBox(decoration: BoxDecoration(color: DS.glass)) else Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
-              // Darker top (header) and bottom (title, controls); the cover shows through the middle.
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0x80000000), Color(0x26000000), Color(0xCC000000)],
-                    stops: [0, .4, 1],
-                  ),
-                ),
-              ),
+              if (art == null) ColoredBox(color: cs.surfaceContainerHigh) else Image.memory(art, fit: BoxFit.cover, gaplessPlayback: true),
+              // The cover's own dark tone over it, so everything reads without a black box.
+              ColoredBox(color: Color.lerp(cs.surface, Colors.black, .35)!.withValues(alpha: .62)),
               Padding(
-                padding: EdgeInsets.fromLTRB(DS.s16, h >= 72 ? DS.s12 : DS.s8, DS.s8, showBar ? DS.s12 : DS.s4),
+                padding: EdgeInsets.fromLTRB(DS.s16, tall ? DS.s12 : vPad, DS.s12, mid ? DS.s4 : vPad),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (h >= 72)
-                      Text(DS.cased('Now playing · ${m['app'] ?? ''}'), style: onArt.copyWith(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (tall)
+                      Row(
+                        children: [
+                          _AppBadge(package: pkg, app: '${m['app'] ?? ''}', color: cs.primary, ink: cs.onPrimary),
+                          const Spacer(),
+                          Semantics(
+                            button: true,
+                            label: 'Play on another device',
+                            child: Pressable(
+                              scale: .9,
+                              child: Material(
+                                color: Colors.transparent,
+                                shape: StadiumBorder(side: BorderSide(color: cs.primary, width: 1.5)),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: Apps.instance.mediaOutput,
+                                  child: SizedBox(width: 56, height: 36, child: Icon(Icons.cast_rounded, size: 20, color: cs.primary)),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     const Spacer(),
-                    Row(
+                    SizedBox(height: mainH, child: Row(
                       children: [
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(
-                                '${m['title'] ?? ''}',
-                                style: label.copyWith(fontSize: 18, fontWeight: FontWeight.w600, color: DS.onWallpaper, shadows: const []),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (artist.isNotEmpty) Text(artist, style: onArt, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              Text('${m['title'] ?? ''}', style: title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              if (artist.isNotEmpty) Text(artist, style: sub2, maxLines: 1, overflow: TextOverflow.ellipsis),
                             ],
                           ),
                         ),
-                        _Control(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
-                        _Control(
-                          icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                          label: playing ? 'Pause' : 'Play',
-                          primary: true,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _playingOverride = !playing);
-                            Apps.instance.mediaPlayPause();
-                          },
-                        ),
-                        _Control(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
+                        const SizedBox(width: DS.s12),
+                        if (!mid) ...[
+                          iconButton(Icons.skip_previous_rounded, 'Previous', m['canPrev'] == false ? null : Apps.instance.mediaPrev),
+                          playPill,
+                          iconButton(Icons.skip_next_rounded, 'Next', m['canNext'] == false ? null : Apps.instance.mediaNext),
+                        ] else
+                          playPill,
                       ],
-                    ),
-                    if (showBar) ...[
-                      const SizedBox(height: DS.s8),
-                      // Thin track across the card, filled as the song plays.
-                      Padding(
-                        padding: const EdgeInsets.only(right: DS.s8),
-                        child: Container(
-                          height: 3,
-                          decoration: BoxDecoration(color: const Color(0x40FFFFFF), borderRadius: BorderRadius.circular(2)),
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor: progress,
-                            child: Container(
-                              decoration: BoxDecoration(color: DS.onWallpaper, borderRadius: BorderRadius.circular(2)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    )),
+                    if (mid) ...[const SizedBox(height: DS.s4), bottom] else const Spacer(),
                   ],
                 ),
               ),
@@ -752,6 +838,24 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
       ),
     );
   }
+
+  /// The card's colours, from the cover (Material's dynamic colour), worked out once per cover.
+  ColorScheme _schemeFor(Uint8List? art) {
+    final key = art == null ? 0 : Object.hash(art.length, art.isEmpty ? 0 : art[art.length ~/ 2]);
+    if (key != _schemeKey) {
+      _schemeKey = key;
+      if (art != null) {
+        ColorScheme.fromImageProvider(provider: MemoryImage(art), brightness: Brightness.dark).then((cs) {
+          if (mounted && _schemeKey == key) setState(() => _scheme = cs);
+        }, onError: (_) {});
+      } else {
+        _scheme = null;
+      }
+    }
+    return _scheme ?? _fallbackScheme;
+  }
+
+  static final _fallbackScheme = ColorScheme.fromSeed(seedColor: const Color(0xFFB4637A), brightness: Brightness.dark);
 
   Widget _art(Uint8List? bytes, double size) => ClipRRect(
     borderRadius: BorderRadius.circular(size * .22),
@@ -772,12 +876,184 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
 }
 
 /// Round control over the wallpaper: glass, or solid white for play/pause.
+/// The playing app's icon in a tonal circle, like Android's media controls.
+class _AppBadge extends StatelessWidget {
+  const _AppBadge({required this.package, required this.app, required this.color, required this.ink});
+  final String? package;
+  final String app;
+  final Color color, ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final mono = package == null ? null : Apps.instance.monoNow(package!);
+    final full = package == null || mono != null ? null : Apps.instance.iconNow(package!);
+    return ExcludeSemantics(
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        alignment: Alignment.center,
+        child: mono != null
+            ? Image(image: mono, width: 22, height: 22, color: ink, colorBlendMode: BlendMode.srcIn, gaplessPlayback: true)
+            : full != null
+            ? ClipOval(child: Image(image: full, width: 26, height: 26, gaplessPlayback: true))
+            : Icon(Icons.music_note_rounded, size: 20, color: ink),
+      ),
+    );
+  }
+}
+
+/// Material 3's wavy seek bar: the played part is a gentle wave that moves while playing and
+/// flattens when paused; the rest is a flat, fainter line; a short upright bar is the thumb.
+/// Drag or tap to seek when [onSeek] is set.
+class WavySeekBar extends StatefulWidget {
+  const WavySeekBar({super.key, required this.progress, required this.playing, required this.color, required this.track, this.onSeek});
+  final double progress; // 0..1
+  final bool playing;
+  final Color color, track;
+  final ValueChanged<double>? onSeek;
+
+  @override
+  State<WavySeekBar> createState() => _WavySeekBarState();
+}
+
+class _WavySeekBarState extends State<WavySeekBar> with TickerProviderStateMixin {
+  late final AnimationController _phase = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+  late final AnimationController _amp = AnimationController(vsync: this, duration: DS.medium, value: widget.playing ? 1 : 0);
+  double? _drag; // local position while the finger is down
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.playing) _phase.repeat();
+  }
+
+  @override
+  void didUpdateWidget(WavySeekBar old) {
+    super.didUpdateWidget(old);
+    if (widget.playing != old.playing) {
+      if (widget.playing) {
+        _phase.repeat();
+        _amp.forward();
+      } else {
+        _amp.reverse().whenComplete(() {
+          if (mounted && !widget.playing) _phase.stop();
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _phase.dispose();
+    _amp.dispose();
+    super.dispose();
+  }
+
+  double _at(Offset local, double w) => ((local.dx - 8) / (w - 16)).clamp(0.0, 1.0);
+
+  @override
+  Widget build(BuildContext context) {
+    final seek = widget.onSeek;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final bar = RepaintBoundary(
+          child: CustomPaint(
+            size: Size(w, DS.tap),
+            painter: _WavePainter(
+              progress: _drag ?? widget.progress,
+              phase: _phase,
+              amp: _amp,
+              color: widget.color,
+              track: widget.track,
+              thick: _drag != null,
+            ),
+          ),
+        );
+        if (seek == null) return ExcludeSemantics(child: bar);
+        return Semantics(
+          slider: true,
+          label: 'Seek',
+          value: '${((_drag ?? widget.progress) * 100).round()}%',
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (d) => setState(() => _drag = _at(d.localPosition, w)),
+            onHorizontalDragUpdate: (d) => setState(() => _drag = _at(d.localPosition, w)),
+            onHorizontalDragEnd: (_) {
+              final p = _drag;
+              setState(() => _drag = null);
+              if (p != null) seek(p);
+            },
+            onHorizontalDragCancel: () => setState(() => _drag = null),
+            onTapUp: (d) {
+              HapticFeedback.selectionClick();
+              seek(_at(d.localPosition, w));
+            },
+            child: bar,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  _WavePainter({required this.progress, required this.phase, required this.amp, required this.color, required this.track, required this.thick})
+    : super(repaint: Listenable.merge([phase, amp]));
+  final double progress;
+  final Animation<double> phase, amp;
+  final Color color, track;
+  final bool thick;
+
+  static const _wavelength = 28.0, _height = 3.0, _stroke = 3.5, _gap = 5.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const pad = 8.0;
+    final cy = size.height / 2;
+    final w = size.width - pad * 2;
+    final x = pad + w * progress;
+    final a = _height * Curves.easeOutCubic.transform(amp.value);
+    final line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Remaining: flat and faint, starting just past the thumb.
+    if (x + _gap < size.width - pad) {
+      canvas.drawLine(Offset(x + _gap + _stroke / 2, cy), Offset(size.width - pad, cy), line..color = track);
+    }
+    // Played: the wave, ending just before the thumb; its height eases in from the left edge.
+    final end = x - _gap - _stroke / 2;
+    if (end > pad) {
+      final path = Path()..moveTo(pad, cy);
+      final shift = phase.value * 2 * math.pi;
+      for (var px = pad; px <= end; px += 1) {
+        final ramp = ((px - pad) / 12).clamp(0.0, 1.0);
+        path.lineTo(px, cy + math.sin((px - pad) / _wavelength * 2 * math.pi - shift) * a * ramp);
+      }
+      canvas.drawPath(path, line..color = color);
+    }
+    // Thumb: an upright rounded bar.
+    final th = thick ? 26.0 : 20.0;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(x, cy), width: thick ? 6 : 4.5, height: th), const Radius.circular(3)),
+      Paint()..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_WavePainter o) => o.progress != progress || o.color != color || o.track != track || o.thick != thick;
+}
+
 class _Control extends StatelessWidget {
-  const _Control({required this.icon, required this.label, required this.onTap, this.primary = false, this.enabled = true});
+  const _Control({required this.icon, required this.label, required this.onTap, this.primary = false});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final bool primary, enabled;
+  final bool primary;
+  bool get enabled => true;
 
   @override
   Widget build(BuildContext context) {

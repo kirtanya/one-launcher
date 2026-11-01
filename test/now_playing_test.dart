@@ -25,7 +25,10 @@ void main() {
     SharedPreferences.setMockInitialValues({'topOrder': ['now_playing', 'clock'], 'topEnabled': ['now_playing', 'clock'], 'blankAdded': true, 'nowPlayingAdded': true});
     Apps.instance.init(); // listen for Android's pushes (main() does this in the app)
     await tester.pumpWidget(OneLauncher(prefs: await Prefs.load()));
-    await tester.pumpAndSettle();
+    // The seek bar's wave keeps moving while playing, so step time instead of settling.
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     return calls;
   }
 
@@ -39,9 +42,8 @@ void main() {
   testWidgets('shows the track and controls the player; follows changes', (tester) async {
     final calls = await launch(tester, {
       'granted': true, 'active': true, 'app': 'Spotify', 'title': 'Midnight City', 'artist': 'M83', 'playing': true,
-      'position': 60000, 'duration': 240000, 'speed': 1.0, 'canPrev': true, 'canNext': true,
+      'position': 60000, 'duration': 240000, 'speed': 1.0, 'canPrev': true, 'canNext': true, 'canSeek': true,
     });
-    expect(find.text('Now playing · Spotify'), findsOneWidget);
     expect(find.text('Midnight City'), findsOneWidget);
     expect(find.text('M83'), findsOneWidget);
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/12_now_playing.png'));
@@ -53,6 +55,9 @@ void main() {
     await tester.tap(find.bySemanticsLabel('Next'));
     await tester.pump();
     expect(calls, contains('mediaNext'));
+    await tester.tap(find.bySemanticsLabel('Seek'));
+    await tester.pump();
+    expect(calls, contains('mediaSeek'), reason: 'wavy bar seeks');
 
     // Android reports a new track.
     await tester.binding.defaultBinaryMessenger.handlePlatformMessage(

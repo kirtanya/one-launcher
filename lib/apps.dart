@@ -406,6 +406,9 @@ class Apps {
   Future<void> mediaNext() => _call('mediaNext');
   Future<void> mediaPrev() => _call('mediaPrev');
   Future<void> mediaOpen() => _call('mediaOpen');
+  Future<void> mediaSeek(int ms) => _call('mediaSeek', {'ms': ms});
+  Future<void> mediaAction(String id) => _call('mediaAction', {'id': id});
+  Future<void> mediaOutput() => _call('mediaOutput');
   Future<void> openNotificationAccess() => _call('openNotificationAccess');
 
   Future<void> openUsageAccess() => _call('openUsageAccess');

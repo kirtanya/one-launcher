@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -124,7 +125,37 @@ class MediaWatcher(
             "speed" to (st?.playbackSpeed ?: 1f).toDouble(),
             "canPrev" to ((st?.actions ?: 0L) and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L),
             "canNext" to ((st?.actions ?: 0L) and PlaybackState.ACTION_SKIP_TO_NEXT != 0L),
+            "canSeek" to ((st?.actions ?: 0L) and PlaybackState.ACTION_SEEK_TO != 0L),
+            "actions" to customActions(c, st),
         )
+    }
+
+    private val iconCache = HashMap<String, ByteArray>()
+
+    /** The session's first 3 custom actions (shuffle, repeat, like…) with white PNG icons. */
+    private fun customActions(c: MediaController, st: PlaybackState?): List<Map<String, Any?>> {
+        val out = ArrayList<Map<String, Any?>>()
+        for (a in st?.customActions.orEmpty()) {
+            if (out.size >= 3) break
+            try {
+                val key = "${c.packageName}|${a.icon}"
+                val png = iconCache[key] ?: run {
+                    val res = activity.packageManager.getResourcesForApplication(c.packageName)
+                    val d = res.getDrawable(a.icon, null).mutate()
+                    val size = 72
+                    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                    val cv = Canvas(bmp)
+                    d.setBounds(0, 0, size, size)
+                    d.setTint(Color.WHITE)
+                    d.draw(cv)
+                    ByteArrayOutputStream().also { o -> bmp.compress(Bitmap.CompressFormat.PNG, 100, o) }.toByteArray()
+                        .also { iconCache[key] = it }
+                }
+                out.add(mapOf("id" to a.action, "name" to a.name.toString(), "icon" to png))
+            } catch (e: Exception) {
+            }
+        }
+        return out
     }
 
     private fun art(meta: MediaMetadata?, key: String): ByteArray? {
@@ -217,6 +248,24 @@ class MediaWatcher(
                 }
                 result.success(true)
             }
+            "mediaSeek" -> {
+                val ms = (call.argument<Number>("ms") ?: 0).toLong()
+                t?.seekTo(ms)
+                result.success(t != null)
+            }
+            "mediaAction" -> {
+                val id = call.argument<String>("id")
+                val c = controller
+                if (c == null || id == null) {
+                    result.success(false)
+                } else {
+                    val ca = c.playbackState?.customActions?.firstOrNull { it.action == id }
+                    if (ca != null) c.transportControls.sendCustomAction(ca, null)
+                    else c.transportControls.sendCustomAction(id, null)
+                    result.success(true)
+                }
+            }
+            "mediaOutput" -> result.success(openOutput())
             "openNotificationAccess" -> {
                 val intent = if (Build.VERSION.SDK_INT >= 30) {
                     Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
@@ -234,5 +283,37 @@ class MediaWatcher(
             else -> return false
         }
         return true
+    }
+
+    /** The system output switcher for the playing app; falls back to Bluetooth settings. */
+    private fun openOutput(): Boolean {
+        val pkg = controller?.packageName
+        val new = Intent.FLAG_ACTIVITY_NEW_TASK
+        if (pkg != null && Build.VERSION.SDK_INT >= 31) {
+            try {
+                activity.sendBroadcast(
+                    Intent("com.android.systemui.action.LAUNCH_MEDIA_OUTPUT_DIALOG")
+                        .setPackage("com.android.systemui").putExtra("package_name", pkg)
+                )
+                return true
+            } catch (e: Exception) {
+            }
+        }
+        if (pkg != null && Build.VERSION.SDK_INT >= 34) {
+            try {
+                activity.startActivity(
+                    Intent("android.settings.panel.action.MEDIA_OUTPUT")
+                        .putExtra("com.android.settings.panel.extra.PACKAGE_NAME", pkg).addFlags(new)
+                )
+                return true
+            } catch (e: Exception) {
+            }
+        }
+        return try {
+            activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(new))
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 }

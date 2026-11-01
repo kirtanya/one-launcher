@@ -187,6 +187,11 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Reads the system from notifications (music via `Apps.media` for now); `NowStage` in home hides the
   wallpaper edge to edge (the cover art itself, no thumbnail) and dissolves with `nowAway`. Its tune button sets
   darkness/blur (`Prefs.nowDim`/`nowBlur`); phone art is 1024² JPEG (MediaWatcher fetches the full cover when the attached one is small). Future: alarms, events.
+- `top/pages.dart` **NowPlayingPage** (the Now playing top card) follows Android's media controls: the cover under a
+  tint of its own `ColorScheme.fromImageProvider` colours, app badge + output button (`Apps.mediaOutput`) on top when
+  `h >= 172`, title + a tonal play pill, and ⏮ `WavySeekBar` ⏭ plus up to 2 of the app's custom actions (`mediaAction`)
+  when `h >= 100`; shorter collapses to one row. `WavySeekBar`'s wave moves while playing (never settles; tests pump time,
+  not `pumpAndSettle`) and seeks via `mediaSeek` when the state's `canSeek`. MediaWatcher adds `canSeek`/`actions` to the state.
 - **Caffeine** chip `b:caffeine` (`caffeine.dart`; also Tiles' chips row / action tile via `runQuickAction`): tap cycles
   Off → 5 min → 10 min → Keep awake (`Integer.MAX_VALUE`) by writing `Settings.System.SCREEN_OFF_TIMEOUT`; long-press = menu
   of the levels. Needs WRITE_SETTINGS ("Modify system settings"; snackbar → `openWriteSettings`). The phone's own timeout is
