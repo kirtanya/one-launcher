@@ -105,6 +105,26 @@ class Apps {
 
   Future<void> openAccessibility() => _call('openAccessibility');
 
+  // ---- App lock (native guard) ----
+  /// The whole locked list; sent on every change and once at startup.
+  Future<void> setLockedApps(List<String> packages) => _call('setLockedApps', {'packages': packages});
+
+  /// Right before launching a locked app, so the native guard lets it through.
+  Future<void> lockAllow(String package) => _call('lockAllow', {'package': package});
+
+  /// Is the accessibility service on (closes locked apps opened from notifications / recents)?
+  Future<bool> lockServiceOn() async {
+    if (isDemo) return false;
+    try {
+      return await _ch.invokeMethod<bool>('lockServiceOn') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// A swallowed tap must not leave its icon box for the next launch's open animation.
+  void clearLaunchFrom() => _launchFrom = null;
+
   /// Flashlight on? (pushed by Android when it changes, from anywhere.)
   final torchOn = ValueNotifier<bool>(false);
 

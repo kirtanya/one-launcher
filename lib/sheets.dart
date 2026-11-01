@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_lock_ui.dart';
 import 'apps.dart';
 import 'folders.dart';
 import 'one_stream.dart';
@@ -217,6 +218,11 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
       ),
       AppAction(Icons.drive_file_move_outline, 'Move to folder', () => showFolderPicker(context, prefs: prefs, app: app)),
       AppAction(hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined, hidden ? 'Show in list' : 'Hide', () => prefs.toggleHidden(app.package)),
+      AppAction(
+        prefs.isLocked(app.package) ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+        prefs.isLocked(app.package) ? 'Unlock app' : 'Lock app',
+        () => toggleAppLock(context, prefs, app),
+      ),
       AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(app.package)),
       if (!app.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(app.package), danger: true),
     ],
@@ -1796,6 +1802,15 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
         hidden == 0 ? 'None · long-press an app to hide it' : '$hidden hidden',
         keywords: 'hide',
         open: (c) => _showHiddenApps(c, prefs: prefs, apps: apps),
+      ),
+      _Setting(
+        appsCat,
+        'App lock',
+        Icons.lock_outline_rounded,
+        'App lock',
+        prefs.lockedApps.isEmpty ? 'Off · open chosen apps only on a double or triple tap' : '${prefs.lockedApps.length} locked · ${prefs.lockTaps == 3 ? 'triple' : 'double'} tap',
+        keywords: 'lock pin private protect hide double tap triple',
+        open: (c) => showAppLockPage(c, prefs: prefs, apps: apps, height: drawerHeight(c, prefs)),
       ),
 
       // ---- Search: the bar, where it looks, history ----

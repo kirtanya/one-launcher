@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_drawer.dart';
+import 'app_lock.dart';
 import 'apps.dart';
 import 'prefs.dart';
 import 'quick_actions.dart';
@@ -789,7 +790,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     setState(() {});
     if (!prefs.searchIn.contains('apps')) return;
     final r = searchApps(_apps, q);
-    if (prefs.autoOpenSingleMatch && q.trim().isNotEmpty && r.length == 1) _launch(r.first);
+    if (prefs.autoOpenSingleMatch && q.trim().isNotEmpty && r.length == 1 && !prefs.isLocked(r.first.package)) _launch(r.first);
   }
 
   /// Enter on the keyboard: the top app, or — when no app matches — the web (or Play Store),
@@ -833,6 +834,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   }
 
   Future<void> _launch(AppEntry app) async {
+    // App lock: a locked app swallows taps until the Nth fast one (no animation, nothing recorded).
+    if (!await AppLock.of(prefs).gate(app.package)) return;
     if (_searching) prefs.addSearch(_query.text); // opened from search: it was used
     prefs.recordLaunch(app.package);
     await Apps.instance.launch(app.package);

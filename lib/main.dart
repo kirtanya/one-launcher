@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
+import 'app_lock.dart';
 import 'apps.dart';
 import 'one_stream.dart';
 import 'home.dart';
@@ -31,6 +32,7 @@ Future<void> main() async {
   Apps.instance.init();
   OneStream.instance.init(); // the user's streaming app, when installed
   final prefs = await Prefs.load();
+  AppLock.of(prefs).sync(); // tell the native guard which apps are locked
   await Perf.init(prefs); // lighter effects on budget phones
   final theme = OneTheme(prefs);
   await theme.refreshSystem(); // phone's Material You colours, before the first frame

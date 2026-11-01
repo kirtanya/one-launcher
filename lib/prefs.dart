@@ -66,6 +66,26 @@ class Prefs extends ChangeNotifier {
 
   List<String> get favourites => _sp.getStringList('favourites') ?? const [];
   List<String> get hidden => _sp.getStringList('hidden') ?? const [];
+  // ---- App lock (lib/app_lock.dart) ----
+  /// Packages that only open on a fast double / triple tap.
+  List<String> get lockedApps => _sp.getStringList('lockedApps') ?? const [];
+  bool isLocked(String package) => lockedApps.contains(package);
+  Future<void> setLockedApps(List<String> v) => _setList('lockedApps', v);
+
+  /// Taps a locked app needs: 2 or 3.
+  int get lockTaps => (_sp.getInt('lockTaps') ?? 2) == 3 ? 3 : 2;
+  Future<void> setLockTaps(int n) async {
+    await _sp.setInt('lockTaps', n == 3 ? 3 : 2);
+    notifyListeners();
+  }
+
+  /// 'salt:sha256' of the 4-digit PIN (never the PIN). Null = no PIN set yet.
+  String? get lockPinHash => _sp.getString('lockPinHash');
+  Future<void> setLockPinHash(String v) async {
+    await _sp.setString('lockPinHash', v);
+    notifyListeners();
+  }
+
   bool get autoOpenSingleMatch => _sp.getBool('autoOpenSingleMatch') ?? true;
 
   /// How often each app was opened from One Launcher.
@@ -338,6 +358,8 @@ class Prefs extends ChangeNotifier {
     'tvName',
     'tvBrightness',
     'searchHistory',
+    'lockedApps', // the lock and its PIN stay on this phone (a restore must not undo or leak them)
+    'lockPinHash',
   };
 
   String exportBackup() {
@@ -378,8 +400,12 @@ class Prefs extends ChangeNotifier {
     final labels = widgetLabels;
     final widgetOrder = topOrder.where((x) => x.startsWith('widget:')).toList();
     final widgetOn = topEnabled.where((x) => x.startsWith('widget:')).toList();
+    final keepLocked = _sp.getStringList('lockedApps');
+    final keepPin = _sp.getString('lockPinHash');
 
     await _sp.clear();
+    if (keepLocked != null) await _sp.setStringList('lockedApps', keepLocked);
+    if (keepPin != null) await _sp.setString('lockPinHash', keepPin);
     _parsed.clear(); // drop cached settings from before the restore
     if (id != null) await _sp.setString('installId', id);
     var n = 0;

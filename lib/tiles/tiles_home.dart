@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_lock.dart';
 import '../apps.dart';
 import '../caffeine.dart';
 import '../one_stream_widgets.dart';
@@ -424,7 +425,13 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     await _save(list);
   }
 
-  void _launch(AppEntry a) {
+  /// App lock: a locked app swallows taps until the Nth fast one.
+  Future<void> _launch(AppEntry a) async {
+    if (!await AppLock.of(prefs).gate(a.package)) return;
+    _open(a);
+  }
+
+  void _open(AppEntry a) {
     prefs.recordLaunch(a.package);
     Apps.instance.launch(a.package);
   }
@@ -432,11 +439,12 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
   /// From a Start tile: with Interactions → Turnstile, Start swings away first (the tapped
   /// tile last), then the app opens; coming back plays the landing.
   Future<void> _launchFromStart(AppEntry a) async {
-    if (!prefs.fx('turnstile') || Perf.lite.value) return _launch(a);
+    if (!await AppLock.of(prefs).gate(a.package)) return; // swallowed: no Start swing either
+    if (!prefs.fx('turnstile') || Perf.lite.value) return _open(a);
     startLanding.exit(last: 'app:${a.package}');
     await Future<void>.delayed(const Duration(milliseconds: 420));
     if (!mounted) return;
-    _launch(a);
+    _open(a);
     // If nothing opened (we're still in front), bring Start back.
     Future<void>.delayed(const Duration(milliseconds: 1500), () {
       if (mounted && WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed && startLanding.exiting) startLanding.play();

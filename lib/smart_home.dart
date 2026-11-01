@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_lock.dart';
 import 'apps.dart';
 
 /// Smart home: lights, plugs and AC through Google Home.
@@ -458,7 +459,11 @@ class SmartHome {
     final installed = (await Apps.instance.list()).any(
       (a) => a.package == googleHomePackage,
     );
-    if (installed) return Apps.instance.launch(googleHomePackage);
+    if (installed) {
+      final lock = AppLock.current;
+      if (lock != null && !await lock.gate(googleHomePackage)) return;
+      return Apps.instance.launch(googleHomePackage);
+    }
     return Apps.instance.playSearch('Google Home');
   }
 

@@ -123,6 +123,9 @@ class MainActivity : FlutterActivity() {
                     result.success(next?.let { mapOf("at" to it.triggerTime, "package" to it.showIntent?.creatorPackage) })
                 }
                 "lockScreen" -> result.success(LockService.instance?.lock() ?: false)
+                "setLockedApps" -> { AppLockGuard.setLocked(this, call.argument<List<String>>("packages") ?: emptyList()); result.success(true) }
+                "lockAllow" -> { call.argument<String>("package")?.let { AppLockGuard.allow(it) }; result.success(true) }
+                "lockServiceOn" -> result.success(LockService.instance != null)
                 "openAccessibility" -> {
                     startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
