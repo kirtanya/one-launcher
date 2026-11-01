@@ -33,7 +33,7 @@ class AppLock {
   bool isLocked(String package) => prefs.isLocked(package);
 
   /// True when [package] may open now: not locked, or this is the Nth fast tap. A swallowed tap
-  /// gives a light haptic and nothing else.
+  /// gives a light haptic (and, through [gate], the "App not supported" toast).
   bool tap(String package) {
     if (!isLocked(package)) return true;
     final t = _now();
@@ -55,6 +55,8 @@ class AppLock {
   Future<bool> gate(String package) async {
     if (!tap(package)) {
       Apps.instance.clearLaunchFrom();
+      // Same vague toast the native guard shows, so a lock doesn't announce itself.
+      Apps.instance.toast('App not supported');
       return false;
     }
     if (isLocked(package)) await Apps.instance.lockAllow(package);

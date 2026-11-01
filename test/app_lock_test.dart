@@ -32,6 +32,8 @@ void main() {
     final lock = await make();
     expect(await lock.gate('com.bank'), isFalse);
     expect(calls.where((c) => c.$1 == 'lockAllow'), isEmpty);
+    expect(calls.last.$1, 'toast'); // a swallowed tap says only "App not supported"
+    expect(calls.last.$2, {'text': 'App not supported'});
     wait(200);
     expect(await lock.gate('com.bank'), isTrue);
     expect(calls.last.$1, 'lockAllow');

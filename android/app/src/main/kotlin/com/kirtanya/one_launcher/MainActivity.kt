@@ -55,7 +55,9 @@ class MainActivity : FlutterActivity() {
     private val oneStream by lazy { OneStream(this) }
     private val quick by lazy { QuickActions(this) { method, arg -> if (::channel.isInitialized) channel.invokeMethod(method, arg) } }
     private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
+    private val pins by lazy { PinnedShortcuts(this) }
     private val worker = Executors.newSingleThreadExecutor()
+    private var toast: android.widget.Toast? = null
     // Icons are made on a few threads at once (drawing + PNG per app is the slow part).
     private val iconPool = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
@@ -126,6 +128,11 @@ class MainActivity : FlutterActivity() {
                 "setLockedApps" -> { AppLockGuard.setLocked(this, call.argument<List<String>>("packages") ?: emptyList()); result.success(true) }
                 "lockAllow" -> { call.argument<String>("package")?.let { AppLockGuard.allow(it) }; result.success(true) }
                 "lockServiceOn" -> result.success(LockService.instance != null)
+                "toast" -> {
+                    toast?.cancel()
+                    toast = android.widget.Toast.makeText(this, call.argument<String>("text") ?: "", android.widget.Toast.LENGTH_SHORT).also { it.show() }
+                    result.success(true)
+                }
                 "openAccessibility" -> {
                     startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)

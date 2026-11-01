@@ -112,6 +112,9 @@ class Apps {
   /// Right before launching a locked app, so the native guard lets it through.
   Future<void> lockAllow(String package) => _call('lockAllow', {'package': package});
 
+  /// A short system toast (replaces the one still showing, so fast taps don't queue up).
+  Future<void> toast(String text) => _call('toast', {'text': text});
+
   /// Is the accessibility service on (closes locked apps opened from notifications / recents)?
   Future<bool> lockServiceOn() async {
     if (isDemo) return false;

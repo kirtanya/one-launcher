@@ -228,7 +228,7 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 - **App lock** (`app_lock.dart` gate, `app_lock_ui.dart` PIN pad + settings page): prefs `lockedApps`, `lockTaps` (2|3), `lockPinHash`
   (`salt:sha256`, own SHA-256, no package:crypto). `AppLock.of(prefs).gate(pkg)` is called FIRST in `home.dart _launch` (sheet, search,
   folders, dock, favourites), `tiles_home.dart _launch`/`_launchFromStart`, `SmartHome.openGoogleHome`; a locked app's taps are swallowed
-  (light haptic, `clearLaunchFrom`, no animation / recordLaunch) until the Nth tap within 350 ms, then `lockAllow` + launch.
+  (light haptic, `clearLaunchFrom`, toast "App not supported" via channel `toast`, no animation / recordLaunch) until the Nth tap within 350 ms, then `lockAllow` + launch.
   Channel (native half): `setLockedApps {packages}` (startup in main + every change), `lockAllow {package}`, `lockServiceOn`.
   Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` watches
   window changes and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
