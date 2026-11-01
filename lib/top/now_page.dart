@@ -307,7 +307,15 @@ class _NowPageState extends State<NowPage> {
             ),
             if (showBar) ...[
               const SizedBox(height: DS.s12),
-              Row(
+              // 12px wider on each side: the glyphs' empty margins would otherwise inset them
+              // from the title's edge.
+              LayoutBuilder(
+                builder: (context, c) => SizedBox(
+                  height: DS.tap,
+                  child: OverflowBox(
+                    minWidth: c.maxWidth + 24,
+                    maxWidth: c.maxWidth + 24,
+                    child: Row(
                 children: [
                   prev,
                   Expanded(
@@ -342,6 +350,9 @@ class _NowPageState extends State<NowPage> {
                       ),
                     ),
                 ],
+                    ),
+                  ),
+                ),
               ),
             ],
           ],
