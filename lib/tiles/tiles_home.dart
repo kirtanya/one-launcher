@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../caffeine.dart';
 import '../one_stream_widgets.dart';
 import '../search.dart';
 import '../smart_home_sheet.dart';
@@ -1895,7 +1896,7 @@ class _ActionTile extends StatelessWidget {
         children: [
           Center(
             child: builtIn != null
-                ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: size, color: Colors.white)
+                ? Icon(on ? (id == 'b:caffeine' ? Icons.coffee_rounded : Icons.flashlight_on_rounded) : builtIn.$2, size: size, color: Colors.white)
                 : ShortcutIcon(id: id, size: size, color: Colors.white),
           ),
           if (on) // lit: a white ring inside the tile
@@ -1913,7 +1914,7 @@ class _ActionTile extends StatelessWidget {
               bottom: 6,
               right: 8,
               child: Text(
-                on ? '$label · on' : label,
+                id == 'b:caffeine' ? Caffeine.labelOf(Caffeine.instance.level.value) : (on ? '$label · on' : label),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontFamily: DS.font, color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
@@ -1922,6 +1923,9 @@ class _ActionTile extends StatelessWidget {
         ],
       ),
     );
+    if (id == 'b:caffeine') {
+      return ValueListenableBuilder<int?>(valueListenable: (Caffeine.instance..ensureLoaded()).level, builder: (context, ms, _) => face(ms != null));
+    }
     if (id != 'b:torch') return face(false);
     return ValueListenableBuilder<bool>(valueListenable: Apps.instance.torchOn, builder: (context, on, _) => face(on));
   }
@@ -1985,6 +1989,7 @@ Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String
     return;
   }
   if (id == 'b:remote') return showTvRemote(context, prefs: prefs);
+  if (id == 'b:caffeine') return Caffeine.instance.cycle(context);
   final ok = await Apps.instance.quickAction(id);
   if (!ok && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
@@ -2008,7 +2013,7 @@ class _ChipsRowTile extends StatelessWidget {
     final scale = const {'small': .9, 'large': 1.2}[look.size] ?? 1.0;
     Widget chip(String id, bool on) {
       final builtIn = builtInActions[id];
-      final label = builtIn?.$1 ?? labels[id]!.split('|').first;
+      final label = id == 'b:caffeine' ? Caffeine.labelOf(Caffeine.instance.level.value) : builtIn?.$1 ?? labels[id]!.split('|').first;
       return TilePress(
         prefs: prefs,
         child: FutureBuilder<Color>(
@@ -2032,7 +2037,7 @@ class _ChipsRowTile extends StatelessWidget {
                 children: [
                   if (look.content != 'text')
                     builtIn != null
-                        ? Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18 * scale, color: Colors.white)
+                        ? Icon(on ? (id == 'b:caffeine' ? Icons.coffee_rounded : Icons.flashlight_on_rounded) : builtIn.$2, size: 18 * scale, color: Colors.white)
                         : ShortcutIcon(id: id, size: 18 * scale, color: Colors.white),
                   if (look.content == 'both') const SizedBox(width: 6),
                   if (look.content != 'icon')
@@ -2052,7 +2057,11 @@ class _ChipsRowTile extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       children: [
         for (final id in ids) ...[
-          id == 'b:torch' ? ValueListenableBuilder<bool>(valueListenable: Apps.instance.torchOn, builder: (context, on, _) => chip(id, on)) : chip(id, false),
+          switch (id) {
+            'b:torch' => ValueListenableBuilder<bool>(valueListenable: Apps.instance.torchOn, builder: (context, on, _) => chip(id, on)),
+            'b:caffeine' => ValueListenableBuilder<int?>(valueListenable: (Caffeine.instance..ensureLoaded()).level, builder: (context, ms, _) => chip(id, ms != null)),
+            _ => chip(id, false),
+          },
           const SizedBox(width: _StartPage.gap),
         ],
         // ＋ : arrange the chips and add more (the same sheet as the classic view).

@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -58,6 +59,13 @@ class QuickActions(private val activity: Activity, private val push: (String, An
         when (call.method) {
             "quickAction" -> result.success(run(call.argument<String>("id")!!))
             "torchState" -> result.success(mapOf("available" to (torchCamera != null), "on" to torchOn))
+            // Caffeine chip: screen timeout (needs "Modify system settings").
+            "caffeineState" -> result.success(mapOf("canWrite" to Settings.System.canWrite(activity), "timeout" to screenTimeout()))
+            "setScreenTimeout" -> result.success(setScreenTimeout(call.argument<Number>("ms")!!.toInt()))
+            "openWriteSettings" -> result.success(try {
+                activity.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${activity.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                true
+            } catch (e: Exception) { false })
             "listShortcuts" -> worker.execute {
                 val data = shortcuts()
                 main.post { result.success(data) }
@@ -101,6 +109,14 @@ class QuickActions(private val activity: Activity, private val push: (String, An
         }
     } catch (e: Exception) {
         false // no app on this phone handles it
+    }
+
+    private fun screenTimeout() = Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 30_000)
+
+    private fun setScreenTimeout(ms: Int): Boolean = try {
+        Settings.System.canWrite(activity) && Settings.System.putInt(activity.contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, ms)
+    } catch (e: Exception) {
+        false
     }
 
     // ---- App shortcuts ("s:<package>|<shortcutId>|<profile serial>") ---------------------

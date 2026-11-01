@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'apps.dart';
+import 'caffeine.dart';
 import 'prefs.dart';
 import 'remote_sheet.dart';
 import 'quick_actions.dart';
@@ -202,6 +203,7 @@ class QuickChipsRow extends StatelessWidget {
       return;
     }
     if (id == 'b:remote') return showTvRemote(context, prefs: prefs); // ours, not the phone's
+    if (id == 'b:caffeine') return Caffeine.instance.cycle(context);
     final ok = await Apps.instance.quickAction(id);
     if (!ok && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
@@ -241,6 +243,19 @@ class QuickChipsRow extends StatelessWidget {
                               active: on,
                               onTap: () => _run(context, id, builtInActions[id]!.$1),
                               onLongPress: chipLongPress ? customise : null,
+                            ),
+                          )
+                        : id == 'b:caffeine'
+                        // Caffeine shows its level, lit while on; long-press picks one.
+                        ? ValueListenableBuilder<int?>(
+                            valueListenable: (Caffeine.instance..ensureLoaded()).level,
+                            builder: (context, ms, _) => QuickChip(
+                              look: look,
+                              label: Caffeine.labelOf(ms),
+                              icon: Icon(ms != null ? Icons.coffee_rounded : builtInActions[id]!.$2, size: glyph, color: ms != null ? DS.heroInk : look.ink),
+                              active: ms != null,
+                              onTap: () => _run(context, id, builtInActions[id]!.$1),
+                              onLongPress: chipLongPress ? () => Caffeine.instance.choose(context) : null,
                             ),
                           )
                         : QuickChip(

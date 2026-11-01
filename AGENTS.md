@@ -187,6 +187,11 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Reads the system from notifications (music via `Apps.media` for now); `NowStage` in home hides the
   wallpaper edge to edge (the cover art itself, no thumbnail) and dissolves with `nowAway`. Its tune button sets
   darkness/blur (`Prefs.nowDim`/`nowBlur`); phone art is 1024² JPEG (MediaWatcher fetches the full cover when the attached one is small). Future: alarms, events.
+- **Caffeine** chip `b:caffeine` (`caffeine.dart`; also Tiles' chips row / action tile via `runQuickAction`): tap cycles
+  Off → 5 min → 10 min → Keep awake (`Integer.MAX_VALUE`) by writing `Settings.System.SCREEN_OFF_TIMEOUT`; long-press = menu
+  of the levels. Needs WRITE_SETTINGS ("Modify system settings"; snackbar → `openWriteSettings`). The phone's own timeout is
+  saved in prefs `caffeineOriginal` on first turn-on and put back on Off; a timeout changed elsewhere counts as Off.
+  Channel methods (in `QuickActions.kt`): `caffeineState` {canWrite, timeout}, `setScreenTimeout` {ms}, `openWriteSettings`.
 - `quick_chips.dart` (chips row + look), `quick_actions.dart`, `folders.dart`, `search.dart`,
   `system_settings.dart`, `photo_wallpaper.dart`, `one_stream*.dart` (One Stream integration),
   `top/` (top carousel pages, clock fonts), `tiles/` (Tiles/Metro home, today panel, landing).
