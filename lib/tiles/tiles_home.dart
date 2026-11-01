@@ -1904,7 +1904,9 @@ class _ActionTile extends StatelessWidget {
         children: [
           Center(
             child: builtIn != null
-                ? Icon(on ? (id == 'b:caffeine' ? Icons.coffee_rounded : Icons.flashlight_on_rounded) : builtIn.$2, size: size, color: Colors.white)
+                ? (on && id == 'b:caffeine' && Caffeine.instance.level.value != null
+                          ? Caffeine.glyph(Caffeine.instance.level.value!, size: size, color: Colors.white)
+                          : Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: size, color: Colors.white))
                 : ShortcutIcon(id: id, size: size, color: Colors.white),
           ),
           if (on) // lit: a white ring inside the tile
@@ -1997,7 +1999,7 @@ Future<void> runQuickAction(BuildContext context, Prefs prefs, String id, String
     return;
   }
   if (id == 'b:remote') return showTvRemote(context, prefs: prefs);
-  if (id == 'b:caffeine') return Caffeine.instance.cycle(context);
+  if (id == 'b:caffeine') return Caffeine.instance.toggle(context);
   final ok = await Apps.instance.quickAction(id);
   if (!ok && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t open “$label” on this phone'), behavior: SnackBarBehavior.floating));
@@ -2045,7 +2047,9 @@ class _ChipsRowTile extends StatelessWidget {
                 children: [
                   if (look.content != 'text')
                     builtIn != null
-                        ? Icon(on ? (id == 'b:caffeine' ? Icons.coffee_rounded : Icons.flashlight_on_rounded) : builtIn.$2, size: 18 * scale, color: Colors.white)
+                        ? (on && id == 'b:caffeine' && Caffeine.instance.level.value != null
+                          ? Caffeine.glyph(Caffeine.instance.level.value!, size: 18 * scale, color: Colors.white)
+                          : Icon(on ? Icons.flashlight_on_rounded : builtIn.$2, size: 18 * scale, color: Colors.white))
                         : ShortcutIcon(id: id, size: 18 * scale, color: Colors.white),
                   if (look.content == 'both') const SizedBox(width: 6),
                   if (look.content != 'icon')

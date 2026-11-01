@@ -200,9 +200,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   `h >= 172`, title + a tonal play pill, and ⏮ `WavySeekBar` ⏭ plus up to 2 of the app's custom actions (`mediaAction`)
   when `h >= 100`; shorter collapses to one row. `WavySeekBar`'s wave moves while playing (never settles; tests pump time,
   not `pumpAndSettle`) and seeks via `mediaSeek` when the state's `canSeek`. MediaWatcher adds `canSeek`/`actions` to the state.
-- **Caffeine** chip `b:caffeine` (`caffeine.dart`; also Tiles' chips row / action tile via `runQuickAction`): tap cycles
-  Off → 5 min → 10 min → Keep awake (`Integer.MAX_VALUE`) by writing `Settings.System.SCREEN_OFF_TIMEOUT`; long-press = menu
-  of the levels. Needs WRITE_SETTINGS ("Modify system settings"; snackbar → `openWriteSettings`). The phone's own timeout is
+- **Caffeine** chip `b:caffeine` (`caffeine.dart`; also Tiles' chips row / action tile via `runQuickAction`): tap switches
+  Off ↔ the chosen level (`Caffeine.choice`, prefs `caffeineChoice`: 5 min / 10 min / Keep awake = `Integer.MAX_VALUE`, default
+  Keep awake) by writing `Settings.System.SCREEN_OFF_TIMEOUT`; long-press (home chips only) = menu to pick the level (turns it on).
+  While on, the icon is `Caffeine.glyph`: the minutes ("5"/"10") or an eye for Keep awake, in every chip look incl. icon-only. Needs WRITE_SETTINGS ("Modify system settings"; snackbar → `openWriteSettings`). The phone's own timeout is
   saved in prefs `caffeineOriginal` on first turn-on and put back on Off; a timeout changed elsewhere counts as Off.
   Channel methods (in `QuickActions.kt`): `caffeineState` {canWrite, timeout}, `setScreenTimeout` {ms}, `openWriteSettings`.
 - `quick_chips.dart` (chips row + look), `quick_actions.dart`, `folders.dart`, `search.dart`,

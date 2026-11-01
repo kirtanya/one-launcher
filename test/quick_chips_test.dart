@@ -129,7 +129,7 @@ void main() {
     expect(find.textContaining('Set One Launcher as your home app'), findsOneWidget);
   });
 
-  testWidgets('caffeine: asks for the permission, cycles the timeout, puts the phone\'s own back', (tester) async {
+  testWidgets('caffeine: asks for the permission, tap = off ↔ chosen level, long-press picks it, phone\'s own back', (tester) async {
     screenTimeout = 30000;
     canWrite = false;
     final (prefs, calls) = await launch(tester);
@@ -148,29 +148,34 @@ void main() {
     ScaffoldMessenger.of(tester.element(find.text('Caffeine'))).removeCurrentSnackBar();
     await tester.pumpAndSettle();
 
+    // One tap: on at the default level (Keep awake, an eye); the next tap: off again.
     canWrite = true;
     final sp = await SharedPreferences.getInstance();
-    for (final (label, ms) in [('Caffeine · 5 min', 300000), ('Caffeine · 10 min', 600000), ('Caffeine · awake', 2147483647)]) {
-      await tester.tap(find.textContaining('Caffeine'));
-      await tester.pumpAndSettle();
-      expect(screenTimeout, ms);
-      expect(find.text(label), findsOneWidget);
-      expect(find.byIcon(Icons.coffee_rounded), findsOneWidget, reason: 'lit while on');
-    }
+    await tester.tap(find.text('Caffeine'));
+    await tester.pumpAndSettle();
+    expect(screenTimeout, 2147483647);
+    expect(find.text('Caffeine · awake'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_rounded), findsOneWidget, reason: 'Keep awake shows an eye');
     expect(sp.getInt('caffeineOriginal'), 30000, reason: 'the phone\'s own timeout is remembered');
-
     await tester.tap(find.textContaining('Caffeine'));
     await tester.pumpAndSettle();
     expect(screenTimeout, 30000, reason: 'Off puts the phone\'s own timeout back');
     expect(find.text('Caffeine'), findsOneWidget);
     expect(sp.getInt('caffeineOriginal'), isNull);
 
-    // Long-press: pick a level directly.
+    // Long-press: pick 10 min (it turns on); taps now switch off ↔ 10 min, the icon says 10.
     await tester.longPress(find.text('Caffeine'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(CheckedPopupMenuItem<int>, '10 min'));
     await tester.pumpAndSettle();
     expect(screenTimeout, 600000);
     expect(find.text('Caffeine · 10 min'), findsOneWidget);
+    expect(find.text('10'), findsOneWidget, reason: 'the icon is the minutes');
+    expect(sp.getInt('caffeineChoice'), 600000);
+    for (final ms in [30000, 600000]) {
+      await tester.tap(find.textContaining('Caffeine'));
+      await tester.pumpAndSettle();
+      expect(screenTimeout, ms);
+    }
   });
 }

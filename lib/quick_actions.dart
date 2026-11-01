@@ -12,7 +12,7 @@ const builtInActions = <String, (String, IconData)>{
   'b:note': ('New note', Icons.edit_note_rounded),
   'b:home': ('Smart home', Icons.lightbulb_outline_rounded), // Google Home lights, plugs, AC
   'b:remote': ('TV remote', Icons.settings_remote_rounded), // opens One Launcher's own remote
-  'b:caffeine': ('Caffeine', Icons.coffee_outlined), // screen timeout: off → 5 min → 10 min → keep awake
+  'b:caffeine': ('Caffeine', Icons.coffee_outlined), // screen timeout: tap off ↔ chosen level (5 / 10 min / keep awake), long-press picks
 };
 
 /// An app shortcut offered by an installed app.
