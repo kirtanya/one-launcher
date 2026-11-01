@@ -174,9 +174,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.search_rounded).last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'd');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('filter:movies'))); // Apps is the default filter
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
-    expect(find.text('Movies & shows'), findsNothing, reason: 'one letter: not asked');
+    expect(find.text('Movies & shows'), findsOneWidget, reason: 'one letter: not asked (only the filter pill says it)');
     expect(calls.where((c) => c.method == 'oneStream'), isEmpty);
 
     await tester.enterText(find.byType(TextField), 'dune');
@@ -187,7 +189,7 @@ void main() {
     final asked = calls.lastWhere((c) => c.method == 'oneStream').arguments as Map;
     expect(asked['path'], '/search');
     expect((asked['params'] as Map)['q'], 'dune');
-    expect(find.text('Movies & shows'), findsOneWidget);
+    expect(find.text('Movies & shows'), findsNWidgets(2), reason: 'the pill + the section header');
     expect(find.text('Dune: Part Two'), findsWidgets);
     expect(find.text('2024'), findsWidgets, reason: 'the year under each poster');
     await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/50_one_stream_search.png'));
@@ -213,9 +215,11 @@ void main() {
     await tester.tap(find.byIcon(Icons.search_rounded).last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'dune');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('filter:movies')));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
-    expect(find.text('Movies & shows'), findsNothing);
+    expect(find.text('Movies & shows'), findsOneWidget, reason: 'just the filter pill, no section');
     expect(calls.where((c) => c.method == 'oneStream'), isEmpty);
   });
 

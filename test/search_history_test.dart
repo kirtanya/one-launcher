@@ -98,6 +98,8 @@ void main() {
     await openSearch(tester);
     await tester.enterText(find.byType(TextField), 'news');
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter:all'))); // the web rows sit under All (Apps is the default filter)
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Find apps on Play Store'));
     await tester.pumpAndSettle(const Duration(milliseconds: 400));
     expect(prefs.searchHistory.first, 'news');

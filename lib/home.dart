@@ -96,7 +96,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   /// The recent-search pills (and quick lights): in while nothing is typed, gone the moment
   /// something is, so the results show at once.
   late final AnimationController _pillsIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420), value: 1);
-  void _syncPills() => _query.text.trim().isEmpty ? _pillsIn.forward() : _pillsIn.value = 0;
+  void _syncPills() {
+    if (_query.text.trim().isEmpty) {
+      _filter = SearchFilter.initial; // the next search starts on Apps again
+      _pillsIn.forward();
+    } else {
+      _pillsIn.value = 0;
+    }
+  }
+
+  /// Which results show once something is typed (the filter pills take the recent pills' place).
+  SearchFilter _filter = SearchFilter.initial;
+  void _setFilter(SearchFilter f) => setState(() => _filter = f);
 
   /// How far search has come in (0–1): the pull while pulling, else [_reveal].
   double get _revealed => _searching || _reveal.isAnimating ? _reveal.value : (_pull.value / pullToOpen).clamp(0.0, 1.0);
@@ -228,6 +239,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
         pullOpening: _pullOpening,
         onPickRecent: _setQuery,
         onFillRecent: _setQuery,
+        filter: _filter,
+        onFilter: _setFilter,
       ),
     ),
   );
@@ -1170,6 +1183,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                               ),
                                             );
                                           },
+                                        ),
+
+                                      // ---- Filter pills: once something is typed they take the recent pills' place
+                                      // (single-select; Apps each time a new search starts). With the bar at the top
+                                      // the drawer draws them under it. ----
+                                      if (prefs.searchPosition != 'top' && _searching && _query.text.trim().isNotEmpty)
+                                        Positioned(
+                                          left: 0,
+                                          right: 0,
+                                          bottom: math.max(MediaQuery.viewInsetsOf(context).bottom, MediaQuery.paddingOf(context).bottom) + DS.s12 + SearchDock.height + DS.s12,
+                                          child: SearchFilterPills(
+                                            selected: _filter,
+                                            onSelect: _setFilter,
+                                            google: _apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
+                                          ),
                                         ),
                                         ],
                                       ),

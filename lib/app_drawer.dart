@@ -56,11 +56,15 @@ class AppDrawer extends StatefulWidget {
     required this.pullOpening,
     required this.onPickRecent,
     required this.onFillRecent,
+    this.filter = SearchFilter.initial,
+    this.onFilter,
   });
 
   /// Recent searches (shown while search is open and empty): tap → typed in and searched;
   /// the row's arrow → just filled in.
   final ValueChanged<String> onPickRecent, onFillRecent;
+  final SearchFilter filter; // which results show (the pills above the bar / under the top bar)
+  final ValueChanged<SearchFilter>? onFilter;
 
   /// The search bar when it lives inside the drawer (Settings → Search bar: Top); null when it
   /// floats at the bottom of the screen.
@@ -524,6 +528,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
               web: sources.contains('google'),
               play: sources.contains('play'),
               oneStream: sources.contains('onestream'),
+              filter: widget.filter,
               upward: upward,
               prefs: prefs,
               google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
@@ -535,6 +540,10 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
             );
       // Enters rising out of the bar (or dropping from the top bar), fading in — once when the
       // recent searches appear and once when typing turns them into results, not per keystroke.
+      // Typed (not the recent-searches card): the filter pills. Bar at the bottom → the home draws
+      // them above it, in the recent pills' spot (room is left for them below); bar at the top →
+      // they sit right under it.
+      final filters = !history && widget.onFilter != null;
       final Widget results = history && upward
           ? KeyedSubtree(key: const ValueKey('history'), child: found)
           : SearchEnter(key: ValueKey(history ? 'history' : 'results'), upward: upward, child: found);
@@ -549,13 +558,31 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
               builder: (context) => SingleChildScrollView(
                 reverse: true,
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-                padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24),
+                padding: EdgeInsets.fromLTRB(DS.gutter, 0, DS.gutter, MediaQuery.viewInsetsOf(context).bottom + padding.bottom + _dockRoom + DS.s24 + (filters ? RecentSearchPills.height + DS.s12 : 0)),
                 child: results,
               ),
             ),
           )
         else
-          box(results),
+          box(
+            filters
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: DS.s12),
+                        child: SearchFilterPills(
+                          inset: 0, // the page's gutter is already there
+                          selected: widget.filter,
+                          onSelect: widget.onFilter!,
+                          google: widget.apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
+                        ),
+                      ),
+                      results,
+                    ],
+                  )
+                : results,
+          ),
       ];
     } else {
       content = [
@@ -1272,6 +1299,7 @@ Widget searchResults({
   required void Function(String query, {bool play}) onWebSearch,
   required void Function(Future<void> Function() action) onRun,
   ValueChanged<String>? onFill,
+  SearchFilter filter = SearchFilter.all,
 }) {
   final q = query.trim();
   final sources = prefs.searchIn;
@@ -1291,6 +1319,7 @@ Widget searchResults({
     web: sources.contains('google'),
     play: sources.contains('play'),
     oneStream: sources.contains('onestream'),
+    filter: filter,
     upward: false,
     prefs: prefs,
     google: apps.any((a) => a.package == 'com.google.android.googlequicksearchbox'),
@@ -1315,6 +1344,7 @@ class _SearchResults extends StatelessWidget {
     required this.web,
     required this.play,
     this.oneStream = false,
+    this.filter = SearchFilter.all,
     required this.upward,
     required this.prefs,
     required this.google,
@@ -1329,6 +1359,7 @@ class _SearchResults extends StatelessWidget {
   final List<AppShortcut> shortcuts;
   final List<SystemSetting> settings;
   final bool web, play, upward;
+  final SearchFilter filter; // narrows the sections shown
   final bool oneStream; // movies & shows from One Stream (shows itself once it has results)
   final Prefs prefs;
   final bool google; // the Google app is installed → say "Google"
@@ -1435,8 +1466,8 @@ class _SearchResults extends StatelessWidget {
   Widget build(BuildContext context) {
     // No "nothing matches" card: the web rows (and Movies & shows) are the way on.
     final sections = <Widget>[
-      if (apps.isNotEmpty) KeyedSubtree(key: const ValueKey('apps'), child: _appsCard()),
-      if (shortcuts.isNotEmpty)
+      if (apps.isNotEmpty && filter.shows(SearchFilter.apps)) KeyedSubtree(key: const ValueKey('apps'), child: _appsCard()),
+      if (shortcuts.isNotEmpty && filter.shows(SearchFilter.other))
         KeyedSubtree(
           key: const ValueKey('shortcuts'),
           child: _rowsCard('App shortcuts', [
@@ -1450,7 +1481,7 @@ class _SearchResults extends StatelessWidget {
               ),
           ]),
         ),
-      if (settings.isNotEmpty)
+      if (settings.isNotEmpty && filter.shows(SearchFilter.other))
         KeyedSubtree(
           key: const ValueKey('settings'),
           child: _rowsCard('Phone settings', [
@@ -1459,7 +1490,7 @@ class _SearchResults extends StatelessWidget {
           ]),
         ),
       // One Stream's movies & shows (when installed): a row of posters, before the web.
-      if (oneStream)
+      if (oneStream && filter.shows(SearchFilter.movies))
         OneStreamSearchRow(
           key: const ValueKey('oneStream'),
           query: query,
@@ -1473,7 +1504,7 @@ class _SearchResults extends StatelessWidget {
         ),
       // Google's suggestions for what's typed (with Search Google on): tap to search one in
       // Google, the arrow to put it in the bar. Shows nothing until it has some.
-      if (web)
+      if (web && filter.shows(SearchFilter.web))
         GoogleSuggestions(
           key: const ValueKey('suggest'),
           query: query,
@@ -1485,7 +1516,7 @@ class _SearchResults extends StatelessWidget {
           ),
         ),
       // The web, like the Pixel search bar: hands the query to Google / the Play Store.
-      if (web || play)
+      if ((web || play) && filter.shows(SearchFilter.web))
         OneCard(
           key: const ValueKey('web'),
           padding: const EdgeInsets.symmetric(vertical: DS.s4),

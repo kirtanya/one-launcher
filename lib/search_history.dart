@@ -328,10 +328,11 @@ class RecentSearchPills extends StatelessWidget {
 }
 
 class _Pill extends StatelessWidget {
-  const _Pill({required this.label, this.icon, this.muted = false, required this.onTap, this.onLongPress});
+  const _Pill({super.key, required this.label, this.icon, this.muted = false, this.selected = false, this.tight = false, required this.onTap, this.onLongPress});
   final String label;
   final IconData? icon;
-  final bool muted;
+  final bool muted, selected; // selected: the chosen filter (filled)
+  final bool tight; // filter pills: snugger, so all five fit the width
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
@@ -343,10 +344,11 @@ class _Pill extends StatelessWidget {
         height: RecentSearchPills.height,
         width: null,
         radius: 12,
+        latched: selected,
         onTap: onTap,
         onLongPress: onLongPress,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: DS.s12),
+          padding: EdgeInsets.symmetric(horizontal: tight ? DS.s8 : DS.s12),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -367,7 +369,7 @@ class _Pill extends StatelessWidget {
     }
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(RecentSearchPills.height / 2));
     return Material(
-      color: muted ? DS.cardMuted : DS.card,
+      color: selected ? DS.ink : (muted ? DS.cardMuted : DS.card),
       shape: shape,
       elevation: 0,
       child: InkWell(
@@ -375,7 +377,7 @@ class _Pill extends StatelessWidget {
         onTap: onTap,
         onLongPress: onLongPress,
         child: Padding(
-          padding: EdgeInsets.only(left: icon == null ? DS.s16 : DS.s12, right: DS.s16),
+          padding: tight ? const EdgeInsets.symmetric(horizontal: DS.s12) : EdgeInsets.only(left: icon == null ? DS.s16 : DS.s12, right: DS.s16),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -386,12 +388,71 @@ class _Pill extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: DS.rowTitle.copyWith(fontSize: 14, fontWeight: FontWeight.w500, color: muted ? DS.inkMuted : DS.ink),
+                  style: DS.rowTitle.copyWith(fontSize: tight ? 13 : 14, fontWeight: FontWeight.w500, color: selected ? DS.card : (muted ? DS.inkMuted : DS.ink)),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// What the results are narrowed to once something is typed (phone search).
+enum SearchFilter {
+  all('All'),
+  apps('Apps'),
+  movies('Movies & shows'),
+  web('Web'),
+  other('Other'); // app shortcuts + phone settings
+
+  const SearchFilter(this.label);
+  final String label;
+
+  /// The default each time a new search starts.
+  static const initial = SearchFilter.apps;
+
+  /// Whether [section] (a result kind) shows under this filter.
+  bool shows(SearchFilter section) => this == SearchFilter.all || this == section;
+}
+
+/// Search → once something is typed, a single-select row of filter pills takes the place of
+/// the recent-search pills (same height, same pill look; the chosen one is filled). Apps is
+/// chosen each time a new search starts. [google] words the web pill "Google" when that app is
+/// installed (the web rows say the same).
+class SearchFilterPills extends StatelessWidget {
+  const SearchFilterPills({super.key, required this.selected, required this.onSelect, this.google = false, this.inset = DS.gutter});
+  final SearchFilter selected;
+  final ValueChanged<SearchFilter> onSelect;
+  final bool google;
+  final double inset; // side padding
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: RecentSearchPills.height,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: inset),
+        clipBehavior: Clip.none,
+        children: [
+          for (final (i, f) in SearchFilter.values.indexed)
+            Padding(
+              padding: EdgeInsets.only(left: i == 0 ? 0 : DS.s4 + 2),
+              child: _Pill(
+                key: ValueKey('filter:${f.name}'),
+                label: f == SearchFilter.web && google ? 'Google' : f.label,
+                selected: f == selected,
+                tight: true,
+                onTap: () {
+                  if (f == selected) return;
+                  HapticFeedback.selectionClick();
+                  onSelect(f);
+                },
+              ),
+            ),
+        ],
       ),
     );
   }

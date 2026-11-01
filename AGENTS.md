@@ -170,7 +170,12 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Opacity), `_PullPill`.
 - `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`; dock 64, tabs `big` 56 / `small` 48), nav→search morph (`_NavSearch`),
   `_surface()`. `search_history.dart`: recent searches (card for top bar; `RecentSearchPills`
-  above the bottom bar). `google_suggest.dart`: Google autocomplete (follows "Search Google").
+  above the bottom bar). Once something is typed, `SearchFilterPills` (same file;
+  `SearchFilter` All · Apps · Movies & shows · Web/Google · Other = shortcuts + phone settings) take the recent pills' place (home.dart
+  draws them above the bar; the drawer draws them under a top bar); single-select, **Apps by default**, reset to Apps whenever the
+  query empties (`_syncPills`); `_filter` lives in home.dart, flows via `AppDrawer.filter/onFilter` into `_SearchResults.filter`
+  (`searchResults()` for Tiles stays All). Tests: `test/search_filter_test.dart`; tests that need the web rows / long list tap
+  `filter:all` first. `google_suggest.dart`: Google autocomplete (follows "Search Google").
 - `sheets.dart`: all Settings. `showSettingsSheet` → `settingsNow()` (`_Setting` list with
   category + group), `_CategoryGrid`, `openCategory`. Editors: `showEditor` (live home preview),
   `_HomeEditor` (Home view tabs), wallpaper, layout, clock style, chips, top widgets, today panel.

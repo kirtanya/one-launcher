@@ -175,6 +175,8 @@ void main() {
     tester.view.viewInsets = const FakeViewPadding(bottom: 1000); // keyboard up: results outgrow the space
     await tester.enterText(find.byType(TextField), 's');
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter:all'))); // Apps is the default: All brings the long list back
+    await tester.pumpAndSettle();
     final openBefore = tester.getTopLeft(find.text('Open')).dy;
     // Swiping the sideways app row keeps the keyboard (focus) up.
     final card = find.ancestor(of: find.text('Open'), matching: find.byType(OneCard));
@@ -204,6 +206,8 @@ void main() {
     await tester.pumpAndSettle();
     tester.view.viewInsets = const FakeViewPadding(bottom: 1000);
     await tester.enterText(find.byType(TextField), 's');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('filter:all')));
     await tester.pumpAndSettle();
     // Scroll the results all the way (finger down) → the topmost result must be fully on screen.
     for (var i = 0; i < 6; i++) {
