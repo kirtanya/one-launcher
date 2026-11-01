@@ -56,10 +56,7 @@ class LockService : AccessibilityService() {
             lastKickPkg = pkg
             lastKickAt = now
             performGlobalAction(GLOBAL_ACTION_HOME)
-            try {
-                val label = packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0))
-                Toast.makeText(this, "$label is locked — open it from One Launcher", Toast.LENGTH_SHORT).show()
-            } catch (_: Exception) {}
+            Toast.makeText(this, "App not supported", Toast.LENGTH_SHORT).show()
             return
         }
         // A different real app: the user is away from whatever was allowed.

@@ -31,7 +31,7 @@ import 'ui/motion.dart';
 import 'ui/perf.dart';
 import 'widgets.dart';
 
-/// One of an app menu's main actions (the strip at the top of the menu).
+/// One of an app menu's main actions (the pills at the top of the menu).
 class AppAction {
   const AppAction(this.icon, this.label, this.onTap, {this.danger = false, this.enabled = true});
   final IconData icon;
@@ -43,7 +43,7 @@ class AppAction {
 /// An app's long-press menu, in both views. A clear hierarchy so nothing gets lost however
 /// many shortcuts an app has:
 ///  1. the app (icon, name, where it lives),
-///  2. its main actions as one strip of big buttons — always at the top,
+///  2. its main actions as pills, two to a row — always at the top,
 ///  3. its shortcuts (New message, Scan QR, contacts…): the first four, then "Show all".
 /// Classic: rounded buttons on the card; Metro (Tiles): flat boxes, lowercase.
 Future<void> showAppActions(BuildContext context, {required AppEntry app, String? subtitle, required List<AppAction> actions, bool shortcuts = true}) async {
@@ -85,16 +85,11 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
       final colour = !a.enabled ? DS.inkFaint : (a.danger ? DS.alert : DS.ink);
       return Expanded(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.all(4),
           child: RoleSurface(
             role: SurfaceRole.key,
             color: metro ? Colors.transparent : DS.cardMuted,
-            shape: metro
-                ? RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(DS.rMedia),
-                    side: BorderSide(color: DS.hairline),
-                  )
-                : RoundedRectangleBorder(borderRadius: BorderRadius.circular(DS.rMedia)),
+            shape: metro ? RoundedRectangleBorder(side: BorderSide(color: DS.hairline)) : const StadiumBorder(),
             child: InkWell(
               onTap: a.enabled
                   ? () {
@@ -103,16 +98,18 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
                     }
                   : null,
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: DS.s12, horizontal: 4),
-                child: Column(
+                padding: const EdgeInsets.symmetric(vertical: DS.s12, horizontal: DS.s16),
+                child: Row(
                   children: [
-                    Icon(a.icon, color: colour),
-                    const SizedBox(height: 6),
-                    Text(
-                      DS.cased(a.label),
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      style: DS.rowSub.copyWith(color: colour, fontSize: 12, height: 1.2, fontWeight: FontWeight.w500),
+                    Icon(a.icon, color: colour, size: 22),
+                    const SizedBox(width: DS.s12),
+                    Expanded(
+                      child: Text(
+                        DS.cased(a.label),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: DS.rowSub.copyWith(color: colour, fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
                     ),
                   ],
                 ),
@@ -123,6 +120,9 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
       );
     }
 
+    // Two pills to a row; an odd last one takes the whole row.
+    final acts = widget.actions;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -132,11 +132,14 @@ class _AppActionsBodyState extends State<_AppActionsBody> {
           padding: const EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s16),
           child: SheetHeader(title: widget.app.label, subtitle: widget.subtitle, leading: AppIcon(widget.app, size: 48), yours: true),
         ),
-        // 2. Its main actions: one strip, always at the top.
+        // 2. Its main actions: pills, two to a row, always at the top.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: DS.s16 - 4),
-          child: IntrinsicHeight(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final a in widget.actions) action(a)]),
+          child: Column(
+            children: [
+              for (var i = 0; i < acts.length; i += 2)
+                Row(children: [for (final a in acts.skip(i).take(2)) action(a)]),
+            ],
           ),
         ),
         // 3. Its shortcuts: the first few, the rest on request.
@@ -218,11 +221,6 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
       ),
       AppAction(Icons.drive_file_move_outline, 'Move to folder', () => showFolderPicker(context, prefs: prefs, app: app)),
       AppAction(hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined, hidden ? 'Show in list' : 'Hide', () => prefs.toggleHidden(app.package)),
-      AppAction(
-        prefs.isLocked(app.package) ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-        prefs.isLocked(app.package) ? 'Unlock app' : 'Lock app',
-        () => toggleAppLock(context, prefs, app),
-      ),
       AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(app.package)),
       if (!app.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(app.package), danger: true),
     ],

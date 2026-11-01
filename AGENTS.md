@@ -223,15 +223,17 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
   from the local maven repo `android/home-sdk/` (190 MB, gitignored; repo + `phoneImplementation` deps only added when it exists, else the phone builds without the bridge → status unavailable).
   MainActivity attaches it reflectively (`Class.forName(...SmartHomeBridge).attach`; keep rule in `app/proguard-rules.pro`). Matter units: setpoints 0.01 °C, level 0..254. Debug: long-press the setup card = fake devices.
+- **App long-press menu** (`showAppActions` in sheets.dart, both views): main actions are horizontal pills (icon + label),
+  two per row, an odd last one full width; then shortcuts (first 4 + Show all).
 - **App lock** (`app_lock.dart` gate, `app_lock_ui.dart` PIN pad + settings page): prefs `lockedApps`, `lockTaps` (2|3), `lockPinHash`
   (`salt:sha256`, own SHA-256, no package:crypto). `AppLock.of(prefs).gate(pkg)` is called FIRST in `home.dart _launch` (sheet, search,
   folders, dock, favourites), `tiles_home.dart _launch`/`_launchFromStart`, `SmartHome.openGoogleHome`; a locked app's taps are swallowed
   (light haptic, `clearLaunchFrom`, no animation / recordLaunch) until the Nth tap within 350 ms, then `lockAllow` + launch.
   Channel (native half): `setLockedApps {packages}` (startup in main + every change), `lockAllow {package}`, `lockServiceOn`.
   Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` watches
-  window changes and sends a locked, un-allowed app HOME with a toast (notifications, recents, other launchers).
-  UI: Settings → Apps → App lock (`showAppLockPage`; service row, double/triple, change PIN, app switches); long-press menu
-  "Lock app"/"Unlock app" (`toggleAppLock`). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
+  window changes and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
+  UI: only Settings → Apps → App lock (`showAppLockPage`; service row, double/triple, change PIN, app switches); NOT in the
+  long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
   `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).
 - `apps.dart`: the main platform channel `one_launcher/apps` (apps, icons, launching,
