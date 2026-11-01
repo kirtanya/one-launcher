@@ -42,7 +42,7 @@ void main() {
   testWidgets('shows the track and controls the player; follows changes', (tester) async {
     final calls = await launch(tester, {
       'granted': true, 'active': true, 'app': 'Spotify', 'title': 'Midnight City', 'artist': 'M83', 'playing': true,
-      'position': 60000, 'duration': 240000, 'speed': 1.0, 'canPrev': true, 'canNext': true, 'canSeek': true,
+      'position': 60000, 'duration': 240000, 'speed': 0.0, 'canPrev': true, 'canNext': true, 'canSeek': true, // speed 0: golden-stable
     });
     expect(find.text('Midnight City'), findsOneWidget);
     expect(find.text('M83'), findsOneWidget);

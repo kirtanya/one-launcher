@@ -8,7 +8,7 @@ import '../prefs.dart';
 import '../widgets.dart' show SheetHeader, showOneSheetWith;
 import '../ui/motion.dart';
 import '../ui/ds.dart';
-import 'pages.dart' show ForegroundTimer, GlassPill;
+import 'pages.dart' show AppBadge, ForegroundTimer, GlassPill, WavySeekBar, coverScheme;
 
 /// The Now page: the top carousel's page 0 (home opens on page 1). It reads what the system is
 /// doing from notifications — music for now — and takes over the whole top area edge to edge:
@@ -185,9 +185,53 @@ class _NowPageState extends State<NowPage> {
     position = position.clamp(0, duration > 0 ? duration : position);
     final progress = duration > 0 ? position / duration : 0.0;
     final artist = (m['artist'] as String?) ?? '';
-    // Short top areas drop the progress bar first, then the eyebrow.
-    final showBar = duration > 0 && h >= 190;
+    final art = m['art'] as Uint8List?;
+    final cs = coverScheme(art, () {
+      if (mounted) setState(() {});
+    });
+    final canSeek = m['canSeek'] == true && duration > 0;
+    final actions = [
+      for (final a in (m['actions'] as List?) ?? const [])
+        if (a is Map && a['icon'] is Uint8List) a,
+    ].take(2).toList();
+    // Like Android's media controls, on the cover: app + output on top, title + a tonal play pill,
+    // then ⏮ wavy seek bar ⏭ (+ the app's own actions). Short top areas drop the bar row first
+    // (⏮ ⏭ move beside the pill), then the top row.
+    final showBar = duration > 0 && h >= 210;
     final showEyebrow = h >= 150;
+    final pillH = h >= 170 ? 64.0 : 52.0;
+
+    void playPause() {
+      setState(() => _playingOverride = !playing);
+      Apps.instance.mediaPlayPause();
+    }
+
+    final pill = Semantics(
+      button: true,
+      label: playing ? 'Pause' : 'Play',
+      child: Pressable(
+        scale: .92,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            playPause();
+          },
+          child: AnimatedContainer(
+            duration: DS.medium,
+            curve: Curves.easeOutCubic,
+            // Material's shape change: a long pill while paused, rounder while playing.
+            width: playing ? pillH * 1.5 : pillH * 1.9,
+            height: pillH,
+            decoration: ShapeDecoration(color: cs.primary, shape: const StadiumBorder()),
+            alignment: Alignment.center,
+            child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: pillH * .5, color: cs.onPrimary),
+          ),
+        ),
+      ),
+    );
+    final prev = _Button(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev);
+    final next = _Button(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext);
 
     // Tapping anywhere but the controls opens the player.
     return GestureDetector(
@@ -201,9 +245,11 @@ class _NowPageState extends State<NowPage> {
             if (showEyebrow)
               Row(
                 children: [
+                  AppBadge(package: m['package'] as String?, app: '${m['app'] ?? ''}', color: cs.primaryContainer, ink: cs.onPrimaryContainer),
+                  const SizedBox(width: DS.s12),
                   Expanded(
                     child: Text(
-                      DS.cased('NOW PLAYING · ${(m['app'] ?? '').toString().toUpperCase()}'),
+                      DS.cased((m['app'] ?? '').toString().toUpperCase()),
                       style: eyebrow,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -211,55 +257,101 @@ class _NowPageState extends State<NowPage> {
                   ),
                   // Background look: darkness and blur of the cover.
                   _Button(icon: Icons.tune_rounded, label: 'Background', glyph: 20, onTap: () => _showLook(context, widget.prefs)),
+                  const SizedBox(width: DS.s4),
+                  Semantics(
+                    button: true,
+                    label: 'Play on another device',
+                    child: Pressable(
+                      scale: .9,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          Apps.instance.mediaOutput();
+                        },
+                        child: Container(
+                          width: 56,
+                          height: 36,
+                          decoration: ShapeDecoration(shape: StadiumBorder(side: BorderSide(color: cs.primary, width: 1.5))),
+                          child: Icon(Icons.cast_rounded, size: 20, color: cs.primary),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             const Spacer(),
-            // The title is the hero now that the cover is the background.
-            Text(
-              '${m['title'] ?? ''}',
-              style: DS.wallpaperDate.copyWith(fontSize: 28, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (artist.isNotEmpty) ...[const SizedBox(height: 2), Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis)],
-            const SizedBox(height: DS.s16),
-            if (showBar) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 4,
-                  backgroundColor: const Color(0x33FFFFFF),
-                  valueColor: const AlwaysStoppedAnimation(DS.onWallpaper),
-                ),
-              ),
-              const SizedBox(height: DS.s4),
-              Row(
-                children: [
-                  Text(_time(position), style: sub.copyWith(fontSize: 12)),
-                  const Spacer(),
-                  Text(_time(duration), style: sub.copyWith(fontSize: 12)),
-                ],
-              ),
-            ],
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _Button(icon: Icons.skip_previous_rounded, label: 'Previous', enabled: m['canPrev'] != false, onTap: Apps.instance.mediaPrev),
-                const SizedBox(width: DS.s24),
-                _Button(
-                  icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  label: playing ? 'Pause' : 'Play',
-                  primary: true,
-                  onTap: () {
-                    setState(() => _playingOverride = !playing);
-                    Apps.instance.mediaPlayPause();
-                  },
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // The title is the hero now that the cover is the background.
+                      Text(
+                        '${m['title'] ?? ''}',
+                        style: DS.wallpaperDate.copyWith(fontSize: 28, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (artist.isNotEmpty) ...[const SizedBox(height: 2), Text(artist, style: sub, maxLines: 1, overflow: TextOverflow.ellipsis)],
+                    ],
+                  ),
                 ),
-                const SizedBox(width: DS.s24),
-                _Button(icon: Icons.skip_next_rounded, label: 'Next', enabled: m['canNext'] != false, onTap: Apps.instance.mediaNext),
+                const SizedBox(width: DS.s12),
+                if (!showBar) ...[prev, pill, next] else pill,
               ],
             ),
+            if (showBar) ...[
+              const SizedBox(height: DS.s12),
+              Row(
+                children: [
+                  prev,
+                  Expanded(
+                    child: WavySeekBar(
+                      progress: progress,
+                      playing: playing,
+                      color: DS.onWallpaper,
+                      track: DS.onWallpaper.withValues(alpha: .3),
+                      onSeek: canSeek ? (p) => Apps.instance.mediaSeek((p * duration).round()) : null,
+                    ),
+                  ),
+                  next,
+                  for (final a in actions)
+                    Semantics(
+                      button: true,
+                      label: '${a['name']}',
+                      child: Pressable(
+                        scale: .88,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            Apps.instance.mediaAction('${a['id']}');
+                          },
+                          child: SizedBox.square(
+                            dimension: DS.tap,
+                            child: Center(
+                              child: Image.memory(a['icon'] as Uint8List, width: 24, height: 24, color: DS.onWallpaper, colorBlendMode: BlendMode.srcIn, gaplessPlayback: true),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: DS.tap),
+                child: Row(
+                  children: [
+                    Text(_time(position), style: sub.copyWith(fontSize: 12)),
+                    const Spacer(),
+                    Text(_time(duration), style: sub.copyWith(fontSize: 12)),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -267,18 +359,17 @@ class _NowPageState extends State<NowPage> {
   }
 }
 
-/// Bare controls on the stage: white glyphs, play/pause a solid white disc.
+/// Bare controls on the stage: white glyphs.
 class _Button extends StatelessWidget {
-  const _Button({required this.icon, required this.label, required this.onTap, this.primary = false, this.enabled = true, this.glyph});
+  const _Button({required this.icon, required this.label, required this.onTap, this.enabled = true, this.glyph});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  final bool primary, enabled;
+  final bool enabled;
   final double? glyph; // icon size (small glyph, full tap area)
 
   @override
   Widget build(BuildContext context) {
-    final size = primary ? 56.0 : DS.tap;
     return Semantics(
       button: true,
       label: label,
@@ -293,14 +384,13 @@ class _Button extends StatelessWidget {
                   onTap();
                 }
               : null,
-          child: Container(
-            width: size,
-            height: size,
-            decoration: primary ? const BoxDecoration(color: DS.onWallpaper, shape: BoxShape.circle) : null,
+          child: SizedBox(
+            width: DS.tap,
+            height: DS.tap,
             child: Icon(
               icon,
-              size: glyph ?? (primary ? 32 : 34),
-              color: primary ? const Color(0xFF111111) : DS.onWallpaper.withValues(alpha: enabled ? 1 : .4),
+              size: glyph ?? 34,
+              color: DS.onWallpaper.withValues(alpha: enabled ? 1 : .4),
             ),
           ),
         ),

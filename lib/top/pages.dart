@@ -550,8 +550,6 @@ class NowPlayingPage extends StatefulWidget {
 class _NowPlayingPageState extends State<NowPlayingPage> {
   ForegroundTimer? _tick; // moves the progress bar while playing
   bool? _playingOverride; // instant feedback after tapping play/pause
-  ColorScheme? _scheme; // from the cover
-  int? _schemeKey;
 
   @override
   void initState() {
@@ -786,7 +784,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
                     if (tall)
                       Row(
                         children: [
-                          _AppBadge(package: pkg, app: '${m['app'] ?? ''}', color: cs.primary, ink: cs.onPrimary),
+                          AppBadge(package: pkg, app: '${m['app'] ?? ''}', color: cs.primary, ink: cs.onPrimary),
                           const Spacer(),
                           Semantics(
                             button: true,
@@ -839,23 +837,9 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
     );
   }
 
-  /// The card's colours, from the cover (Material's dynamic colour), worked out once per cover.
-  ColorScheme _schemeFor(Uint8List? art) {
-    final key = art == null ? 0 : Object.hash(art.length, art.isEmpty ? 0 : art[art.length ~/ 2]);
-    if (key != _schemeKey) {
-      _schemeKey = key;
-      if (art != null) {
-        ColorScheme.fromImageProvider(provider: MemoryImage(art), brightness: Brightness.dark).then((cs) {
-          if (mounted && _schemeKey == key) setState(() => _scheme = cs);
-        }, onError: (_) {});
-      } else {
-        _scheme = null;
-      }
-    }
-    return _scheme ?? _fallbackScheme;
-  }
-
-  static final _fallbackScheme = ColorScheme.fromSeed(seedColor: const Color(0xFFB4637A), brightness: Brightness.dark);
+  ColorScheme _schemeFor(Uint8List? art) => coverScheme(art, () {
+    if (mounted) setState(() {});
+  });
 
   Widget _art(Uint8List? bytes, double size) => ClipRRect(
     borderRadius: BorderRadius.circular(size * .22),
@@ -876,9 +860,32 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
 }
 
 /// Round control over the wallpaper: glass, or solid white for play/pause.
+/// A cover's colours (Material's dynamic colour, dark), shared by the Now playing card and the Now
+/// page. Worked out once per cover; until then (and with no cover) a muted rose. [onReady] runs
+/// once the colours for [art] are in.
+ColorScheme coverScheme(Uint8List? art, VoidCallback onReady) {
+  if (art == null || art.isEmpty) return _coverFallback;
+  final key = Object.hash(art.length, art[art.length ~/ 3], art[art.length ~/ 2], art[art.length * 2 ~/ 3]);
+  final done = _coverDone[key];
+  if (done != null) return done;
+  final pending = _coverPending.putIfAbsent(key, () {
+    if (_coverPending.length > 4) _coverPending.remove(_coverPending.keys.first);
+    return ColorScheme.fromImageProvider(provider: MemoryImage(art), brightness: Brightness.dark).then((cs) {
+      if (_coverDone.length > 4) _coverDone.remove(_coverDone.keys.first);
+      return _coverDone[key] = cs;
+    });
+  });
+  pending.then((_) => onReady(), onError: (_) {});
+  return _coverFallback;
+}
+
+final _coverDone = <int, ColorScheme>{};
+final _coverPending = <int, Future<ColorScheme>>{};
+final _coverFallback = ColorScheme.fromSeed(seedColor: const Color(0xFFB4637A), brightness: Brightness.dark);
+
 /// The playing app's icon in a tonal circle, like Android's media controls.
-class _AppBadge extends StatelessWidget {
-  const _AppBadge({required this.package, required this.app, required this.color, required this.ink});
+class AppBadge extends StatelessWidget {
+  const AppBadge({super.key, required this.package, required this.app, required this.color, required this.ink});
   final String? package;
   final String app;
   final Color color, ink;
