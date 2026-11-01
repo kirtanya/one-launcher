@@ -158,6 +158,7 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   presents Smart home held (`_holding`/`_held`) and sets its motion + `_backdrop` from the finger; `_letGo` settles.
   Tab pages and home's content slide a full width (`_homeSide`, `_homeAway`); controllers animate with curves and
   their values are positions, so a finger can take over mid-way. The backdrop darkens with `_homeAway`.
+  The dock sits above the Today pager (not in home's page), so the nav shows on the panel too; the panel gets its height as bottom padding.
   `_onPagesScroll` (around the home pager): vertical scrolling sets `SearchDock.shrunk` (tabs 56 → 48, icons
   unchanged; back at the top / on tab change). Horizontal swipes walk `_swipeOrder` (Today ← Home ↔ Smart home ↔
   Search; Settings counts as Home, the remote as Smart home) via `_swipeNav`: the Today pager takes them on home,

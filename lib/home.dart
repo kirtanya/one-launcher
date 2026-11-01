@@ -971,7 +971,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         children: [
                           ScrollConfiguration(
                             behavior: ScrollConfiguration.of(context),
-                            child: _sidePanel ? TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch, backdrop: false) : const SizedBox.shrink(),
+                            child: _sidePanel
+                                ? Builder(
+                                    builder: (context) {
+                                      // The nav floats over the panel too: its last card scrolls clear of it.
+                                      final mq = MediaQuery.of(context);
+                                      final nav = prefs.searchPosition != 'top' ? SearchDock.height + DS.s12 * 2 : 0.0;
+                                      return MediaQuery(
+                                        data: mq.copyWith(padding: mq.padding.copyWith(bottom: mq.padding.bottom + nav)),
+                                        child: TodayPanel(prefs: prefs, apps: _apps, onLaunch: _launch, backdrop: false),
+                                      );
+                                    },
+                                  )
+                                : const SizedBox.shrink(),
                           ),
                           _KeepAlive(
                             child: ScrollConfiguration(
@@ -1184,19 +1196,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                       ),
                                     ),
 
-                                  // ---- Search dock (iOS style), floating at the bottom (unless it's in the drawer). ----
-                                  if (prefs.searchPosition != 'top')
-                                    Positioned(
-                                      left: 0,
-                                      right: 0,
-                                      bottom: 0,
-                                      child: RepaintBoundary(
-                                        child: ValueListenableBuilder<bool>(
-                                          valueListenable: _compact,
-                                          builder: (context, compact, _) => _searchBar(inline: false, compact: compact),
-                                        ),
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
@@ -1204,6 +1203,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                         ],
                       ))),
                     ),
+
+                    // ---- Search dock (iOS style), floating at the bottom (unless it's in the drawer). Above the
+                    // pager, so it stays on the Today panel too. ----
+                    if (prefs.searchPosition != 'top')
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: RepaintBoundary(
+                          child: ValueListenableBuilder<bool>(
+                            valueListenable: _compact,
+                            builder: (context, compact, _) => _searchBar(inline: false, compact: compact),
+                          ),
+                        ),
+                      ),
                   ],
                 );
               },
