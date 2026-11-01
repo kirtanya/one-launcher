@@ -8,7 +8,7 @@ import '../prefs.dart';
 import '../widgets.dart' show SheetHeader, showOneSheetWith;
 import '../ui/motion.dart';
 import '../ui/ds.dart';
-import 'pages.dart' show AppBadge, ForegroundTimer, GlassPill, WavySeekBar, coverScheme;
+import 'pages.dart' show AppBadge, ForegroundTimer, GlassPill, SteadyPlaying, WavySeekBar, coverScheme;
 
 /// The Now page: the top carousel's page 0 (home opens on page 1). It reads what the system is
 /// doing from notifications — music for now — and takes over the whole top area edge to edge:
@@ -54,7 +54,9 @@ class _Backdrop extends StatelessWidget {
       final art = m?['active'] == true ? m!['art'] as Uint8List? : null;
       final k = .25 + 1.5 * prefs.nowDim;
       final blur = prefs.nowBlur;
-      return Stack(
+      // Clipped: the blurred cover is scaled up a little and would spill past the top area.
+      return ClipRect(
+        child: Stack(
         fit: StackFit.expand,
         children: [
           const ColoredBox(color: Color(0xFF0E0E10)),
@@ -71,6 +73,7 @@ class _Backdrop extends StatelessWidget {
             ),
           ),
         ],
+      ),
       );
     },
   );
@@ -106,6 +109,9 @@ class NowPage extends StatefulWidget {
 
 class _NowPageState extends State<NowPage> {
   ForegroundTimer? _tick; // moves the progress bar while playing
+  late final _steady = SteadyPlaying(() {
+    if (mounted) setState(() {});
+  });
   bool? _playingOverride; // instant feedback after tapping play/pause
 
   @override
@@ -122,16 +128,12 @@ class _NowPageState extends State<NowPage> {
   void dispose() {
     Apps.instance.media.removeListener(_changed);
     _tick?.dispose();
+    _steady.dispose();
     super.dispose();
   }
 
   void _changed() {
     if (mounted) setState(() => _playingOverride = null);
-  }
-
-  static String _time(int ms) {
-    final s = ms ~/ 1000;
-    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
   }
 
   @override
@@ -175,7 +177,7 @@ class _NowPageState extends State<NowPage> {
       );
     }
 
-    final playing = _playingOverride ?? (m['playing'] == true);
+    final playing = _playingOverride ?? _steady(m['playing'] == true);
     final duration = (m['duration'] as num?)?.toInt() ?? 0;
     var position = (m['position'] as num?)?.toInt() ?? 0;
     if (m['playing'] == true) {
@@ -197,7 +199,7 @@ class _NowPageState extends State<NowPage> {
     // Like Android's media controls, on the cover: app + output on top, title + a tonal play pill,
     // then ⏮ wavy seek bar ⏭ (+ the app's own actions). Short top areas drop the bar row first
     // (⏮ ⏭ move beside the pill), then the top row.
-    final showBar = duration > 0 && h >= 210;
+    final showBar = duration > 0 && h >= 190;
     final showEyebrow = h >= 150;
     final pillH = h >= 170 ? 64.0 : 52.0;
 
@@ -291,7 +293,7 @@ class _NowPageState extends State<NowPage> {
                       // The title is the hero now that the cover is the background.
                       Text(
                         '${m['title'] ?? ''}',
-                        style: DS.wallpaperDate.copyWith(fontSize: 28, height: 1.15, fontWeight: FontWeight.w700, shadows: const []),
+                        style: DS.wallpaperDate.copyWith(fontSize: 22, height: 1.2, fontWeight: FontWeight.w600, shadows: const []),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -340,16 +342,6 @@ class _NowPageState extends State<NowPage> {
                       ),
                     ),
                 ],
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DS.tap),
-                child: Row(
-                  children: [
-                    Text(_time(position), style: sub.copyWith(fontSize: 12)),
-                    const Spacer(),
-                    Text(_time(duration), style: sub.copyWith(fontSize: 12)),
-                  ],
-                ),
               ),
             ],
           ],

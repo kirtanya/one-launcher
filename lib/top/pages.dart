@@ -549,6 +549,9 @@ class NowPlayingPage extends StatefulWidget {
 
 class _NowPlayingPageState extends State<NowPlayingPage> {
   ForegroundTimer? _tick; // moves the progress bar while playing
+  late final _steady = SteadyPlaying(() {
+    if (mounted) setState(() {});
+  });
   bool? _playingOverride; // instant feedback after tapping play/pause
 
   @override
@@ -565,6 +568,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
   void dispose() {
     Apps.instance.media.removeListener(_changed);
     _tick?.dispose();
+    _steady.dispose();
     super.dispose();
   }
 
@@ -648,7 +652,7 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
       );
     }
 
-    final playing = _playingOverride ?? (m['playing'] == true);
+    final playing = _playingOverride ?? _steady(m['playing'] == true);
     final duration = (m['duration'] as num?)?.toInt() ?? 0;
     var position = (m['position'] as num?)?.toInt() ?? 0;
     if (m['playing'] == true) {
@@ -860,6 +864,34 @@ class _NowPlayingPageState extends State<NowPlayingPage> {
 }
 
 /// Round control over the wallpaper: glass, or solid white for play/pause.
+/// Media apps report "paused" for a moment between tracks; holding "playing" through that keeps
+/// the wave and the play pill from wobbling when the song changes.
+class SteadyPlaying {
+  SteadyPlaying(this.onChange);
+  final VoidCallback onChange; // rebuild once a real pause has lasted
+  int _lastOn = 0;
+  Timer? _t;
+
+  bool call(bool raw) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (raw) {
+      _lastOn = now;
+      _t?.cancel();
+      _t = null;
+      return true;
+    }
+    final left = 1500 - (now - _lastOn);
+    if (left <= 0) return false;
+    _t ??= Timer(Duration(milliseconds: left), () {
+      _t = null;
+      onChange();
+    });
+    return true;
+  }
+
+  void dispose() => _t?.cancel();
+}
+
 /// A cover's colours (Material's dynamic colour, dark), shared by the Now playing card and the Now
 /// page. Worked out once per cover; until then (and with no cover) a muted rose. [onReady] runs
 /// once the colours for [art] are in.
