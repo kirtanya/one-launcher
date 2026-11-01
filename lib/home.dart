@@ -1109,7 +1109,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                             ),
                                           );
                                         },
-                                        child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                                        // Not on the Now page: the player takes their room ([_TopArea]).
+                                        child: ValueListenableBuilder<double>(
+                                          valueListenable: nowAway,
+                                          builder: (context, a, child) => IgnorePointer(
+                                            ignoring: a < .5,
+                                            child: Opacity(opacity: a.clamp(0.0, 1.0), child: child),
+                                          ),
+                                          child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                                        ),
                                       ),
 
                                       // ---- Fade under the dock, so it reads as floating above the cards. ----
@@ -1339,10 +1347,18 @@ class _TopArea extends StatelessWidget {
                 DS.s8 + padding,
                 DS.s4 + padding * .5,
                 DS.s8 + padding,
-                // room for the sheet's rounded top + the quick chips row above it
-                DS.rSheet + chipsHeight + QuickChipsRow.gap + DS.s4 + padding * .5,
+                // room for the sheet's rounded top + the quick chips row above it (below)
+                DS.rSheet + DS.s4 + padding * .5,
               ),
-              child: carousel,
+              // The chips hide on the Now page, so it grows into their room as you swipe to it.
+              child: ValueListenableBuilder<double>(
+                valueListenable: nowAway,
+                builder: (context, a, child) => Padding(
+                  padding: EdgeInsets.only(bottom: (chipsHeight + QuickChipsRow.gap) * a.clamp(0.0, 1.0)),
+                  child: child,
+                ),
+                child: carousel,
+              ),
             ),
           ),
         ],

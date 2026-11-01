@@ -199,7 +199,8 @@ class _NowPageState extends State<NowPage> {
     // Like Android's media controls, on the cover: app + output on top, title + a tonal play pill,
     // then ⏮ wavy seek bar ⏭ (+ the app's own actions). Short top areas drop the bar row first
     // (⏮ ⏭ move beside the pill), then the top row.
-    final showBar = duration > 0 && h >= 190;
+    // By height only: between tracks apps briefly report no duration, and the row must not blink.
+    final showBar = h >= 190;
     final showEyebrow = h >= 150;
     final pillH = h >= 170 ? 64.0 : 52.0;
 
