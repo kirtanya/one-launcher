@@ -1101,22 +1101,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                           return Positioned(
                                             left: 0,
                                             right: 0,
+                                            // Down to the sheet's edge: on the Now page they slide down under it (clipped there).
                                             top: sheetTop - QuickChipsRow.heightOf(prefs) - QuickChipsRow.gap,
-                                            height: QuickChipsRow.heightOf(prefs),
+                                            height: QuickChipsRow.heightOf(prefs) + QuickChipsRow.gap,
                                             child: IgnorePointer(
                                               ignoring: e > .2,
                                               child: Opacity(opacity: (1 - e * 3).clamp(0.0, 1.0), child: child),
                                             ),
                                           );
                                         },
-                                        // Not on the Now page: the player takes their room ([_TopArea]).
-                                        child: ValueListenableBuilder<double>(
-                                          valueListenable: nowAway,
-                                          builder: (context, a, child) => IgnorePointer(
-                                            ignoring: a < .5,
-                                            child: Opacity(opacity: a.clamp(0.0, 1.0), child: child),
+                                        // Not on the Now page: they sink below the sheet's edge with the swipe while the
+                                        // top box grows into their room ([_TopArea]).
+                                        child: ClipRect(
+                                          child: ValueListenableBuilder<double>(
+                                            valueListenable: nowAway,
+                                            builder: (context, a, child) {
+                                              final k = a.clamp(0.0, 1.0);
+                                              return IgnorePointer(
+                                                ignoring: k < .5,
+                                                child: Transform.translate(
+                                                  offset: Offset(0, (1 - k) * (QuickChipsRow.heightOf(prefs) + QuickChipsRow.gap)),
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
+                                            child: Align(
+                                              alignment: Alignment.topCenter,
+                                              child: SizedBox(
+                                                height: QuickChipsRow.heightOf(prefs),
+                                                child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
+                                              ),
+                                            ),
                                           ),
-                                          child: RepaintBoundary(child: QuickChipsRow(prefs: prefs)),
                                         ),
                                       ),
 

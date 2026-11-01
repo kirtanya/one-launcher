@@ -194,7 +194,7 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   darkness/blur (`Prefs.nowDim`/`nowBlur`); phone art is 1024² JPEG (MediaWatcher fetches the full cover when the attached one is small). Future: alarms, events.
   Its player matches the Now playing card: app badge + output button on top, title + tonal play pill (colours from
   `coverScheme` in pages.dart; `SteadyPlaying` holds "playing" through the brief pause between tracks), ⏮ `WavySeekBar` ⏭ + the app's actions (`h >= 190`, by height only so it never blinks between tracks; shorter folds ⏮ ⏭ beside the pill).
-  The quick chips fade out on the Now page (`nowAway`) and `_TopArea` hands their room to the carousel.
+  The quick chips slide down under the sheet's edge on the Now page (`nowAway`, clipped there) and `_TopArea` hands their room to the carousel.
 - `top/pages.dart` **NowPlayingPage** (the Now playing top card) follows Android's media controls: the cover under a
   tint of its own `ColorScheme.fromImageProvider` colours, app badge + output button (`Apps.mediaOutput`) on top when
   `h >= 172`, title + a tonal play pill, and ⏮ `WavySeekBar` ⏭ plus up to 2 of the app's custom actions (`mediaAction`)
