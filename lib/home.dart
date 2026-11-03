@@ -477,6 +477,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // Leaving home itself: its content slides off the other way (a rising page just covers it).
     if (!_pageOpen) _homeSide = rise ? 0 : (forward ? -1 : 1);
     setState(() => _tab = tab);
+    // Pages open inside home's half of the Today pager: from the panel, slide back to it first.
+    if (_onPanel) _toPanel(1);
     SearchDock.shrunk.value = false; // a new page starts at its top
     _closePages(toward: forward ? -1 : 1, replaced: true);
     _pageFrom = rise ? 0 : (forward ? 1 : -1);
@@ -698,6 +700,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     HapticFeedback.selectionClick();
     // Search sits right of Smart home / Remote and left of Settings.
     _closePages(toward: _navOrder.indexOf(_tab) < _navOrder.indexOf('search') ? -1 : 1);
+    if (_onPanel) _toPanel(1); // search lives in home's sheet: from the Today panel, slide back to it
     SearchDock.shrunk.value = false;
     SmartHome.instance.refresh(); // its quick lights, above the recent searches
     _reveal.value = math.max(_reveal.value, (_pull.value / pullToOpen).clamp(0.0, 1.0)); // a pull: on from where it got to
