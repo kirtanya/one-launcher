@@ -738,7 +738,8 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Which home screen: 'classic' (clock on top, app drawer below), 'tiles' (Start tiles +
-  /// app list, Lumia-style) or 'third' (the new view, being designed).
+  /// app list, Lumia-style), 'third' (the new view, being designed) or 'pixel' (Pixel
+  /// Launcher's home, with more settings: lib/pixel/).
   /// The view a fresh install opens on: the phone's Classic; the TV app sets Spotlight (main_tv.dart).
   static String homeViewDefault = 'classic';
   String get homeView => _sp.getString('homeView') ?? homeViewDefault;
@@ -896,6 +897,20 @@ class Prefs extends ChangeNotifier {
   bool get themedIcons => _viewBool('themedIcons') ?? false;
   Future<void> setThemedIcons(bool v) async {
     await _sp.setBool(_k('themedIcons'), v);
+    notifyListeners();
+  }
+
+  /// Pixel view (lib/pixel/): its home layout and its settings, each one JSON object
+  /// (shape in lib/pixel/pixel_model.dart). Empty until the view first opens / a setting changes.
+  Map<String, dynamic> get pixelLayout => Map<String, dynamic>.from(_json('pixel.layout'));
+  Future<void> setPixelLayout(Map<String, dynamic> v) async {
+    await _sp.setString('pixel.layout', jsonEncode(v));
+    notifyListeners();
+  }
+
+  Map<String, dynamic> get pixelSettings => Map<String, dynamic>.from(_json('pixel.settings'));
+  Future<void> setPixelSettings(Map<String, dynamic> v) async {
+    await _sp.setString('pixel.settings', jsonEncode(v));
     notifyListeners();
   }
 

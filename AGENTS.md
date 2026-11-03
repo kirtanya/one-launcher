@@ -104,9 +104,16 @@ Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`
 - Commits: only when the user says so; by path; identity `-c user.name="Kirtanya K"
   -c user.email="kirtanya.k@peepal.co"`.
 
-## Architecture: one system, three languages
-`prefs.homeView` ∈ `classic` | `tiles` | `third` (UI name **Real**) → `DesignLanguage`
-(`lib/ui/ds.dart`) → `DS.lang`, read through `DS.metro` / `DS.third`.
+## Architecture: one system, four languages
+`prefs.homeView` ∈ `classic` | `tiles` | `third` (UI name **Real**) | `pixel` → `DesignLanguage`
+(`lib/ui/ds.dart`) → `DS.lang`, read through `DS.metro` / `DS.third` / `DS.pixel`.
+
+**Pixel view** (`lib/pixel/`, spec + file map in `docs/PIXEL_VIEW.md`): Pixel Launcher end to end
+(grid pages, dock, At a Glance, search pill, swipe-up drawer, anchored icon popup, drag-to-folder)
+plus more settings. Uses Classic's Material You palette (`DesignLanguage.pixel`), no glass. Its
+own data: `prefs.pixelSettings` / `prefs.pixelLayout` (JSON; `PixelSettings` / `PixelLayout` in
+`pixel_model.dart`); icons through `PixelIcon` (shape clip). Shared features (hidden apps, App
+lock gate, themed icons, Today panel, search) are reused, not copied.
 
 `OneTheme._apply` (`lib/ui/theme.dart`) runs on every pref change. It sets `DS.lang`,
 `DS.palette` (Classic: Material You scheme → `OnePalette.fromSchemes`; Tiles:

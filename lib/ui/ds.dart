@@ -16,6 +16,7 @@ class DS {
   static DesignLanguage lang = DesignLanguage.classic;
   static bool get metro => lang == DesignLanguage.metro;
   static bool get third => lang == DesignLanguage.third;
+  static bool get pixel => lang == DesignLanguage.pixel;
   static double metroRadius = 0;
 
   /// [text] in the active language's case (Metro writes headers in lowercase).
@@ -129,12 +130,14 @@ class DS {
 enum DesignLanguage {
   classic, // 'classic' home: clock on top, app drawer with folders
   metro, // 'tiles' home: Lumia-style Start
-  third; // 'third' home: the new view (being designed)
+  third, // 'third' home: the new view (being designed)
+  pixel; // 'pixel' home: Pixel Launcher, end to end, with more settings (lib/pixel/)
 
   /// The language a home view speaks.
   static DesignLanguage of(String homeView) => switch (homeView) {
     'tiles' => metro,
     'third' => third,
+    'pixel' => pixel,
     _ => classic,
   };
 }

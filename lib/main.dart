@@ -9,6 +9,7 @@ import 'home.dart';
 import 'third/tactile/parts.dart';
 import 'third/tactile/tactile.dart';
 import 'third/third_home.dart';
+import 'pixel/pixel_home.dart';
 import 'tiles/tiles_home.dart';
 import 'tv_cast.dart';
 import 'prefs.dart';
@@ -66,7 +67,7 @@ class _OneLauncherState extends State<OneLauncher> {
   void _themedIcons() {
     final p = widget.prefs;
     // Tactile has no glass: its surfaces are moulded plastic.
-    final glass = (p.classicStyle == 'glass' && p.homeView != 'third', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
+    final glass = (p.classicStyle == 'glass' && p.homeView != 'third' && p.homeView != 'pixel', p.glassBlur, p.glassTint, p.glassEdge, p.glassSheen, p.tileStyle == 'glass');
     if (AppIcon.themed == p.themedIcons && glass == (Glass.classic, Glass.blur, Glass.tint, Glass.edge, Glass.sheen, Glass.tiles)) return;
     AppIcon.themed = p.themedIcons;
     Glass.classic = glass.$1;
@@ -218,6 +219,7 @@ class _OneLauncherState extends State<OneLauncher> {
         builder: (context, _) => switch (prefs.homeView) {
           'tiles' => TilesHome(key: const ValueKey('tiles'), prefs: prefs, theme: theme),
           'third' => ThirdHome(key: const ValueKey('third'), prefs: prefs, theme: theme),
+          'pixel' => PixelHome(key: const ValueKey('pixel'), prefs: prefs, theme: theme),
           _ => HomeScreen(key: const ValueKey('classic'), prefs: prefs, theme: theme),
         },
       ),

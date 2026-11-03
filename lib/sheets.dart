@@ -17,6 +17,7 @@ import 'third/tactile/tactile.dart';
 import 'third/tactile/tactile_settings.dart';
 import 'tiles/landing.dart';
 import 'home.dart' show HomeScreen;
+import 'pixel/pixel_home.dart' show PixelHome;
 import 'tiles/tiles_home.dart' show TilesHome, addActionTile;
 import 'tiles/day_line.dart' show showDaySlots;
 import 'tiles/today_panel.dart' show openToday;
@@ -1688,6 +1689,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
         switch (prefs.homeView) {
           'tiles' => 'Tiles · Start + all apps A–Z',
           'third' => 'Real · feels like hardware',
+          'pixel' => 'Pixel · Pixel Launcher, with more settings',
           _ => 'Classic · clock on top, apps below',
         },
         keywords: 'tiles lumia windows start grid classic layout view face glass motion interactions',
@@ -1976,7 +1978,7 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       _Category.look => '${const {'system': 'Wallpaper colours', 'basic': 'Basic colours', 'original': 'One original'}[prefs.themeSource] ?? 'Wallpaper colours'} · '
           '${prefs.wallpaperPhoto != null ? 'your photo' : 'phone wallpaper'}',
       _Category.home =>
-        '${const {'tiles': 'Tiles', 'third': 'Real'}[prefs.homeView] ?? 'Classic'} · ${prefs.topPages.length} top ${prefs.topPages.length == 1 ? 'widget' : 'widgets'}',
+        '${const {'tiles': 'Tiles', 'third': 'Real', 'pixel': 'Pixel'}[prefs.homeView] ?? 'Classic'} · ${prefs.topPages.length} top ${prefs.topPages.length == 1 ? 'widget' : 'widgets'}',
       _Category.apps => hidden == 0 ? 'Folders, pins, hidden apps' : '$hidden hidden · folders, pins',
       _Category.search => '${prefs.searchPosition == 'top' ? 'Bar at the top' : 'Bar at the bottom'} · ${prefs.searchIn.length} sources',
       _Category.tv => prefs.tvHost == null ? 'Not set up' : prefs.tvName,
@@ -2369,6 +2371,8 @@ class _HomeEditorState extends State<_HomeEditor> {
             _viewCard('tiles', Icons.grid_view_rounded, 'Tiles', 'Live tiles; swipe left for all apps A–Z'),
             const SizedBox(height: DS.s8),
             _viewCard('third', Icons.auto_awesome_outlined, 'Real', 'Feels like hardware: keys, knobs, lights'),
+            const SizedBox(height: DS.s8),
+            _viewCard('pixel', Icons.phone_android_rounded, 'Pixel', 'Pixel Launcher end to end: grid, dock, folders, more settings'),
           ],
         ),
       ),
@@ -2705,6 +2709,8 @@ class _HomePreview extends StatelessWidget {
                   color: Colors.black,
                   child: view == 'tiles'
                       ? TilesHome(key: const ValueKey('preview-tiles'), prefs: prefs, theme: theme, preview: true)
+                      : view == 'pixel'
+                      ? PixelHome(key: const ValueKey('preview-pixel'), prefs: prefs, theme: theme, preview: true)
                       : HomeScreen(key: const ValueKey('preview-classic'), prefs: prefs, theme: theme, preview: true),
                 ),
               ),
@@ -3022,6 +3028,10 @@ Future<Object?> _showWallpaperSheet(BuildContext context, {required Prefs prefs}
 );
 
 /// Settings → Hidden apps (2nd level).
+/// Hidden apps, for other views' settings (Pixel's Home settings).
+Future<Object?> showHiddenApps(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) =>
+    _showHiddenApps(context, prefs: prefs, apps: apps);
+
 Future<Object?> _showHiddenApps(BuildContext context, {required Prefs prefs, required List<AppEntry> apps}) => showOneSheetWith(
   context,
   back: true,

@@ -186,7 +186,8 @@ class OneTheme extends ChangeNotifier with WidgetsBindingObserver {
         sounds: prefs.tactileSounds,
         face: prefs.tactileFace,
       ),
-      DesignLanguage.classic => palette,
+      // Pixel is Material You through and through, like Classic.
+      DesignLanguage.classic || DesignLanguage.pixel => palette,
     };
     notifyListeners();
   }
