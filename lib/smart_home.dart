@@ -22,6 +22,8 @@ import 'apps.dart';
 /// - `devices` → `List<Map>`: every device the user granted, one map each:
 ///   `id` String (stable), `name` String, `room` String? (structure room, may be empty),
 ///   `type` `"light"|"plug"|"ac"|"fan"|"switch"|"other"`, `online` bool, `on` bool,
+///   `reach` `"online"|"offline"|"unknown"` (device or power-switch connectivity; `online` is
+///   `reach != "offline"`; unknown alone isn't shown — a failed command is),
 ///   `brightness` int 0..100? (lights), `setpoint` double? (°C, AC),
 ///   `mode` `"cool"|"heat"|"auto"|"fan"|"off"`? (AC).
 ///   Lights may add: `canColor` / `canTemp` bool, `hue` double 0..360, `saturation` double 0..1,
@@ -50,6 +52,7 @@ class SmartDevice {
     this.homeId,
     this.type = SmartType.other,
     this.online = true,
+    this.noReply = false,
     this.on = false,
     this.brightness,
     this.colorTempK,
@@ -103,6 +106,10 @@ class SmartDevice {
   final SmartType type;
   final bool online, on;
 
+  /// Reachable by Google's account, but the last command to it failed or timed out: shown as
+  /// "Not responding" (controls stay on, to try again). [online] false is "Offline".
+  final bool noReply;
+
   /// 0–100, lights that dim.
   final int? brightness;
 
@@ -146,6 +153,7 @@ class SmartDevice {
     String? colorMode,
     String? effect,
     bool clearEffect = false,
+    bool? noReply,
     bool? canColor,
     bool? canTemp,
     int? minK,
@@ -157,6 +165,7 @@ class SmartDevice {
     homeId: homeId,
     type: type,
     online: online,
+    noReply: noReply ?? this.noReply,
     on: on ?? this.on,
     brightness: brightness ?? this.brightness,
     colorTempK: colorTempK ?? this.colorTempK,
@@ -255,6 +264,10 @@ class SmartHome {
   final _inFlight = <String>{};
   final _queued = <String, Object>{};
 
+  /// Devices whose last command failed → when. Kept for [_noReplyFor] or until one goes through.
+  final _noReply = <String, DateTime>{};
+  static const _noReplyFor = Duration(minutes: 3);
+
   SmartHomeState get value => state.value;
 
   void _listen() {
@@ -268,6 +281,7 @@ class SmartHome {
   void _apply(Object? raw) {
     final now = DateTime.now();
     _pending.removeWhere((_, p) => p.$2.isBefore(now));
+    _noReply.removeWhere((_, t) => now.difference(t) > _noReplyFor);
     final list = [
       for (final m in (raw as List? ?? const []))
         _withPending(SmartDevice.fromMap(m as Map)),
@@ -276,7 +290,7 @@ class SmartHome {
   }
 
   SmartDevice _withPending(SmartDevice d) {
-    var out = d;
+    var out = _noReply.containsKey(d.id) && d.online ? d.copyWith(noReply: true) : d;
     for (final e in _pending.entries) {
       final bar = e.key.indexOf('|');
       if (e.key.substring(0, bar) == d.id) out = _optimistic(out, e.key.substring(bar + 1), e.value.$1);
@@ -347,8 +361,15 @@ class SmartHome {
     }
   }
 
-  static String _msg(Object e) =>
-      e is PlatformException ? (e.message ?? e.code) : '$e';
+  static String _msg(Object e) => switch (e) {
+    PlatformException() => e.message ?? e.code,
+    TimeoutException() => e.message ?? 'No answer',
+    _ => '$e',
+  };
+
+  /// A command with no answer by then counts as failed: the device is "Not responding".
+  @visibleForTesting
+  static Duration answerIn = const Duration(seconds: 10);
 
   /// Sends one change. The screen updates at once; if the bridge says no, it goes back.
   /// Quick repeats (dragging, tapping colours) don't pile up: only the newest one is sent next.
@@ -370,9 +391,13 @@ class SmartHome {
       while (next != null) {
         last = next;
         _queued.remove(key);
-        await _ch.invokeMethod<void>('set', {'id': id, 'trait': trait, 'value': last});
+        await _ch
+            .invokeMethod<void>('set', {'id': id, 'trait': trait, 'value': last})
+            .timeout(answerIn, onTimeout: () => throw TimeoutException("${before.name} isn't responding"));
         next = _queued.remove(key);
       }
+      final now = this.value.byId(id);
+      if (_noReply.remove(id) != null && now != null) _replace(now.copyWith(noReply: false));
       // Done: keep it on top of stale updates a little longer, then trust the device again
       // (the next device update after that drops it).
       _pending[key] = (last, DateTime.now().add(const Duration(seconds: 4)));
@@ -382,7 +407,8 @@ class SmartHome {
     } catch (e) {
       _pending.remove(key);
       _queued.remove(key);
-      _rollback(before, _msg(e));
+      _noReply[id] = DateTime.now();
+      _rollback(before.copyWith(noReply: true), _msg(e));
     } finally {
       _inFlight.remove(key);
     }
@@ -529,6 +555,7 @@ class SmartHome {
   void reset() {
     _demo = _demoLocal = false;
     _pending.clear();
+    _noReply.clear();
     _queued.clear();
     _inFlight.clear();
     state.value = const SmartHomeState();

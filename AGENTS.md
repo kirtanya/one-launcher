@@ -224,6 +224,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Kotlin bridge: `android/app/src/phone/kotlin/.../SmartHomeBridge.kt` (+ `HomeConnectActivity`, runs the permission flow; manifest in `src/phone/`), phone flavour only, Google Home APIs SDK 17.1.0
   from the local maven repo `android/home-sdk/` (190 MB, gitignored; repo + `phoneImplementation` deps only added when it exists, else the phone builds without the bridge → status unavailable).
   MainActivity attaches it reflectively (`Class.forName(...SmartHomeBridge).attach`; keep rule in `app/proguard-rules.pro`). Matter units: setpoints 0.01 °C, level 0..254. Debug: long-press the setup card = fake devices.
+  Reachability: the bridge sends `reach` (offline when the device OR its OnOff/Thermostat trait's `metadata.sourceConnectivity`
+  is OFFLINE; `unknown` when neither knows) and `online = reach != "offline"` → "Offline", dimmed, cloud-off mark, controls off.
+  A command that throws or gets no answer in `SmartHome.answerIn` (10 s) marks the device `noReply` → "Not responding" in the
+  error colour with an alert mark, controls stay on; cleared by the next command that goes through, or after 3 min.
 - **App long-press menu** (`showAppActions` in sheets.dart, both views): main actions are horizontal pills (icon + label),
   two per row, an odd last one full width; then shortcuts (first 4 + Show all).
 - **App lock** (`app_lock.dart` gate, `app_lock_ui.dart` PIN pad + settings page): prefs `lockedApps`, `lockTaps` (2|3), `lockPinHash`

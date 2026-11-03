@@ -120,6 +120,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(home.value.byId('p1')!.on, isTrue, reason: 'rolled back to on');
       expect(home.value.error, 'Offline hub');
+      expect(home.value.byId('p1')!.noReply, isTrue);
+      expect(find.text('Not responding'), findsOneWidget, reason: 'its tile says so, controls stay on');
+      expect(find.byIcon(Icons.error_outline_rounded), findsWidgets);
+
+      // The next command goes through: back to normal.
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('one_launcher/home'),
+        (call) async => null,
+      );
+      await tester.tap(find.text('Lamp plug'));
+      await tester.pumpAndSettle();
+      expect(home.value.byId('p1')!.noReply, isFalse);
+      expect(find.text('Not responding'), findsNothing);
     },
   );
 
@@ -295,6 +308,34 @@ void main() {
     await home.chooseHome('h2');
     expect(home.value.devices.map((d) => d.id), ['l2']);
     expect((await SharedPreferences.getInstance()).getString('smartHome.home'), 'h2');
+  });
+
+  test('offline (Google says so) vs not responding (a command failed or timed out) read differently', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    home.reset();
+    addTearDown(home.reset);
+    home.debugDemo(local: false);
+    final m = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    m.setMockMethodCallHandler(const MethodChannel('one_launcher/home'), (call) => Completer<void>().future); // never answers
+    final off = SmartDevice.fromMap({'id': 'x', 'name': 'Lamp', 'type': 'light', 'online': false, 'reach': 'offline'});
+    expect(smartSub(off), 'Offline');
+    SmartHome.answerIn = const Duration(milliseconds: 20);
+    addTearDown(() => SmartHome.answerIn = const Duration(seconds: 10));
+    await home.set('l2', 'on', true);
+    expect(home.value.byId('l2')!.on, isFalse, reason: 'rolled back');
+    expect(home.value.byId('l2')!.noReply, isTrue);
+    expect(smartSub(home.value.byId('l2')!), 'Not responding');
+    expect(home.value.error, "Bedside light isn't responding");
+    // Device updates keep the mark until a command goes through (or 3 minutes pass).
+    m.handlePlatformMessage(
+      'one_launcher/home',
+      const StandardMethodCodec().encodeMethodCall(MethodCall('homeChanged', [
+        {'id': 'l2', 'name': 'Bedside light', 'type': 'light', 'online': true, 'reach': 'unknown', 'on': false},
+      ])),
+      (_) {},
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(home.value.byId('l2')!.noReply, isTrue);
   });
 
   test('quick repeats: one command out at a time, only the newest waits; stale echoes stay hidden', () async {

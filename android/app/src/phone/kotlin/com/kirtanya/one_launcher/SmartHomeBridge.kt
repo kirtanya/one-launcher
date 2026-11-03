@@ -322,6 +322,15 @@ object SmartHomeBridge {
             }
         }
         if (kind == null) return null
+        // Offline when Google says so for the device or for its power switch (cloud lights often
+        // report only the trait); unknown when neither side knows.
+        val dev = d.sourceConnectivity.connectivityState
+        val sw = (onOff?.metadata ?: thermo?.metadata)?.sourceConnectivity?.connectivityState
+        val reach = when {
+            dev == ConnectivityState.OFFLINE || sw == ConnectivityState.OFFLINE -> "offline"
+            dev == ConnectivityState.UNKNOWN && (sw == null || sw == ConnectivityState.UNKNOWN) -> "unknown"
+            else -> "online"
+        }
         val sysMode = thermo?.systemMode
         val on = onOff?.onOff ?: (sysMode != null && sysMode != ThermostatTrait.SystemModeEnum.Off)
         val m = mutableMapOf<String, Any?>(
@@ -330,7 +339,8 @@ object SmartHomeBridge {
             "room" to (d.roomId?.id?.let { rooms[it] } ?: ""),
             "homeId" to homeOf[d.id.id],
             "type" to kind,
-            "online" to (d.sourceConnectivity.connectivityState != ConnectivityState.OFFLINE),
+            "online" to (reach != "offline"),
+            "reach" to reach,
             "on" to on,
         )
         level?.currentLevel?.let { m["brightness"] = (it.toInt() * 100 / 254.0).roundToInt().coerceIn(0, 100) }

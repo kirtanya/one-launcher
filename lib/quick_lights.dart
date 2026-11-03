@@ -271,6 +271,8 @@ class _QuickLightsState extends State<QuickLights> {
                   Text(
                     live.isEmpty
                         ? 'Offline'
+                        : live.every((d) => d.noReply)
+                        ? 'Not responding'
                         : on.isEmpty
                         ? (single != null ? 'Off' : 'All off')
                         : single != null
@@ -338,6 +340,7 @@ class _QuickLightsState extends State<QuickLights> {
                 label: d.name,
                 selected: _pick == d.id,
                 enabled: d.online,
+                mark: !d.online ? Icons.cloud_off_rounded : d.noReply ? Icons.error_outline_rounded : null,
                 dot: d.online && d.on ? (d.shade ?? kelvinColour(2700)) : null,
                 onTap: () => setState(() => _pick = d.id),
                 onPower: d.online
@@ -644,8 +647,12 @@ class _Chip extends StatelessWidget {
     this.enabled = true,
     this.dot,
     this.onPower,
+    this.mark,
   });
   final Color ink;
+
+  /// After the label: offline (cloud off) or not responding (alert).
+  final IconData? mark;
   final String label;
   final bool selected, enabled;
   final Color? dot;
@@ -695,7 +702,11 @@ class _Chip extends StatelessWidget {
             Semantics(
               button: true,
               selected: selected,
-              label: label,
+              label: switch (mark) {
+                Icons.cloud_off_rounded => '$label, offline',
+                Icons.error_outline_rounded => '$label, not responding',
+                _ => label,
+              },
               excludeSemantics: true,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -712,10 +723,19 @@ class _Chip extends StatelessWidget {
                   ),
                   child: Center(
                     widthFactor: 1,
-                    child: Text(
-                      DS.cased(label),
-                      style: DS.pill.copyWith(color: ink),
-                      maxLines: 1,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          DS.cased(label),
+                          style: DS.pill.copyWith(color: ink),
+                          maxLines: 1,
+                        ),
+                        if (mark != null) ...[
+                          const SizedBox(width: DS.s4),
+                          Icon(mark, size: 14, color: ink),
+                        ],
+                      ],
                     ),
                   ),
                 ),

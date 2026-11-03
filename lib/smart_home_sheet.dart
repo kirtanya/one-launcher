@@ -47,6 +47,7 @@ String _degrees(double v) =>
 /// One line under a device's name: its state in words.
 String smartSub(SmartDevice d) {
   if (!d.online) return 'Offline';
+  if (d.noReply) return 'Not responding';
   if (d.type == SmartType.ac) {
     if (!d.on || d.mode == AcMode.off) return 'Off';
     return [
@@ -288,6 +289,7 @@ class SmartTile extends StatelessWidget {
     final lit = d.on && d.online;
     final ink = lit ? DS.heroInk : DS.ink;
     final muted = lit ? DS.heroMuted : DS.inkMuted;
+    final warn = Theme.of(context).colorScheme.error;
     return Opacity(
       opacity: d.online ? 1 : .5,
       child: Pressable(
@@ -331,6 +333,15 @@ class SmartTile extends StatelessWidget {
                                 const SizedBox(width: DS.s8),
                                 _Dot(colour: d.shade!, ring: ink),
                               ],
+                              // Offline (Google says so, dimmed) vs Not responding (a command failed).
+                              if (!d.online || d.noReply) ...[
+                                const SizedBox(width: DS.s8),
+                                Icon(
+                                  d.online ? Icons.error_outline_rounded : Icons.cloud_off_rounded,
+                                  size: 16,
+                                  color: d.online ? warn : muted,
+                                ),
+                              ],
                             ],
                           ),
                           const SizedBox(height: DS.s12),
@@ -342,7 +353,7 @@ class SmartTile extends StatelessWidget {
                           ),
                           Text(
                             smartSub(d),
-                            style: DS.rowSub.copyWith(color: muted),
+                            style: DS.rowSub.copyWith(color: d.online && d.noReply ? warn : muted),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -423,7 +434,11 @@ class _SmartDetailState extends State<SmartDetail> {
                 title: room ?? d.name,
                 yours: true,
                 subtitle: room != null
-                    ? (lit.isEmpty ? 'All lights off' : '${lit.length} of ${live.length} lights on')
+                    ? [
+                        lit.isEmpty ? 'All lights off' : '${lit.length} of ${live.length} lights on',
+                        if (group.length > live.length) '${group.length - live.length} offline',
+                        if (live.any((l) => l.noReply)) '${live.where((l) => l.noReply).length} not responding',
+                      ].join(' · ')
                     : [
                         if (d.room.isNotEmpty) d.room,
                         smartSub(d),
