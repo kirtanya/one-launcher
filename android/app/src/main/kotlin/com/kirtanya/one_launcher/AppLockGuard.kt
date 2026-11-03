@@ -39,6 +39,7 @@ object AppLockGuard {
         }
         ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putStringSet(KEY, set).apply()
+        LockService.instance?.updateWatching() // start / stop watching windows
     }
 
     fun allow(pkg: String) = synchronized(allowed) {

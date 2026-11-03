@@ -11,7 +11,9 @@ import android.widget.Toast
  * Double-tap to lock (Tiles view) and App lock. Android only lets an accessibility service turn
  * the screen off without forcing the PIN later, and only a service can see which app came to the
  * front: a locked app that appears without One Launcher having allowed it sends the user home.
- * It reads no screen content — only which package a window belongs to.
+ * It reads no screen content — only which package a window belongs to, and only while some app
+ * is locked ([updateWatching]): with nothing locked it listens to nothing, as before App lock —
+ * payment apps flag accessibility services that watch windows.
  */
 class LockService : AccessibilityService() {
     companion object {
@@ -30,6 +32,16 @@ class LockService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         AppLockGuard.load(this)
+        updateWatching()
+    }
+
+    /** Window events only while App lock has locked apps; otherwise none (the XML's quiet default). */
+    fun updateWatching() {
+        val info = serviceInfo ?: return
+        val want = if (AppLockGuard.locked.isEmpty()) AccessibilityEvent.TYPE_ANNOUNCEMENT else AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        if (info.eventTypes == want) return
+        info.eventTypes = want
+        serviceInfo = info
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
