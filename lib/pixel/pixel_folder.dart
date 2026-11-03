@@ -1,11 +1,9 @@
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
 import '../apps.dart';
 import '../ui/motion.dart';
-import '../ui/perf.dart';
 import '../widgets.dart';
 import 'pixel_icon.dart';
 import 'pixel_model.dart';
@@ -41,8 +39,45 @@ class PixelFolderIcon extends StatelessWidget {
       for (final p in folder.apps)
         if (apps[p] != null) apps[p]!,
     ].take(4).toList();
-    final pad = size * .14;
-    final mini = (size - pad * 2 - size * .06) / 2;
+    final mini = size * .4;
+    final gap = size * .06;
+    Widget m(AppEntry a) => SizedBox.square(
+      dimension: mini,
+      child: ClipPath(clipper: PixelShape(shape), child: AppIcon(a, size: mini)),
+    );
+    Widget content;
+    switch (inside.length) {
+      case 0:
+        content = const SizedBox.shrink();
+      case 1:
+        content = Center(child: m(inside[0]));
+      case 2:
+        content = Center(
+          child: Row(mainAxisSize: MainAxisSize.min, children: [m(inside[0]), SizedBox(width: gap), m(inside[1])]),
+        );
+      case 3:
+        content = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              m(inside[0]),
+              SizedBox(height: gap),
+              Row(mainAxisSize: MainAxisSize.min, children: [m(inside[1]), SizedBox(width: gap), m(inside[2])]),
+            ],
+          ),
+        );
+      default:
+        content = Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [m(inside[0]), SizedBox(width: gap), m(inside[1])]),
+              SizedBox(height: gap),
+              Row(mainAxisSize: MainAxisSize.min, children: [m(inside[2]), SizedBox(width: gap), m(inside[3])]),
+            ],
+          ),
+        );
+    }
     final back = SizedBox.square(
       dimension: size,
       child: Stack(
@@ -51,27 +86,8 @@ class PixelFolderIcon extends StatelessWidget {
           ClipPath(
             clipper: PixelShape(shape),
             child: ColoredBox(
-              color: Color.alphaBlend(
-                cs.surfaceContainerHighest.withValues(alpha: .35),
-                Colors.white.withValues(alpha: .22),
-              ),
-              child: Padding(
-                padding: EdgeInsets.all(pad),
-                child: Wrap(
-                  spacing: size * .06,
-                  runSpacing: size * .06,
-                  children: [
-                    for (final a in inside)
-                      SizedBox.square(
-                        dimension: mini,
-                        child: ClipPath(
-                          clipper: PixelShape(shape),
-                          child: AppIcon(a, size: mini),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              color: const Color(0xE61E1E1E),
+              child: SizedBox.square(dimension: size, child: content),
             ),
           ),
           if (dot)
@@ -215,12 +231,14 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
           for (final p in widget.folder.apps)
             if (widget.apps[p] != null) p,
         ];
-        final cols = widget.big ? 5 : 4;
+        final cols = widget.big ? 5 : (pkgs.length <= 4 ? 2 : (pkgs.length <= 9 ? 3 : 4));
         final icon =
             (widget.big ? 58.0 : 52.0) * widget.iconScale.clamp(.8, 1.2);
         final cellH = icon + (widget.labels ? 30 : 18);
-        const titleH = 68.0;
+        final cellW = widget.big ? (w - 48) / cols : math.max(icon + 24, 76.0);
+        const titleH = 56.0;
         final inset = mq.padding;
+        final keyboard = mq.viewInsets.bottom;
         // The card.
         double cardW, cardH;
         int rowsShown;
@@ -229,19 +247,28 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
           cardH = h - inset.top - inset.bottom - 48;
           rowsShown = math.max(2, ((cardH - titleH - 56) / cellH).floor());
         } else {
-          cardW = math.min(w - 40, 420.0);
+          cardW = cols * cellW + 24;
           rowsShown = math.min(3, math.max(1, (pkgs.length / cols).ceil()));
-          cardH = titleH + rowsShown * cellH + 28;
+          cardH = titleH + rowsShown * cellH + 20;
         }
         final perPage = cols * rowsShown;
         final pages = math.max(1, (pkgs.length / perPage).ceil());
         if (pages > 1 && !widget.big) cardH += 18;
-        var top = (widget.from.center.dy - cardH / 2).clamp(
-          inset.top + 16,
-          math.max(inset.top + 16, h - inset.bottom - cardH - 16),
-        );
-        if (widget.big) top = inset.top + 24;
-        final to = Rect.fromLTWH((w - cardW) / 2, top.toDouble(), cardW, cardH);
+        final f = widget.from;
+        double left, top;
+        if (widget.big) {
+          left = (w - cardW) / 2;
+          top = inset.top + 24;
+        } else {
+          // Right-aligned to the icon when it sits in the right half, else left-aligned.
+          left = f.center.dx > w / 2 ? f.right - cardW : f.left;
+          left = left.clamp(12.0, math.max(12.0, w - cardW - 12));
+          // Above the dock when the folder is down there; else it grows down from the icon.
+          top = f.center.dy > h * .6 ? f.top - cardH - 12 : f.top;
+          final maxTop = h - math.max(inset.bottom, keyboard) - cardH - 16;
+          top = top.clamp(inset.top + 16, math.max(inset.top + 16, maxTop));
+        }
+        final to = Rect.fromLTWH(left, top, cardW, cardH);
         return AnimatedBuilder(
           animation: _c,
           builder: (context, _) {
@@ -259,19 +286,9 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: widget.preview ? null : close,
-                    child: !Perf.lite.value && !widget.preview
-                        ? BackdropFilter(
-                            filter: ImageFilter.blur(
-                              sigmaX: 10 * fade,
-                              sigmaY: 10 * fade,
-                            ),
-                            child: ColoredBox(
-                              color: Colors.black.withValues(alpha: .32 * fade),
-                            ),
-                          )
-                        : ColoredBox(
-                            color: Colors.black.withValues(alpha: .4 * fade),
-                          ),
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: .3 * fade),
+                    ),
                   ),
                 ),
                 Positioned.fromRect(
@@ -279,10 +296,9 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                   child: ClipRRect(
                     borderRadius: radius,
                     child: ColoredBox(
-                      color: Color.alphaBlend(
-                        cs.primary.withValues(alpha: .06),
-                        cs.surfaceContainerHigh,
-                      ),
+                      color: cs.brightness == Brightness.dark
+                          ? const Color(0xE6505050)
+                          : cs.surfaceContainerHigh,
                       child: OverflowBox(
                         minWidth: cardW,
                         maxWidth: cardW,
@@ -298,6 +314,7 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                             pages,
                             icon,
                             cellH,
+                            cellW,
                             titleH,
                           ),
                         ),
@@ -323,12 +340,12 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
     int pages,
     double icon,
     double cellH,
+    double cellW,
     double titleH,
   ) {
     final perPage = cols * rows;
-    return Column(
-      children: [
-        SizedBox(
+    final fg = cs.brightness == Brightness.dark ? Colors.white : cs.onSurface;
+    final title = SizedBox(
           height: titleH,
           child: Center(
             child: _renaming
@@ -340,7 +357,7 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                       autofocus: true,
                       textAlign: TextAlign.center,
                       textCapitalization: TextCapitalization.words,
-                      style: TextStyle(fontSize: 20, color: cs.onSurface),
+                      style: TextStyle(fontSize: 18, color: fg),
                       decoration: const InputDecoration(
                         isDense: true,
                         hintText: 'Folder name',
@@ -363,16 +380,18 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                             ? 'Edit name'
                             : widget.folder.name,
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 18,
                           color: widget.folder.name.isEmpty
-                              ? cs.onSurfaceVariant
-                              : cs.onSurface,
+                              ? fg.withValues(alpha: .7)
+                              : fg,
                         ),
                       ),
                     ),
                   ),
           ),
-        ),
+        );
+    return Column(
+      children: [
         Expanded(
           child: PageView.builder(
             itemCount: pages,
@@ -380,13 +399,16 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
             itemBuilder: (context, p) {
               final slice = pkgs.skip(p * perPage).take(perPage).toList();
               return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: GridView.count(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: GridView.builder(
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: cols,
-                  mainAxisExtent: cellH,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    mainAxisExtent: cellH,
+                  ),
                   padding: EdgeInsets.zero,
-                  children: [for (final pkg in slice) _cell(cs, pkg, icon)],
+                  itemCount: slice.length,
+                  itemBuilder: (context, i) => _cell(cs, slice[i], icon),
                 ),
               );
             },
@@ -405,7 +427,7 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: cs.onSurface.withValues(
+                      color: (cs.brightness == Brightness.dark ? Colors.white : cs.onSurface).withValues(
                         alpha: i == _page ? .9 : .3,
                       ),
                     ),
@@ -413,7 +435,7 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
               ],
             ),
           ),
-        const SizedBox(height: 10),
+        title,
       ],
     );
   }
@@ -425,7 +447,7 @@ class PixelFolderOpenState extends State<PixelFolderOpen>
       size: icon,
       shape: widget.shape,
       label: label && widget.labels,
-      labelColor: cs.onSurface,
+      labelColor: cs.brightness == Brightness.dark ? Colors.white : cs.onSurface,
       shadow: false,
     );
     final child = GestureDetector(

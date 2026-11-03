@@ -4,19 +4,18 @@ import '../apps.dart';
 import '../app_lock_ui.dart';
 import '../prefs.dart';
 import '../sheets.dart' show showHiddenApps;
-import '../ui/ds.dart';
-import '../widgets.dart';
 import 'pixel_icon.dart';
 import 'pixel_model.dart';
 
-/// Pixel view → long-press home → "Home settings": every [PixelSettings] option, grouped like
-/// Pixel Launcher's own Home settings page, under a live mini preview. Rebuilds on [prefs].
+/// Pixel view → long-press home → "Home settings": a full-screen Android-settings page like
+/// Pixel Launcher's own (large collapsing title, plain rows, M3 switches, radio / slider dialogs).
+/// Pixel's rows first, in its order, then our extras under small headers. Follows the theme.
 Future<void> showPixelHomeSettings(BuildContext context, {required Prefs prefs}) async {
-  await showOneSheetWith(context, builder: (ctx) => _PixelSettingsBody(prefs: prefs));
+  await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _PixelSettingsPage(prefs: prefs)));
 }
 
-class _PixelSettingsBody extends StatelessWidget {
-  const _PixelSettingsBody({required this.prefs});
+class _PixelSettingsPage extends StatelessWidget {
+  const _PixelSettingsPage({required this.prefs});
   final Prefs prefs;
 
   @override
@@ -26,135 +25,52 @@ class _PixelSettingsBody extends StatelessWidget {
       builder: (context, _) {
         final s = PixelSettings.of(prefs);
         void set(String k, Object? v) => s.copyWith(k, v).save(prefs);
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: DS.s24),
-              child: SheetHeader(title: 'Home settings', subtitle: 'Pixel home screen'),
-            ),
-            Center(child: Padding(padding: const EdgeInsets.only(top: DS.s16), child: _Preview(s))),
-            _Group('App grid', [
-              _Block(
-                Icons.grid_view_rounded,
-                'Home grid',
-                'Columns × rows on each home page',
-                Wrap(spacing: 8, runSpacing: 4, children: [
-                  for (final g in pixelGrids.keys)
-                    ChoiceChip(label: Text(g), selected: s.grid == g, onSelected: (_) => set('grid', g)),
-                ]),
-              ),
-              _Block(
-                Icons.view_column_outlined,
-                'All apps columns',
-                'Apps per row in the app drawer',
-                SegmentedButton<int>(
-                  showSelectedIcon: false,
-                  segments: [for (final n in [4, 5, 6]) ButtonSegment(value: n, label: Text('$n'))],
-                  selected: {s.drawerCols},
-                  onSelectionChanged: (v) => set('drawerCols', v.first),
-                ),
-              ),
-            ]),
-            _Group('Icons', [
-              _Block(
-                Icons.photo_size_select_large_rounded,
-                'Icon size',
-                '${(s.iconScale * 100).round()}% of the grid\'s natural size',
-                Slider(
-                  min: 70,
-                  max: 130,
-                  divisions: 12,
-                  value: (s.iconScale * 100).roundToDouble(),
-                  label: '${(s.iconScale * 100).round()}%',
-                  onChanged: (v) => set('iconScale', v.round() / 100),
-                ),
-              ),
-              _Block(
-                Icons.interests_outlined,
-                'Icon shape',
-                'The shape every app icon is cut to',
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    for (final sh in pixelShapes) _ShapeChoice(sh, selected: s.iconShape == sh, onTap: () => set('iconShape', sh)),
-                  ]),
-                ),
-              ),
-              _Switch(Icons.palette_outlined, 'Themed icons', 'Tint icons with your wallpaper colours', prefs.themedIcons, prefs.setThemedIcons),
-              _Switch(Icons.label_outline_rounded, 'Labels on home', 'Show app names under home icons', s.labels, (v) => set('labels', v)),
-              _Switch(Icons.label_outline_rounded, 'Labels in all apps', 'Show app names in the app drawer', s.drawerLabels, (v) => set('drawerLabels', v)),
-              _Switch(Icons.circle_notifications_outlined, 'Notification dots', 'A dot on apps with new notifications', s.notifDots, (v) => set('notifDots', v)),
-            ]),
-            _Group('Home screen', [
-              _Switch(Icons.wb_sunny_outlined, 'At a Glance', 'Date, weather and next event at the top', s.glance, (v) => set('glance', v)),
-              _Switch(Icons.search_rounded, 'Search bar', 'The Google search pill at the bottom', s.searchBar, (v) => set('searchBar', v)),
-              _Row(
-                Icons.dock_rounded,
-                'Dock icons',
-                'How many apps fit in the dock',
-                trailing: _Stepper(s.dockCount, 3, 7, (v) => set('dockCount', v)),
-              ),
-              _Switch(Icons.swipe_rounded, 'Scrolling dock', 'Swipe the dock sideways when it holds more', s.dockScroll, (v) => set('dockScroll', v)),
-              _Switch(Icons.add_to_home_screen_rounded, 'Add new apps to home', 'Put newly installed apps on the home screen', s.addNewApps, (v) => set('addNewApps', v)),
-              _Switch(Icons.lock_outline_rounded, 'Lock home layout', 'Stop icons being moved or removed by accident', s.lockLayout, (v) => set('lockLayout', v)),
-              _Switch(Icons.folder_open_rounded, 'Big folders', 'Open folders full screen with a bigger grid', s.bigFolders, (v) => set('bigFolders', v)),
-              _Switch(Icons.view_carousel_outlined, 'Left panel (Today)', 'Swipe right from the first page for Today', s.leftPanel, (v) => set('leftPanel', v)),
-            ]),
-            _Group('Gestures', [
-              _Switch(Icons.touch_app_outlined, 'Double-tap to sleep', 'Double-tap empty space to turn the screen off', s.doubleTapSleep, (v) => set('doubleTapSleep', v)),
-              _Switch(Icons.notifications_none_rounded, 'Swipe down for notifications', 'Pull the shade down from the home screen', s.swipeDownShade, (v) => set('swipeDownShade', v)),
-              _Block(
-                Icons.swipe_up_alt_rounded,
-                'Swipe up opens',
-                'What a swipe up from the home screen does',
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 'drawer', label: Text('All apps')),
-                    ButtonSegment(value: 'search', label: Text('Search')),
-                  ],
-                  selected: {s.swipeUp},
-                  onSelectionChanged: (v) => set('swipeUp', v.first),
-                ),
-              ),
-            ]),
-            _Group('All apps', [
-              _Switch(Icons.auto_awesome_outlined, 'Suggestions row', 'Apps you may want next, above the list', s.suggestions, (v) => set('suggestions', v)),
-              _Block(
-                Icons.sort_rounded,
-                'Sort apps',
-                'How the app list is ordered',
-                SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: 'az', label: Text('A–Z')),
-                    ButtonSegment(value: 'recent', label: Text('Recent')),
-                    ButtonSegment(value: 'most', label: Text('Most used')),
-                  ],
-                  selected: {s.drawerSort},
-                  onSelectionChanged: (v) => set('drawerSort', v.first),
-                ),
-              ),
-              _Switch(Icons.keyboard_outlined, 'Keyboard on open', 'Start typing as soon as all apps opens', s.keyboardOnOpen, (v) => set('keyboardOnOpen', v)),
-              _Switch(Icons.sort_by_alpha_rounded, 'Letter scroller', 'A–Z strip on the edge to jump around', s.letterScroller, (v) => set('letterScroller', v)),
-            ]),
-            _Group('More', [
-              _Row(Icons.visibility_off_outlined, 'Hidden apps', 'Apps kept out of home and all apps', chevron: true, onTap: () async {
-                final apps = await Apps.instance.list();
-                if (context.mounted) await showHiddenApps(context, prefs: prefs, apps: apps);
-              }),
-              _Row(Icons.lock_person_outlined, 'App lock', 'Ask for a PIN to open chosen apps', chevron: true, onTap: () async {
-                final apps = await Apps.instance.list();
-                if (context.mounted) await showAppLockPage(context, prefs: prefs, apps: apps);
-              }),
-              _Row(Icons.wallpaper_rounded, 'Wallpaper & style', 'Change wallpaper, colours and themes', external: true, onTap: Apps.instance.openWallpaperPicker),
-              _Row(Icons.restart_alt_rounded, 'Reset home layout', 'Clear pages, dock and folders; start fresh', onTap: () => _confirmReset(context)),
-            ]),
-            const SizedBox(height: DS.s24),
-          ],
-        );
+        return _Page(title: 'Home settings', children: [
+          _SwitchRow('Notification dots', s.notifDots ? 'On' : 'Off', s.notifDots, (v) => set('notifDots', v)),
+          _SwitchRow('At a Glance', s.glance ? 'On' : 'Off', s.glance, (v) => set('glance', v)),
+          _SwitchRow('Add app icons to home screen', 'For new apps', s.addNewApps, (v) => set('addNewApps', v)),
+          _SwitchRow('Swipe to access Google app', 'From home screen, swipe right to open Today', s.leftPanel, (v) => set('leftPanel', v)),
+          _SwitchRow('Suggestions', 'For all apps and home screen suggestions', s.suggestions, (v) => set('suggestions', v)),
+          _Row('Apps list settings', 'Choose appearance and behaviour defaults of the apps list', onTap: () {
+            Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _AppsListPage(prefs: prefs)));
+          }),
+          _Row('Home view', 'Pixel', onTap: () => _pick<String>(context, 'Home view', prefs.homeView, const {'classic': 'Classic', 'tiles': 'Tiles', 'third': 'Real', 'pixel': 'Pixel'}, (v) {
+            if (v == prefs.homeView) return;
+            // After the dialog has closed: leave settings, then swap the home view.
+            Future.microtask(() {
+              if (context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
+              prefs.setHomeView(v);
+            });
+          })),
+          const _Header('Grid & icons'),
+          _Row('Home grid', s.grid.replaceAll('x', ' × '), onTap: () => _pick<String>(context, 'Home grid', s.grid, {for (final g in pixelGrids.keys) g: g.replaceAll('x', ' × ')}, (v) => set('grid', v))),
+          _Row('Icon size', '${(s.iconScale * 100).round()}%', onTap: () => _slider(context, 'Icon size', (s.iconScale * 100).round(), 70, 130, 12, '%', (v) => set('iconScale', v / 100))),
+          _Row('Icon shape', _cap(s.iconShape), onTap: () => _pick<String>(context, 'Icon shape', s.iconShape, {for (final sh in pixelShapes) sh: _cap(sh)}, (v) => set('iconShape', v), shapes: true)),
+          _SwitchRow('Themed icons', 'Tint icons with your wallpaper colours', prefs.themedIcons, prefs.setThemedIcons),
+          _SwitchRow('Labels on home', 'Show app names under home icons', s.labels, (v) => set('labels', v)),
+          const _Header('Dock & search'),
+          _Row('Dock icons', '${s.dockCount}', onTap: () => _slider(context, 'Dock icons', s.dockCount, 3, 7, 4, '', (v) => set('dockCount', v))),
+          _SwitchRow('Scrolling dock', 'Swipe the dock sideways when it holds more', s.dockScroll, (v) => set('dockScroll', v)),
+          _SwitchRow('Search bar', 'The Google search pill at the bottom', s.searchBar, (v) => set('searchBar', v)),
+          const _Header('Home screen'),
+          _SwitchRow('Lock home layout', 'Stop icons being moved or removed by accident', s.lockLayout, (v) => set('lockLayout', v)),
+          _SwitchRow('Big folders', 'Open folders full screen with a bigger grid', s.bigFolders, (v) => set('bigFolders', v)),
+          const _Header('Gestures'),
+          _SwitchRow('Double-tap to sleep', 'Double-tap empty space to turn the screen off', s.doubleTapSleep, (v) => set('doubleTapSleep', v)),
+          _SwitchRow('Swipe down for notifications', 'Pull the shade down from the home screen', s.swipeDownShade, (v) => set('swipeDownShade', v)),
+          _Row('Swipe up opens', s.swipeUp == 'search' ? 'Search' : 'All apps', onTap: () => _pick<String>(context, 'Swipe up opens', s.swipeUp, const {'drawer': 'All apps', 'search': 'Search'}, (v) => set('swipeUp', v))),
+          const _Header('More'),
+          _Row('Hidden apps', 'Apps kept out of home and all apps', onTap: () async {
+            final apps = await Apps.instance.list();
+            if (context.mounted) await showHiddenApps(context, prefs: prefs, apps: apps);
+          }),
+          _Row('App lock', 'Ask for a PIN to open chosen apps', onTap: () async {
+            final apps = await Apps.instance.list();
+            if (context.mounted) await showAppLockPage(context, prefs: prefs, apps: apps);
+          }),
+          _Row('Wallpaper & style', 'Change wallpaper, colours and themes', onTap: Apps.instance.openWallpaperPicker),
+          _Row('Reset home layout', 'Clear pages, dock and folders; start fresh', onTap: () => _confirmReset(context)),
+        ]);
       },
     );
   }
@@ -175,252 +91,177 @@ class _PixelSettingsBody extends StatelessWidget {
   }
 }
 
-// ---- Mini preview ----
-
-class _Preview extends StatelessWidget {
-  const _Preview(this.s);
-  final PixelSettings s;
+class _AppsListPage extends StatelessWidget {
+  const _AppsListPage({required this.prefs});
+  final Prefs prefs;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 176,
-      height: 300,
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-      decoration: BoxDecoration(
-        color: DS.cardMuted,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: DS.inkFaint.withValues(alpha: .5), width: 3),
-      ),
-      child: CustomPaint(painter: _PreviewPainter(s, DS.ink, DS.hero)),
+    return ListenableBuilder(
+      listenable: prefs,
+      builder: (context, _) {
+        final s = PixelSettings.of(prefs);
+        void set(String k, Object? v) => s.copyWith(k, v).save(prefs);
+        const sorts = {'az': 'A–Z', 'recent': 'Recent', 'most': 'Most used'};
+        return _Page(title: 'Apps list settings', children: [
+          _Row('Sort apps', sorts[s.drawerSort] ?? 'A–Z', onTap: () => _pick<String>(context, 'Sort apps', s.drawerSort, sorts, (v) => set('drawerSort', v))),
+          _Row('Columns', '${s.drawerCols}', onTap: () => _slider(context, 'Columns', s.drawerCols, 4, 6, 2, '', (v) => set('drawerCols', v))),
+          _SwitchRow('Labels in all apps', 'Show app names in the app drawer', s.drawerLabels, (v) => set('drawerLabels', v)),
+          _SwitchRow('Keyboard on open', 'Start typing as soon as all apps opens', s.keyboardOnOpen, (v) => set('keyboardOnOpen', v)),
+          _SwitchRow('Letter scroller', 'A–Z strip on the edge to jump around', s.letterScroller, (v) => set('letterScroller', v)),
+        ]);
+      },
     );
   }
 }
 
-class _PreviewPainter extends CustomPainter {
-  _PreviewPainter(this.s, this.ink, this.accent);
-  final PixelSettings s;
-  final Color ink, accent;
+String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bar = Paint()..color = ink.withValues(alpha: .25);
-    final icon = Paint()..color = accent;
-    var top = 0.0;
-    if (s.glance) {
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0, 0, size.width * .5, 9), const Radius.circular(4)), bar);
-      top = 20;
-    }
-    final dockH = 34.0 + (s.searchBar ? 22 : 0);
-    final gridH = size.height - top - dockH - 16;
-    final cols = s.cols, rows = s.rows;
-    final cellW = size.width / cols, cellH = gridH / rows;
-    final labelH = s.labels ? 5.0 : 0.0;
-    final side = ((cellW < cellH - labelH - 2 ? cellW : cellH - labelH - 2) * .78 * s.iconScale).clamp(4.0, cellW);
-    for (var r = 0; r < rows; r++) {
-      for (var c = 0; c < cols; c++) {
-        _icon(canvas, icon, bar, Offset(c * cellW + (cellW - side) / 2, top + r * cellH + (cellH - side - labelH) / 2), side, s.labels);
-      }
-    }
-    // dock
-    final n = s.dockCount;
-    final dside = ((size.width / n) * .72).clamp(4.0, 24.0);
-    final dy = size.height - (s.searchBar ? 22 : 0) - dockH + 34 - dside - 2;
-    for (var i = 0; i < n; i++) {
-      _icon(canvas, icon, bar, Offset(i * size.width / n + (size.width / n - dside) / 2, dy), dside, false);
-    }
-    if (s.searchBar) {
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0, size.height - 16, size.width, 16), const Radius.circular(8)), bar);
-    }
-  }
+// ---- Android-settings look ----
 
-  void _icon(Canvas canvas, Paint fill, Paint bar, Offset at, double side, bool label) {
-    final path = PixelShape.pathFor(s.iconShape, Size.square(side)).shift(at);
-    canvas.drawPath(path, fill);
-    if (label) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(Rect.fromLTWH(at.dx + side * .15, at.dy + side + 2, side * .7, 3), const Radius.circular(2)),
-        bar,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_PreviewPainter o) => o.s.toJson().toString() != s.toJson().toString() || o.ink != ink || o.accent != accent;
-}
-
-// ---- Rows (look copied from sheets.dart's private rows) ----
-
-class _Group extends StatelessWidget {
-  const _Group(this.title, this.rows);
+class _Page extends StatelessWidget {
+  const _Page({required this.title, required this.children});
   final String title;
-  final List<Widget> rows;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(DS.s16, DS.s24, DS.s16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s8),
-            child: Text(title, style: DS.rowTitle.copyWith(color: DS.hero, fontWeight: FontWeight.w600, fontSize: 14)),
-          ),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(DS.rMedia),
-            child: Material(
-              color: DS.cardMuted,
-              child: Column(children: [
-                for (final (i, r) in rows.indexed) ...[
-                  if (i > 0) Divider(height: 1, thickness: 1, indent: 72, endIndent: DS.s16, color: DS.hairline),
-                  r,
-                ],
-              ]),
-            ),
-          ),
-        ],
-      ),
+    // The launcher's theme has a see-through scaffold (wallpaper behind home); settings is opaque, like Android's.
+    final bg = Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1B1B1B) : const Color(0xFFFEF7FF);
+    return Scaffold(
+      backgroundColor: bg,
+      body: CustomScrollView(slivers: [
+        SliverAppBar.large(
+          backgroundColor: bg,
+          surfaceTintColor: Colors.transparent,
+          scrolledUnderElevation: 0,
+          title: Text(title),
+        ),
+        SliverList(delegate: SliverChildListDelegate([...children, const SizedBox(height: 48)])),
+      ]),
     );
   }
 }
 
-class _Disc extends StatelessWidget {
-  const _Disc(this.icon);
-  final IconData icon;
+class _Header extends StatelessWidget {
+  const _Header(this.title);
+  final String title;
   @override
-  Widget build(BuildContext context) => Container(
-    width: 40,
-    height: 40,
-    decoration: BoxDecoration(color: DS.hero, borderRadius: BorderRadius.circular(12)),
-    child: Icon(icon, size: 21, color: DS.heroInk),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 28, 20, 4),
+    child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
   );
 }
 
-Widget _texts(String title, String sub) => Column(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Text(title, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500)),
-    const SizedBox(height: 2),
-    Text(sub, style: DS.rowSub.copyWith(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-  ],
-);
-
-/// Title + subtitle with something on the right (switch, stepper, chevron).
 class _Row extends StatelessWidget {
-  const _Row(this.icon, this.title, this.sub, {this.trailing, this.onTap, this.chevron = false, this.external = false});
-  final IconData icon;
+  const _Row(this.title, this.sub, {this.trailing, this.onTap});
   final String title, sub;
   final Widget? trailing;
   final VoidCallback? onTap;
-  final bool chevron, external;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 64),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s12, DS.s12),
-        child: Row(children: [
-          _Disc(icon),
-          const SizedBox(width: DS.s16),
-          Expanded(child: _texts(title, sub)),
-          if (trailing != null) ...[const SizedBox(width: DS.s8), trailing!],
-          if (chevron || external) ...[
-            const SizedBox(width: DS.s8),
-            Icon(external ? Icons.open_in_new_rounded : Icons.chevron_right_rounded, size: external ? 18 : 22, color: DS.inkFaint),
-          ],
-        ]),
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 72),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: TextStyle(fontSize: 18, color: cs.onSurface)),
+                const SizedBox(height: 2),
+                Text(sub, style: TextStyle(fontSize: 14, height: 1.3, color: cs.onSurfaceVariant)),
+              ]),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 16), trailing!],
+          ]),
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
-class _Switch extends StatelessWidget {
-  const _Switch(this.icon, this.title, this.sub, this.value, this.onChanged);
-  final IconData icon;
+class _SwitchRow extends StatelessWidget {
+  const _SwitchRow(this.title, this.sub, this.value, this.onChanged);
   final String title, sub;
   final bool value;
   final ValueChanged<bool> onChanged;
-
   @override
-  Widget build(BuildContext context) => _Row(
-    icon,
-    title,
-    sub,
-    onTap: () => onChanged(!value),
-    trailing: Switch(value: value, onChanged: onChanged),
+  Widget build(BuildContext context) => _Row(title, sub, onTap: () => onChanged(!value), trailing: _pixelSwitch(context, value, onChanged));
+}
+
+/// Pixel's switch: in dark, an "on" switch is a white track with a black thumb; light keeps M3's primary.
+Widget _pixelSwitch(BuildContext context, bool value, ValueChanged<bool> onChanged) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  if (!dark) return Switch(value: value, onChanged: onChanged);
+  return Switch(
+    value: value,
+    onChanged: onChanged,
+    activeTrackColor: Colors.white,
+    activeThumbColor: Colors.black,
+    inactiveTrackColor: const Color(0xFF3A3A3A),
+    inactiveThumbColor: const Color(0xFF8E8E8E),
+    trackOutlineColor: WidgetStatePropertyAll(value ? Colors.white : const Color(0xFF8E8E8E)),
   );
 }
 
-/// A row whose control sits under the text (slider, chips, segmented buttons).
-class _Block extends StatelessWidget {
-  const _Block(this.icon, this.title, this.sub, this.control);
-  final IconData icon;
-  final String title, sub;
-  final Widget control;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(DS.s16, DS.s12, DS.s16, DS.s12),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [_Disc(icon), const SizedBox(width: DS.s16), Expanded(child: _texts(title, sub))]),
-      const SizedBox(height: DS.s8),
-      Padding(padding: const EdgeInsets.only(left: 56), child: Align(alignment: Alignment.centerLeft, child: control)),
-    ]),
+/// Radio dialog, like Android settings' list preferences.
+Future<void> _pick<T>(BuildContext context, String title, T value, Map<T, String> options, ValueChanged<T> onPick, {bool shapes = false}) {
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final e in options.entries)
+            ListTile(
+              onTap: () {
+                onPick(e.key);
+                Navigator.pop(ctx);
+              },
+              leading: Icon(e.key == value ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                  color: e.key == value ? Theme.of(ctx).colorScheme.primary : Theme.of(ctx).colorScheme.onSurfaceVariant),
+              title: Text(e.value),
+              trailing: shapes
+                  ? SizedBox.square(
+                      dimension: 28,
+                      child: ClipPath(clipper: PixelShape(e.key as String), child: ColoredBox(color: Theme.of(ctx).colorScheme.primary)),
+                    )
+                  : null,
+            ),
+        ]),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))],
+    ),
   );
 }
 
-class _Stepper extends StatelessWidget {
-  const _Stepper(this.value, this.min, this.max, this.onChanged);
-  final int value, min, max;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Row(mainAxisSize: MainAxisSize.min, children: [
-    IconButton(
-      tooltip: 'Fewer',
-      icon: const Icon(Icons.remove_circle_outline_rounded),
-      onPressed: value > min ? () => onChanged(value - 1) : null,
-    ),
-    SizedBox(width: 20, child: Text('$value', textAlign: TextAlign.center, style: DS.rowTitle)),
-    IconButton(
-      tooltip: 'More',
-      icon: const Icon(Icons.add_circle_outline_rounded),
-      onPressed: value < max ? () => onChanged(value + 1) : null,
-    ),
-  ]);
-}
-
-class _ShapeChoice extends StatelessWidget {
-  const _ShapeChoice(this.shape, {required this.selected, required this.onTap});
-  final String shape;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    label: shape,
-    child: GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 52,
-        height: 52,
-        margin: const EdgeInsets.only(right: 10),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: selected ? DS.hero.withValues(alpha: .18) : Colors.transparent,
-          border: Border.all(color: selected ? DS.hero : DS.hairline, width: selected ? 2 : 1),
-        ),
-        child: Center(
-          child: SizedBox.square(
-            dimension: 30,
-            child: ClipPath(clipper: PixelShape(shape), child: ColoredBox(color: selected ? DS.hero : DS.inkFaint)),
+/// Dialog with a slider for a number.
+Future<void> _slider(BuildContext context, String title, int value, int min, int max, int divisions, String unit, ValueChanged<int> onDone) {
+  var v = value.toDouble();
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: Text(title),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${v.round()}$unit', style: Theme.of(ctx).textTheme.headlineSmall),
+          Slider(min: min.toDouble(), max: max.toDouble(), divisions: divisions, value: v, label: '${v.round()}$unit', onChanged: (x) => setState(() => v = x)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              onDone(v.round());
+              Navigator.pop(ctx);
+            },
+            child: const Text('OK'),
           ),
-        ),
+        ],
       ),
     ),
   );

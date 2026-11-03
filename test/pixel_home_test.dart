@@ -145,14 +145,19 @@ void main() {
     expect(tester.getTopLeft(find.byType(PixelDrawer)).dy, lessThan(1));
   });
 
-  testWidgets('long-press on empty space shows the 3-item menu', (
-    tester,
-  ) async {
+  testWidgets('long-press on empty home opens the menu', (tester) async {
     await _setUp(tester);
-    await tester.longPressAt(const Offset(190, 500));
+    final g = await tester.startGesture(const Offset(190, 420));
+    await tester.pump(const Duration(milliseconds: 700));
+    await g.up();
     await tester.pumpAndSettle();
-    expect(find.text('Wallpaper & style'), findsOneWidget);
-    expect(find.text('Widgets'), findsOneWidget);
+    expect(find.text('Wallpaper and style'), findsOneWidget);
+    expect(find.text('Apps list'), findsOneWidget);
     expect(find.text('Home settings'), findsOneWidget);
+    expect(find.text('Widgets'), findsOneWidget);
+    await expectLater(find.byType(OneLauncher), matchesGoldenFile('shots/pixel_home_menu.png'));
+    await tester.tapAt(const Offset(190, 200));
+    await tester.pumpAndSettle();
+    expect(find.text('Wallpaper and style'), findsNothing);
   });
 }

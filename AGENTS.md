@@ -110,7 +110,8 @@ Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`
 
 **Pixel view** (`lib/pixel/`, spec + file map in `docs/PIXEL_VIEW.md`): Pixel Launcher end to end
 (grid pages, dock, At a Glance, search pill, swipe-up drawer, anchored icon popup, drag-to-folder)
-plus more settings. Uses Classic's Material You palette (`DesignLanguage.pixel`), no glass. Its
+plus more settings. Uses Classic's Material You palette (`DesignLanguage.pixel`); no glass setting (its
+frosted drawer/menu/folder surfaces copy Pixel's). Its Home settings page also switches the home view. Its
 own data: `prefs.pixelSettings` / `prefs.pixelLayout` (JSON; `PixelSettings` / `PixelLayout` in
 `pixel_model.dart`); icons through `PixelIcon` (shape clip). Shared features (hidden apps, App
 lock gate, themed icons, Today panel, search) are reused, not copied.

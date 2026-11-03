@@ -28,8 +28,8 @@ class PixelSettings {
   Map<String, dynamic> toJson() => Map.of(_m);
 
   // ---- grid & icons ----
-  /// Home grid, a [pixelGrids] key (Pixel's default 4x5).
-  String get grid => _get('grid', '4x5');
+  /// Home grid, a [pixelGrids] key (5x5, like Pixel Launcher on this size of phone).
+  String get grid => _get('grid', '5x5');
   int get cols => (pixelGrids[grid] ?? (4, 5)).$1;
   int get rows => (pixelGrids[grid] ?? (4, 5)).$2;
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,8 +26,8 @@ class PixelPopupHandle {
 }
 
 /// Pixel Launcher's long-press popup: a rounded card anchored above [anchor] (below when there
-/// is no room) with the app's shortcuts, then a row of small round buttons (App info, Widgets,
-/// Uninstall, Remove). An [OverlayEntry], not a route, so a drag that started on the icon keeps
+/// is no room, with a small arrow at the icon): a vertical list of the app's shortcuts, App info,
+/// Widgets, then Remove (home) or Uninstall (drawer). An [OverlayEntry], not a route, so a drag that started on the icon keeps
 /// going underneath it.
 PixelPopupHandle showPixelAppPopup(
   BuildContext context, {
@@ -96,7 +98,7 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
   List<AppShortcut> _shortcuts = const [];
   bool _hasWidgets = false;
 
-  static const _width = 268.0;
+  static const _width = 180.0;
 
   String get _pkg => widget.app.package.split('@').first;
 
@@ -133,17 +135,28 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
     action();
   }
 
+  static const _row = 43.0, _arrowH = 8.0, _gap = 4.0;
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
+    final bg = dark ? const Color(0xFF1F1F1F) : cs.surfaceContainer;
+    final fg = cs.onSurface;
     final app = widget.app;
     final screen = MediaQuery.sizeOf(context);
     final pad = MediaQuery.paddingOf(context);
-    final buttons = <Widget>[
-      _RoundButton(icon: Icons.info_outline_rounded, label: 'App info', onTap: () => _run(() => Apps.instance.appInfo(app.package))),
+    final items = <Widget>[
+      for (var i = 0; i < _shortcuts.length; i++)
+        _Row(
+          leading: ShortcutIcon(id: _shortcuts[i].id, size: 22, color: fg),
+          label: _shortcuts[i].label,
+          onTap: () => _run(() => Apps.instance.quickAction(_shortcuts[i].id)),
+        ),
+      _Row(leading: Icon(Icons.info_rounded, size: 22, color: fg), label: 'App info', onTap: () => _run(() => Apps.instance.appInfo(app.package))),
       if (_hasWidgets)
-        _RoundButton(
-          icon: Icons.widgets_outlined,
+        _Row(
+          leading: Icon(Icons.widgets_rounded, size: 22, color: fg),
           label: 'Widgets',
           onTap: () {
             final host = widget.hostContext;
@@ -152,50 +165,35 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
             });
           },
         ),
-      if (!app.system || app.isShortcut)
-        _RoundButton(
-          icon: Icons.delete_outline_rounded,
+      if (widget.onHome && widget.onRemove != null)
+        _Row(leading: Icon(Icons.close_rounded, size: 22, color: fg), label: 'Remove', onTap: () => _run(widget.onRemove!))
+      else if (!widget.onHome && (!app.system || app.isShortcut))
+        _Row(
+          leading: Icon(Icons.delete_rounded, size: 22, color: fg),
           label: app.isShortcut ? 'Remove' : 'Uninstall',
           onTap: () => _run(() => app.isShortcut ? Apps.instance.removeShortcut(app.package) : Apps.instance.uninstall(app.package)),
         ),
-      if (widget.onHome && widget.onRemove != null)
-        _RoundButton(icon: Icons.remove_circle_outline_rounded, label: 'Remove', onTap: () => _run(widget.onRemove!)),
     ];
 
+    final margin = EdgeInsets.fromLTRB(12, pad.top + 8, 12, pad.bottom + 8);
+    final height = items.length * _row + 16 + _arrowH;
+    final x = widget.anchor.left.clamp(margin.left, math.max(margin.left, screen.width - margin.right - _width)).toDouble();
+    final above = widget.anchor.top - _gap - height >= margin.top;
+    final arrowX = (widget.anchor.center.dx - x).clamp(26.0, _width - 26);
+
     final card = Material(
-      color: cs.surfaceContainerHigh,
+      color: bg,
       elevation: 3,
       shadowColor: Colors.black54,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(26),
       clipBehavior: Clip.antiAlias,
       child: SizedBox(
         width: _width,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < _shortcuts.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: _ShortcutRow(
-                    sc: _shortcuts[i],
-                    first: i == 0,
-                    last: i == _shortcuts.length - 1,
-                    onTap: () => _run(() => Apps.instance.quickAction(_shortcuts[i].id)),
-                  ),
-                ),
-              if (_shortcuts.isNotEmpty) const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, crossAxisAlignment: CrossAxisAlignment.start, children: buttons),
-              ),
-            ],
-          ),
-        ),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(mainAxisSize: MainAxisSize.min, children: items)),
       ),
     );
+    final arrow = CustomPaint(size: const Size(_width, _arrowH), painter: _ArrowPainter(bg, arrowX, above));
+    final body = Column(mainAxisSize: MainAxisSize.min, children: above ? [card, arrow] : [arrow, card]);
 
     return Stack(
       children: [
@@ -204,15 +202,14 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
         ),
         Positioned.fill(
           child: CustomSingleChildLayout(
-            delegate: _PopupLayout(widget.anchor, EdgeInsets.fromLTRB(12, pad.top + 8, 12, pad.bottom + 8), screen),
-            child: LayoutBuilder(
-              builder: (ctx, _) {
-                final above = widget.anchor.center.dy > screen.height / 2 || widget.anchor.top > 220;
-                return FadeTransition(
-                  opacity: _t,
-                  child: ScaleTransition(scale: Tween<double>(begin: .8, end: 1).animate(_t), alignment: above ? Alignment.bottomCenter : Alignment.topCenter, child: card),
-                );
-              },
+            delegate: _PopupLayout(widget.anchor, margin, x, above),
+            child: FadeTransition(
+              opacity: _t,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: .7, end: 1).animate(_t),
+                alignment: Alignment(arrowX / _width * 2 - 1, above ? 1 : -1),
+                child: body,
+              ),
             ),
           ),
         ),
@@ -222,87 +219,66 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
 }
 
 class _PopupLayout extends SingleChildLayoutDelegate {
-  _PopupLayout(this.anchor, this.margin, this.screen);
+  _PopupLayout(this.anchor, this.margin, this.x, this.above);
   final Rect anchor;
   final EdgeInsets margin;
-  final Size screen;
+  final double x;
+  final bool above;
 
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints c) => BoxConstraints.loose(Size(c.maxWidth, c.maxHeight));
 
   @override
   Offset getPositionForChild(Size size, Size child) {
-    var x = anchor.center.dx - child.width / 2;
-    x = x.clamp(margin.left, (size.width - margin.right - child.width).clamp(margin.left, double.infinity));
-    const gap = 8.0;
-    final above = anchor.top - gap - child.height;
-    final y = above >= margin.top ? above : anchor.bottom + gap;
-    return Offset(x, y.clamp(margin.top, (size.height - margin.bottom - child.height).clamp(margin.top, double.infinity)));
+    final y = above ? anchor.top - _PopupState._gap - child.height : anchor.bottom + _PopupState._gap;
+    return Offset(x, y.clamp(margin.top, math.max(margin.top, size.height - margin.bottom - child.height)));
   }
 
   @override
-  bool shouldRelayout(_PopupLayout old) => old.anchor != anchor || old.margin != margin;
+  bool shouldRelayout(_PopupLayout old) => old.anchor != anchor || old.margin != margin || old.x != x || old.above != above;
 }
 
-class _ShortcutRow extends StatelessWidget {
-  const _ShortcutRow({required this.sc, required this.first, required this.last, required this.onTap});
-  final AppShortcut sc;
-  final bool first, last;
-  final VoidCallback onTap;
+class _ArrowPainter extends CustomPainter {
+  _ArrowPainter(this.color, this.x, this.up);
+  final Color color;
+  final double x;
+  final bool up; // card above the arrow, so the arrow points down
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    const big = Radius.circular(18), small = Radius.circular(6);
-    return Material(
-      color: cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.vertical(top: first ? big : small, bottom: last ? big : small),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              ShortcutIcon(id: sc.id, size: 24, color: cs.onSurface),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(sc.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, color: cs.onSurface, fontWeight: FontWeight.w500)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void paint(Canvas canvas, Size size) {
+    final h = size.height;
+    final path = up
+        ? (Path()..moveTo(x - 9, 0)..lineTo(x, h)..lineTo(x + 9, 0)..close())
+        : (Path()..moveTo(x - 9, h)..lineTo(x, 0)..lineTo(x + 9, h)..close());
+    canvas.drawPath(path, Paint()..color = color);
   }
+
+  @override
+  bool shouldRepaint(_ArrowPainter old) => old.color != color || old.x != x || old.up != up;
 }
 
-class _RoundButton extends StatelessWidget {
-  const _RoundButton({required this.icon, required this.label, required this.onTap});
-  final IconData icon;
+class _Row extends StatelessWidget {
+  const _Row({required this.leading, required this.label, required this.onTap});
+  final Widget leading;
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return InkResponse(
+    return InkWell(
       onTap: onTap,
-      radius: 36,
       child: SizedBox(
-        width: 60,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(color: cs.surfaceContainerHighest, shape: BoxShape.circle),
-              child: Icon(icon, size: 22, color: cs.onSurface),
-            ),
-            const SizedBox(height: 4),
-            Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-          ],
+        height: _PopupState._row,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              SizedBox.square(dimension: 22, child: Center(child: leading)),
+              const SizedBox(width: 15),
+              Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 16, color: cs.onSurface))),
+            ],
+          ),
         ),
       ),
     );

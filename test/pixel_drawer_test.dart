@@ -201,7 +201,7 @@ void main() {
     expect(find.text('Other'), findsNothing, reason: 'only this app\'s shortcuts');
     expect(find.text('App info'), findsOneWidget);
     expect(find.text('Widgets'), findsOneWidget);
-    expect(find.text('Uninstall'), findsOneWidget);
+    expect(find.text('Uninstall'), findsNothing, reason: 'home items get Remove');
     expect(find.text('Remove'), findsOneWidget);
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/pixel_popup.png'));
     await tester.tap(find.text('App info'));

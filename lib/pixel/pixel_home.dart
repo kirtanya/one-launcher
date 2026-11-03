@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../photo_wallpaper.dart';
 import '../prefs.dart';
 import '../sheets.dart';
 import '../tiles/today_panel.dart';
+import '../ui/photo_file.dart';
 import '../ui/theme.dart';
 import 'pixel_drawer.dart';
 import 'pixel_folder.dart';
@@ -130,6 +132,13 @@ class _PixelHomeState extends State<PixelHome>
 
   // Menu.
   Offset? _menuAt;
+  bool _bigMenu = false;
+
+  // Long-press on empty space, from raw pointers (the gesture arena with the pager and the
+  // pull-down drag could swallow it).
+  Timer? _lpTimer;
+  Offset? _lpAt;
+  int? _lpPointer;
   List<_MenuItem> _menuItems = const [];
 
   // Dragging.
@@ -164,6 +173,7 @@ class _PixelHomeState extends State<PixelHome>
     WidgetsBinding.instance.removeObserver(this);
     prefs.removeListener(_onPrefs);
     _edgeTimer?.cancel();
+    _lpTimer?.cancel();
     _popup?.close();
     _pager.dispose();
     _drawer.dispose();
@@ -462,6 +472,7 @@ class _PixelHomeState extends State<PixelHome>
     setState(() {
       _menuAt = at;
       _menuItems = items;
+      _bigMenu = false;
     });
   }
 
@@ -470,19 +481,47 @@ class _PixelHomeState extends State<PixelHome>
   }
 
   void _homeMenu(Offset at) {
-    _showMenu(at, [
-      _MenuItem(
-        Icons.wallpaper_rounded,
-        'Wallpaper & style',
-        () => Apps.instance.openWallpaperPicker(),
-      ),
-      _MenuItem(Icons.widgets_outlined, 'Widgets', _addWidget),
-      _MenuItem(
-        Icons.settings_outlined,
-        'Home settings',
-        () => showPixelHomeSettings(context, prefs: prefs),
-      ),
-    ]);
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _menuAt = at;
+      _menuItems = const [];
+      _bigMenu = true;
+    });
+  }
+
+  void _lpDown(PointerDownEvent e) {
+    _lpTimer?.cancel();
+    if (widget.preview || _lpPointer != null) {
+      // A second finger: not a long press.
+      if (_lpPointer != null) _lpCancel();
+      return;
+    }
+    _lpPointer = e.pointer;
+    _lpAt = e.position;
+    _lpTimer = Timer(const Duration(milliseconds: 420), () {
+      final at = _lpAt;
+      _lpTimer = null;
+      if (!mounted || at == null || _menuAt != null || _dragging || _dragId != null || _openFolder != null || _drawer.value > .01 || _page < 0) return;
+      final p = _local(at), g = _geo, l = _layout;
+      if (l == null || p.dy < g.top - 40 || p.dy >= g.dockTop) return;
+      PixelSlot? sl;
+      if (p.dy >= g.top && p.dy < g.dockTop - 22) {
+        sl = l.slotAt(_page, ((p.dy - g.top) / g.ch).floor().clamp(0, _s.rows - 1), ((p.dx - g.left) / g.cw).floor().clamp(0, _s.cols - 1));
+      }
+      if (sl != null && sl.id != 'glance') return;
+      _homeMenu(at);
+    });
+  }
+
+  void _lpMove(PointerMoveEvent e) {
+    if (e.pointer == _lpPointer && _lpAt != null && (e.position - _lpAt!).distance > 14) _lpCancel();
+  }
+
+  void _lpCancel() {
+    _lpTimer?.cancel();
+    _lpTimer = null;
+    _lpAt = null;
+    _lpPointer = null;
   }
 
   void _addWidget() {
@@ -610,10 +649,8 @@ class _PixelHomeState extends State<PixelHome>
   }
 
   void _onMove(DragTargetDetails<String> d) {
-    if (_dragId != d.data) {
-      _dragId = d.data;
-      if (!_dragging) setState(() => _dragging = true);
-    }
+    // Only the id: the drop targets wait for the drag to actually move (_dragUpdate), like Pixel.
+    if (_dragId != d.data) _dragId = d.data;
     final p = _local(_pointer(d));
     _hover.value = _hitAt(p);
     final w = _geo.w;
@@ -746,7 +783,7 @@ class _PixelHomeState extends State<PixelHome>
     g.cw = (g.w - g.left * 2) / s.cols;
     final bottom =
         (s.searchBar
-                ? 52 + math.max(pad.bottom, 10) + 6 + 12
+                ? 52 + math.max(pad.bottom, 24) + 24 + 12
                 : math.max(pad.bottom, 10) + 8)
             .toDouble();
     final ch0 = (g.h - bottom - 76 - 22 - g.top) / s.rows;
@@ -882,8 +919,16 @@ class _PixelHomeState extends State<PixelHome>
           Opacity(opacity: 1 - .6 * _drawer.value, child: child),
       child: Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerDown: (e) => _tapDown = (e.timeStamp, e.position),
-        onPointerUp: _tapUp,
+        onPointerDown: (e) {
+          _tapDown = (e.timeStamp, e.position);
+          _lpDown(e);
+        },
+        onPointerMove: _lpMove,
+        onPointerCancel: (_) => _lpCancel(),
+        onPointerUp: (e) {
+          _lpCancel();
+          _tapUp(e);
+        },
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onVerticalDragStart: (_) {
@@ -912,7 +957,6 @@ class _PixelHomeState extends State<PixelHome>
             }
             _pullDy = 0;
           },
-          onLongPressStart: (d) => _homeMenu(d.globalPosition),
           child: DragTarget<String>(
             onWillAcceptWithDetails: (_) => !s.lockLayout,
             onMove: _onMove,
@@ -1318,10 +1362,10 @@ class _PixelHomeState extends State<PixelHome>
                 ),
                 if (s.searchBar)
                   Positioned(
-                    left: 16,
-                    right: 16,
+                    left: 22,
+                    right: 22,
                     bottom:
-                        math.max(MediaQuery.of(context).padding.bottom, 10) + 6,
+                        math.max(MediaQuery.of(context).padding.bottom, 24) + 24,
                     height: 52,
                     child: _searchPill(cs),
                   ),
@@ -1374,20 +1418,17 @@ class _PixelHomeState extends State<PixelHome>
   }
 
   Widget _searchPill(ColorScheme cs) {
+    final dark = cs.brightness == Brightness.dark;
+    final fg = dark ? const Color(0xFFE3E3E3) : const Color(0xFF444746);
     return Material(
       key: const Key('pixel-search'),
-      color: Color.alphaBlend(
-        cs.surfaceContainerHigh.withValues(alpha: .92),
-        Colors.transparent,
-      ),
+      color: dark ? const Color(0x9E303030) : const Color(0xB3FFFFFF),
       borderRadius: BorderRadius.circular(26),
-      elevation: 2,
-      shadowColor: Colors.black45,
       child: InkWell(
         borderRadius: BorderRadius.circular(26),
         onTap: widget.preview ? null : _openSearch,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
+          padding: const EdgeInsets.only(left: 18, right: 16),
           child: Row(
             children: [
               ShaderMask(
@@ -1404,25 +1445,30 @@ class _PixelHomeState extends State<PixelHome>
                 child: const Text(
                   'G',
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: 28,
                     fontWeight: FontWeight.w700,
                     height: 1,
                   ),
                 ),
               ),
               const Spacer(),
-              Icon(
-                Icons.mic_none_rounded,
-                color: cs.onSurfaceVariant,
-                size: 24,
+              // AI Mode: a search glass with a sparkle.
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(Icons.search_rounded, color: fg, size: 28),
+                    Positioned(right: -3, top: -4, child: Icon(Icons.auto_awesome, color: fg, size: 12)),
+                  ],
+                ),
               ),
-              const SizedBox(width: 18),
-              // TODO: Google Lens glyph; a camera stands in.
-              Icon(
-                Icons.photo_camera_outlined,
-                color: cs.onSurfaceVariant,
-                size: 22,
-              ),
+              const SizedBox(width: 20),
+              Icon(Icons.mic_none_rounded, color: fg, size: 28),
+              const SizedBox(width: 20),
+              // TODO: Google Lens glyph; the focus frame stands in.
+              Icon(Icons.center_focus_strong_outlined, color: fg, size: 28),
             ],
           ),
         ),
@@ -1510,7 +1556,100 @@ class _PixelHomeState extends State<PixelHome>
     );
   }
 
+  Widget _bigMenuOverlay(ColorScheme cs, Size size) {
+    final dark = cs.brightness == Brightness.dark;
+    final fg = dark ? Colors.white : cs.onSurface;
+    final thumb = prefs.wallpaperPhoto == null ? null : photoFile(prefs.wallpaperPhoto!);
+    Widget row(IconData icon, String label, VoidCallback onTap) => InkWell(
+      onTap: () {
+        _closeMenu();
+        onTap();
+      },
+      child: SizedBox(
+        height: 48,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Icon(icon, size: 24, color: fg),
+              const SizedBox(width: 18),
+              Expanded(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 16, color: fg))),
+            ],
+          ),
+        ),
+      ),
+    );
+    final bottom = (_geo.dockTop - 4).clamp(0.0, size.height).toDouble();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        GestureDetector(behavior: HitTestBehavior.opaque, onTap: _closeMenu, onLongPress: _closeMenu),
+        Positioned(
+          left: 19,
+          right: 19,
+          bottom: size.height - bottom,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: .9, end: 1),
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            builder: (context, t, child) => Opacity(
+              opacity: ((t - .9) / .1).clamp(0, 1),
+              child: Transform.scale(scale: t, alignment: Alignment.bottomCenter, child: child),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(32),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: ColoredBox(
+                  color: dark ? const Color(0xD9464646) : const Color(0xE6F3EDF7),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        row(Icons.palette_outlined, 'Wallpaper and style', () => Apps.instance.openWallpaperPicker()),
+                        if (thumb != null)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                            child: SizedBox(
+                              height: 84,
+                              width: double.infinity,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Positioned.fill(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(32),
+                                      child: Image(image: thumb, fit: BoxFit.cover),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xCCB0B0B0)),
+                                    child: const Icon(Icons.check_rounded, color: Color(0xFF303030)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        row(Icons.widgets_outlined, 'Widgets', _addWidget),
+                        row(Icons.apps_rounded, 'Apps list', () => _drawerGo(1, focus: _s.keyboardOnOpen)),
+                        row(Icons.settings_outlined, 'Home settings', () => showPixelHomeSettings(context, prefs: prefs)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _menuOverlay(ColorScheme cs, Size size) {
+    if (_bigMenu) return _bigMenuOverlay(cs, size);
     final at = _menuAt!;
     const w = 232.0;
     final h = _menuItems.length * 52.0 + 16;

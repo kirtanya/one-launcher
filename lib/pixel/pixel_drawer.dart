@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import '../app_lock.dart';
 import '../apps.dart';
 import '../prefs.dart';
 import '../search.dart';
+import '../ui/perf.dart';
 import 'pixel_icon.dart';
 import 'pixel_model.dart';
 import 'pixel_popup.dart';
@@ -155,12 +157,11 @@ class PixelDrawerState extends State<PixelDrawer> {
 
   // ---- layout ----
 
-  double _icon(double cellW) => math.min(56 * _s.iconScale, cellW * .8);
-  double _rowExtent(double icon) => icon + (_s.drawerLabels ? 6 + 15 : 0) + 24;
+  double _icon(double cellW) => math.min(52 * _s.iconScale, cellW * .8);
+  double _rowExtent(double icon) => icon + (_s.drawerLabels ? 6 + 16 : 0) + 27;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final pad = MediaQuery.paddingOf(context);
     final searching = _query.text.trim().isNotEmpty;
     return PopScope(
@@ -168,17 +169,24 @@ class PixelDrawerState extends State<PixelDrawer> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) reset();
       },
-      child: ColoredBox(
-        color: cs.surfaceContainer,
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, pad.top + 12, 16, 8),
-              child: _SearchPill(controller: _query, focus: _focus, onSubmit: _submit),
+      child: Padding(
+        padding: EdgeInsets.only(top: math.max(40.0, pad.top + 12)),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: _Frost(
+            child: Column(
+              children: [
+                const SizedBox(height: 14),
+                Container(width: 32, height: 4, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .7), borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 22),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                  child: _SearchPill(controller: _query, focus: _focus, onSubmit: _submit),
+                ),
+                Expanded(child: NotificationListener<ScrollNotification>(onNotification: _onScroll, child: searching ? _results(pad) : _grid(pad))),
+              ],
             ),
-            if (_hasWork && !searching) _Tabs(tab: _tab, onTab: (t) => setState(() => _tab = t)),
-            Expanded(child: NotificationListener<ScrollNotification>(onNotification: _onScroll, child: searching ? _results(pad) : _grid(pad))),
-          ],
+          ),
         ),
       ),
     );
@@ -248,7 +256,9 @@ class PixelDrawerState extends State<PixelDrawer> {
         final cellW = (box.maxWidth - 2 * gutter) / cols;
         final icon = _icon(cellW);
         final extent = _rowExtent(icon);
-        final sugH = suggested.isEmpty ? 0.0 : extent + 17;
+        final showTabs = _hasWork;
+        const tabsH = 30.0 + 14 + 10;
+        final sugH = (suggested.isEmpty ? 0.0 : extent + 8) + (showTabs ? tabsH : 0);
 
         // First row of every letter, for the scroller.
         final firstRow = <String, int>{};
@@ -272,36 +282,35 @@ class PixelDrawerState extends State<PixelDrawer> {
 
         return Stack(
           children: [
-            CustomScrollView(
+            RawScrollbar(
+              controller: _scroll,
+              thickness: 4,
+              radius: const Radius.circular(2),
+              crossAxisMargin: 2,
+              minThumbLength: 48,
+              thumbColor: Colors.white.withValues(alpha: .35),
+              child: CustomScrollView(
               controller: _scroll,
               physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               slivers: [
                 if (suggested.isNotEmpty)
                   SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: sugH,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            height: extent,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: gutter),
-                              child: Row(
-                                key: const ValueKey('suggestions'),
-                                children: [
-                                  for (final a in suggested)
-                                    SizedBox(width: (box.maxWidth - 2 * gutter) / 5, child: _Cell(key: ValueKey('sug:${a.package}'), app: a, icon: icon, drawer: this)),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Divider(height: 1, indent: 24, endIndent: 24, color: cs.outlineVariant),
-                          const SizedBox(height: 16),
-                        ],
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(gutter, 0, gutter, 8),
+                      child: SizedBox(
+                        height: extent,
+                        child: Row(
+                          key: const ValueKey('suggestions'),
+                          children: [
+                            for (final a in suggested)
+                              SizedBox(width: (box.maxWidth - 2 * gutter) / 5, child: _Cell(key: ValueKey('sug:${a.package}'), app: a, icon: icon, drawer: this)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
+                if (showTabs) SliverToBoxAdapter(child: _Tabs(tab: _tab, onTab: (t) => setState(() => _tab = t))),
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(gutter, 0, gutter, pad.bottom + 24),
                   sliver: SliverGrid(
@@ -310,6 +319,7 @@ class PixelDrawerState extends State<PixelDrawer> {
                   ),
                 ),
               ],
+            ),
             ),
             if (scroller && letters.length > 1)
               Positioned(
@@ -349,6 +359,28 @@ class PixelDrawerState extends State<PixelDrawer> {
   }
 }
 
+/// The sheet's frosted background: translucent grey over a blurred wallpaper (no blur in lite).
+class _Frost extends StatelessWidget {
+  const _Frost({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
+    return ValueListenableBuilder<bool>(
+      valueListenable: Perf.lite,
+      builder: (context, lite, _) {
+        final base = dark ? const Color(0xFF1E1E1E) : cs.surfaceContainer;
+        final box = ColoredBox(color: base.withValues(alpha: lite ? .96 : .82), child: child);
+        if (lite) return box;
+        return BackdropFilter(filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30), child: box);
+      },
+    );
+  }
+}
+
+/// No box and no icon: just a big hint ("Search your phone and more").
 class _SearchPill extends StatelessWidget {
   const _SearchPill({required this.controller, required this.focus, required this.onSubmit});
   final TextEditingController controller;
@@ -358,14 +390,10 @@ class _SearchPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    return SizedBox(
       height: 56,
-      decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(28)),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Row(
         children: [
-          Icon(Icons.search_rounded, color: cs.onSurfaceVariant, size: 24),
-          const SizedBox(width: 12),
           Expanded(
             child: TextField(
               key: const ValueKey('drawerSearch'),
@@ -373,8 +401,8 @@ class _SearchPill extends StatelessWidget {
               focusNode: focus,
               onSubmitted: onSubmit,
               textInputAction: TextInputAction.go,
-              style: TextStyle(fontSize: 16, color: cs.onSurface),
-              cursorColor: cs.primary,
+              style: TextStyle(fontSize: 22, color: cs.onSurface),
+              cursorColor: cs.onSurface,
               decoration: InputDecoration(
                 isCollapsed: true,
                 filled: false,
@@ -382,7 +410,7 @@ class _SearchPill extends StatelessWidget {
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
                 hintText: 'Search your phone and more',
-                hintStyle: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
+                hintStyle: TextStyle(fontSize: 22, color: cs.onSurface.withValues(alpha: .7)),
               ),
             ),
           ),
@@ -394,6 +422,7 @@ class _SearchPill extends StatelessWidget {
   }
 }
 
+/// Personal / Work: two equal pills, selected = solid, other = 12% tint. No icons.
 class _Tabs extends StatelessWidget {
   const _Tabs({required this.tab, required this.onTab});
   final int tab;
@@ -402,7 +431,10 @@ class _Tabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    Widget t(int i, String label, IconData icon) {
+    final dark = cs.brightness == Brightness.dark;
+    final onBg = dark ? Colors.white : const Color(0xFF1B1B1B);
+    final onFg = dark ? Colors.black : Colors.white;
+    Widget t(int i, String label) {
       final on = tab == i;
       return Expanded(
         child: GestureDetector(
@@ -410,29 +442,18 @@ class _Tabs extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
-            height: 44,
-            decoration: BoxDecoration(color: on ? cs.primaryContainer : Colors.transparent, borderRadius: BorderRadius.circular(22)),
+            height: 30,
+            decoration: BoxDecoration(color: on ? onBg : onBg.withValues(alpha: .12), borderRadius: BorderRadius.circular(15)),
             alignment: Alignment.center,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 18, color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant),
-                const SizedBox(width: 8),
-                Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: on ? cs.onPrimaryContainer : cs.onSurfaceVariant)),
-              ],
-            ),
+            child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: on ? onFg : onBg)),
           ),
         ),
       );
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: cs.surfaceContainerHigh, borderRadius: BorderRadius.circular(26)),
-        child: Row(children: [t(0, 'Personal', Icons.person_outline_rounded), t(1, 'Work', Icons.work_outline_rounded)]),
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+      child: Row(children: [t(0, 'Personal'), const SizedBox(width: 14), t(1, 'Work')]),
     );
   }
 }
