@@ -243,12 +243,13 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   folders, dock, favourites), `tiles_home.dart _launch`/`_launchFromStart`, `SmartHome.openGoogleHome`; a locked app's taps are swallowed
   (light haptic, `clearLaunchFrom`, toast "App not supported" via channel `toast`, no animation / recordLaunch) until the Nth tap within 350 ms, then `lockAllow` + launch.
   Channel (native half): `setLockedApps {packages}` (startup in main + every change), `lockAllow {package}`, `lockServiceOn`.
-  Payment apps (bank/UPI) block when an accessibility service watches windows: `lock_service.xml` stays quiet
-  (typeAnnouncement) and `LockService.updateWatching` switches to window events only while `locked` is non-empty.
-  They still block while ANY sideloaded app's accessibility service is on, so App lock with locked apps keeps them unhappy.
+  Payment apps (bank/UPI; Paytm's NPCI PIN pad) refuse while a sideloaded accessibility service watches windows, so
+  (1.47.58) `LockService` listens to no events (`lock_service.xml`: typeAnnouncement only):
+  while apps are locked and the screen is on it polls `UsageStatsManager.queryEvents` every 500 ms for the last
+  ACTIVITY_RESUMED (`poll` → `onFront`); window events only as a fallback without Usage access. MainActivity.onStart re-checks.
   Double-tap to lock was removed (1.47.57) so the service has no other reason to be on.
-  Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` watches
-  window changes and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
+  Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` sees the front app
+  (Usage access poll) and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
   UI: only Settings → Apps → App lock (`showAppLockPage`; service row, double/triple, change PIN, app switches); NOT in the
   long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
   `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`.

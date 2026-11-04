@@ -1,22 +1,31 @@
 package com.kirtanya.one_launcher
 
 import android.accessibilityservice.AccessibilityService
+import android.app.AppOpsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.os.PowerManager
+import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 
 /**
- * App lock. Only an accessibility service can see which app came to the front: a locked app that
- * appears without One Launcher having allowed it sends the user home.
- * It reads no screen content — only which package a window belongs to, and only while some app
- * is locked ([updateWatching]): with nothing locked it listens to nothing, as before App lock —
- * payment apps flag accessibility services that watch windows.
+ * App lock: a locked app that comes to the front without One Launcher having allowed it is sent
+ * home (GLOBAL_ACTION_HOME — the one thing the service is for). It listens to NO accessibility
+ * events: UPI PIN pads (Paytm's NPCI keypad) refuse to open while a sideloaded service watches
+ * window changes. Instead, while some app is locked and the screen is on, it asks Usage access
+ * which app was last resumed every [POLL_MS] ([updateWatching]). Only without Usage access does
+ * it fall back to window events (App lock then works, payment apps may complain).
  */
 class LockService : AccessibilityService() {
     companion object {
         @Volatile var instance: LockService? = null
+        private const val POLL_MS = 500L
         private val SKIP = setOf(
             "com.android.systemui",
             "com.google.android.permissioncontroller",
@@ -26,6 +35,15 @@ class LockService : AccessibilityService() {
 
     private var lastKickPkg: String? = null
     private var lastKickAt = 0L
+    private val main = Handler(Looper.getMainLooper())
+    private var polling = false
+    private var since = 0L
+    private val tick = object : Runnable {
+        override fun run() {
+            poll()
+            if (polling) main.postDelayed(this, POLL_MS)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -34,26 +52,71 @@ class LockService : AccessibilityService() {
         updateWatching()
     }
 
-    /** Window events only while App lock has locked apps; otherwise none (the XML's quiet default). */
+    /** Locked apps: poll Usage access (window events only if it isn't granted). Nothing locked: nothing. */
     fun updateWatching() {
         val info = serviceInfo ?: return
-        val want = if (AppLockGuard.locked.isEmpty()) AccessibilityEvent.TYPE_ANNOUNCEMENT else AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-        if (info.eventTypes == want) return
-        info.eventTypes = want
-        serviceInfo = info
+        val locked = AppLockGuard.locked.isNotEmpty()
+        val usage = hasUsageAccess()
+        val want = if (locked && !usage) AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED else AccessibilityEvent.TYPE_ANNOUNCEMENT
+        if (info.eventTypes != want) {
+            info.eventTypes = want
+            serviceInfo = info
+        }
+        if (locked && usage) startPolling() else stopPolling()
+    }
+
+    private fun hasUsageAccess(): Boolean {
+        val ops = getSystemService(APP_OPS_SERVICE) as AppOpsManager
+        return ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun startPolling() {
+        if (polling) return
+        polling = true
+        since = System.currentTimeMillis()
+        main.post(tick)
+    }
+
+    private fun stopPolling() {
+        polling = false
+        main.removeCallbacks(tick)
+    }
+
+    /** The app resumed last since the previous tick, if any; skipped while the screen is off. */
+    private fun poll() {
+        val now = System.currentTimeMillis()
+        if (!(getSystemService(POWER_SERVICE) as PowerManager).isInteractive) {
+            since = now
+            return
+        }
+        if (!hasUsageAccess()) { updateWatching(); return } // access taken away: fall back
+        val events = (getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager).queryEvents(since, now)
+        since = now
+        val e = UsageEvents.Event()
+        var front: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) front = e.packageName
+        }
+        front?.let(::onFront)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
+        stopPolling()
         instance = null
         return super.onUnbind(intent)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (event.className == null) return
+        onFront(event.packageName?.toString() ?: return)
+    }
+
+    /** [pkg] came to the front (a window event or a resumed activity). */
+    private fun onFront(pkg: String) {
         val locked = AppLockGuard.locked
         if (locked.isEmpty()) return
-        val pkg = event.packageName?.toString() ?: return
-        if (event.className == null) return
         if (pkg in SKIP || pkg == imePackage()) return
 
         if (pkg == packageName) { // back on our launcher

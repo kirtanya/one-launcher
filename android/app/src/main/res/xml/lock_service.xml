@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- App lock. Quiet by default (no events, no window content): LockService.updateWatching turns on
-     window-change events only while apps are locked (payment apps flag services that watch windows).
-     Action: go home. -->
+<!-- App lock. Quiet (no events, no window content): while apps are locked LockService polls Usage
+     access for the front app; window-change events only as a fallback without Usage access
+     (UPI PIN pads refuse to open while a sideloaded service watches windows). Action: go home. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/lock_service_description"
     android:accessibilityEventTypes="typeAnnouncement"

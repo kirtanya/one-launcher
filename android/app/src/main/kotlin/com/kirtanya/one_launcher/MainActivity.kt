@@ -296,6 +296,7 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         widgets.stop()
         media.stop()
+        LockService.instance?.updateWatching() // Usage access may have changed: App lock polls it
         super.onStop()
     }
 
