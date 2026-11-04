@@ -296,8 +296,9 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
                 contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
                 leading: Icon(Icons.shield_outlined, color: DS.ink),
                 title: Text('Keep locked apps closed when opened from notifications or recents', style: DS.rowTitle.copyWith(fontSize: 14)),
+                subtitle: Text('Allow Usage access for One Launcher', style: DS.rowSub),
                 trailing: Icon(Icons.chevron_right_rounded, color: DS.inkFaint),
-                onTap: Apps.instance.openAccessibility,
+                onTap: Apps.instance.openUsageAccess,
               ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),

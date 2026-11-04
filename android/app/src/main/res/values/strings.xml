@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="lock_service_description">Keeps apps you locked in App lock closed unless you open them from One Launcher. It only sees which app is in front, and only while some app is locked. It does not read anything on your screen.</string>
-</resources>

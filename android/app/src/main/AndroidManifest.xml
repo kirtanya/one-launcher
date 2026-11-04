@@ -14,6 +14,9 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- TV remote in the notification shade (Settings → TV remote → In notifications) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- App lock: LockService stays running while apps are locked -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <application
         android:label="One Launcher"
         android:name="${applicationName}"
@@ -62,18 +65,15 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-        <!-- App lock (opt-in): sees which app comes to the front, only while apps are locked; reads no screen content. -->
+        <!-- App lock: while apps are locked, checks Usage access for the front app and sends locked
+             apps home. A foreground service (not accessibility: UPI PIN pads refuse those). -->
         <service
             android:name=".LockService"
-            android:label="One Launcher · App lock"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/lock_service" />
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="App lock: closes apps the user locked unless opened from the launcher" />
         </service>
         <meta-data
             android:name="flutterEmbedding"

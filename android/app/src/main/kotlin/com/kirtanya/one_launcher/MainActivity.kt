@@ -125,14 +125,10 @@ class MainActivity : FlutterActivity() {
                 }
                 "setLockedApps" -> { AppLockGuard.setLocked(this, call.argument<List<String>>("packages") ?: emptyList()); result.success(true) }
                 "lockAllow" -> { call.argument<String>("package")?.let { AppLockGuard.allow(it) }; result.success(true) }
-                "lockServiceOn" -> result.success(LockService.instance != null)
+                "lockServiceOn" -> result.success(LockService.hasUsageAccess(this))
                 "toast" -> {
                     toast?.cancel()
                     toast = android.widget.Toast.makeText(this, call.argument<String>("text") ?: "", android.widget.Toast.LENGTH_SHORT).also { it.show() }
-                    result.success(true)
-                }
-                "openAccessibility" -> {
-                    startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     result.success(true)
                 }
                 "getMonoIcon" -> {
@@ -296,7 +292,7 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         widgets.stop()
         media.stop()
-        LockService.instance?.updateWatching() // Usage access may have changed: App lock polls it
+        LockService.sync(this) // Usage access may have changed: App lock polls it
         super.onStop()
     }
 

@@ -243,14 +243,15 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   folders, dock, favourites), `tiles_home.dart _launch`/`_launchFromStart`, `SmartHome.openGoogleHome`; a locked app's taps are swallowed
   (light haptic, `clearLaunchFrom`, toast "App not supported" via channel `toast`, no animation / recordLaunch) until the Nth tap within 350 ms, then `lockAllow` + launch.
   Channel (native half): `setLockedApps {packages}` (startup in main + every change), `lockAllow {package}`, `lockServiceOn`.
-  Payment apps (bank/UPI; Paytm's NPCI PIN pad) refuse while a sideloaded accessibility service watches windows, so
-  (1.47.58) `LockService` listens to no events (`lock_service.xml`: typeAnnouncement only):
-  while apps are locked and the screen is on it polls `UsageStatsManager.queryEvents` every 500 ms for the last
-  ACTIVITY_RESUMED (`poll` → `onFront`); window events only as a fallback without Usage access. MainActivity.onStart re-checks.
-  Double-tap to lock was removed (1.47.57) so the service has no other reason to be on.
-  Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` sees the front app
-  (Usage access poll) and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
-  UI: only Settings → Apps → App lock (`showAppLockPage`; service row, double/triple, change PIN, app switches); NOT in the
+  Payment apps (bank/UPI; Paytm's NPCI PIN pad) refuse while ANY sideloaded accessibility service is on (even one
+  listening to no events — tried in 1.47.58), so (1.47.59) App lock uses NO accessibility: `LockService.kt` is a
+  foreground service (type specialUse, MIN-importance "App lock is on" notification) started by `LockService.sync`
+  (AppLockGuard.setLocked + MainActivity.onStart) while apps are locked AND Usage access is granted. It polls
+  `UsageStatsManager.queryEvents` every 500 ms (screen on only) for the last ACTIVITY_RESUMED and sends a locked,
+  un-allowed app home with a HOME intent (background start allowed: we are the home app) + toast "App not supported"
+  (deliberately vague). `lockServiceOn` = Usage access granted. Native: `AppLockGuard.kt` (locked set in prefs
+  `app_lock`/`packages`, 5 s allowance after `lockAllow`).
+  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, change PIN, app switches); NOT in the
   long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
   `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).
