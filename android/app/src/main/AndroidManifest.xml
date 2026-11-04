@@ -62,10 +62,10 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-        <!-- Double-tap to lock (Tiles view, opt-in): only the lock-screen action, reads nothing. -->
+        <!-- App lock (opt-in): sees which app comes to the front, only while apps are locked; reads no screen content. -->
         <service
             android:name=".LockService"
-            android:label="One Launcher · double-tap to lock"
+            android:label="One Launcher · App lock"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

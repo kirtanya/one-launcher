@@ -245,6 +245,8 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   Channel (native half): `setLockedApps {packages}` (startup in main + every change), `lockAllow {package}`, `lockServiceOn`.
   Payment apps (bank/UPI) block when an accessibility service watches windows: `lock_service.xml` stays quiet
   (typeAnnouncement) and `LockService.updateWatching` switches to window events only while `locked` is non-empty.
+  They still block while ANY sideloaded app's accessibility service is on, so App lock with locked apps keeps them unhappy.
+  Double-tap to lock was removed (1.47.57) so the service has no other reason to be on.
   Native: `AppLockGuard.kt` (locked set in prefs `app_lock`/`packages`, 5 s allowance after `lockAllow`); `LockService.kt` watches
   window changes and sends a locked, un-allowed app HOME with the toast "App not supported" (deliberately vague) (notifications, recents, other launchers).
   UI: only Settings → Apps → App lock (`showAppLockPage`; service row, double/triple, change PIN, app switches); NOT in the

@@ -52,7 +52,6 @@ class PixelSettings {
   bool get bigFolders => _get('bigFolders', false);
 
   // ---- gestures ----
-  bool get doubleTapSleep => _get('doubleTapSleep', true);
   bool get swipeDownShade => _get('swipeDownShade', true); // swipe down on home → notifications
   /// What a swipe up does: 'drawer' (Pixel) or 'search'.
   String get swipeUp => _get('swipeUp', 'drawer');

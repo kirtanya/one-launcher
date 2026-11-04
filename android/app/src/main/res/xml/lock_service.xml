@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Double-tap to lock + App lock. Quiet by default (no events, no window content), like before
-     App lock: LockService.updateWatching turns on window-change events only while apps are locked
-     (payment apps flag services that watch windows). Actions: lock screen, go home. -->
+<!-- App lock. Quiet by default (no events, no window content): LockService.updateWatching turns on
+     window-change events only while apps are locked (payment apps flag services that watch windows).
+     Action: go home. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/lock_service_description"
     android:accessibilityEventTypes="typeAnnouncement"

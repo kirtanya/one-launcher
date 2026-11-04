@@ -391,15 +391,6 @@ class _PixelHomeState extends State<PixelHome>
     if (a != null) _launch(a.package);
   }
 
-  Future<void> _lock() async {
-    if (await Apps.instance.lockScreen() || !mounted) return;
-    HapticFeedback.mediumImpact();
-    Apps.instance.toast(
-      'Allow “One Launcher” in Accessibility to turn the screen off with a double tap',
-    );
-    Apps.instance.openAccessibility();
-  }
-
   // ---- drawer / search ----------------------------------------------------------------------
 
   void _drawerGo(double to, {bool focus = false}) {
@@ -919,16 +910,10 @@ class _PixelHomeState extends State<PixelHome>
           Opacity(opacity: 1 - .6 * _drawer.value, child: child),
       child: Listener(
         behavior: HitTestBehavior.translucent,
-        onPointerDown: (e) {
-          _tapDown = (e.timeStamp, e.position);
-          _lpDown(e);
-        },
+        onPointerDown: _lpDown,
         onPointerMove: _lpMove,
         onPointerCancel: (_) => _lpCancel(),
-        onPointerUp: (e) {
-          _lpCancel();
-          _tapUp(e);
-        },
+        onPointerUp: (_) => _lpCancel(),
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onVerticalDragStart: (_) {
@@ -982,45 +967,6 @@ class _PixelHomeState extends State<PixelHome>
         ),
       ),
     );
-  }
-
-  // Double tap on empty space → screen off. Detected from raw pointers (not a GestureDetector
-  // onDoubleTap, which would hold every icon tap back ~300 ms).
-  (Duration, Offset)? _tapDown, _lastTap;
-
-  void _tapUp(PointerUpEvent e) {
-    final d = _tapDown;
-    _tapDown = null;
-    if (!_s.doubleTapSleep ||
-        d == null ||
-        e.timeStamp - d.$1 > const Duration(milliseconds: 250) ||
-        (e.position - d.$2).distance > 20) {
-      _lastTap = null;
-      return;
-    }
-    final p = _local(e.position);
-    final g = _geo, l = _layout;
-    final empty =
-        l != null &&
-        _page >= 0 &&
-        p.dy >= g.top &&
-        p.dy < g.dockTop - 22 &&
-        l.slotAt(
-              _page,
-              ((p.dy - g.top) / g.ch).floor().clamp(0, _s.rows - 1),
-              ((p.dx - g.left) / g.cw).floor().clamp(0, _s.cols - 1),
-            ) ==
-            null;
-    final prev = _lastTap;
-    if (empty &&
-        prev != null &&
-        e.timeStamp - prev.$1 < const Duration(milliseconds: 350) &&
-        (e.position - prev.$2).distance < 60) {
-      _lastTap = null;
-      _lock();
-    } else {
-      _lastTap = empty ? (e.timeStamp, e.position) : null;
-    }
   }
 
   Widget _pager_(ColorScheme cs) {

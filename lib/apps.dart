@@ -93,16 +93,6 @@ class Apps {
     }
   }
 
-  /// Double-tap to lock: true when the screen went off; false = the lock service isn't on yet.
-  Future<bool> lockScreen() async {
-    if (isDemo) return false;
-    try {
-      return await _ch.invokeMethod<bool>('lockScreen') ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<void> openAccessibility() => _call('openAccessibility');
 
   // ---- App lock (native guard) ----

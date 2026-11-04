@@ -56,7 +56,6 @@ class _PixelSettingsPage extends StatelessWidget {
           _SwitchRow('Lock home layout', 'Stop icons being moved or removed by accident', s.lockLayout, (v) => set('lockLayout', v)),
           _SwitchRow('Big folders', 'Open folders full screen with a bigger grid', s.bigFolders, (v) => set('bigFolders', v)),
           const _Header('Gestures'),
-          _SwitchRow('Double-tap to sleep', 'Double-tap empty space to turn the screen off', s.doubleTapSleep, (v) => set('doubleTapSleep', v)),
           _SwitchRow('Swipe down for notifications', 'Pull the shade down from the home screen', s.swipeDownShade, (v) => set('swipeDownShade', v)),
           _Row('Swipe up opens', s.swipeUp == 'search' ? 'Search' : 'All apps', onTap: () => _pick<String>(context, 'Swipe up opens', s.swipeUp, const {'drawer': 'All apps', 'search': 'Search'}, (v) => set('swipeUp', v))),
           const _Header('More'),

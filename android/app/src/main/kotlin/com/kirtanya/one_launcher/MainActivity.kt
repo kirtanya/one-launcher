@@ -117,13 +117,12 @@ class MainActivity : FlutterActivity() {
                     main.post { result.success(apps) }
                 }
                 // Themed (monochrome) icon for Tiles: the app's own one-colour glyph, white.
-                // Tiles view: badge counts, the next alarm (live Clock tile), double-tap to lock.
+                // Tiles view: badge counts, the next alarm (live Clock tile).
                 "notifCounts" -> result.success(MediaListener.instance?.counts() ?: emptyMap<String, Int>())
                 "nextAlarm" -> {
                     val next = (getSystemService(ALARM_SERVICE) as android.app.AlarmManager).nextAlarmClock
                     result.success(next?.let { mapOf("at" to it.triggerTime, "package" to it.showIntent?.creatorPackage) })
                 }
-                "lockScreen" -> result.success(LockService.instance?.lock() ?: false)
                 "setLockedApps" -> { AppLockGuard.setLocked(this, call.argument<List<String>>("packages") ?: emptyList()); result.success(true) }
                 "lockAllow" -> { call.argument<String>("package")?.let { AppLockGuard.allow(it) }; result.success(true) }
                 "lockServiceOn" -> result.success(LockService.instance != null)

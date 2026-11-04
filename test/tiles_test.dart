@@ -397,18 +397,6 @@ void main() {
     await tester.pump(const Duration(seconds: 2)); // nothing opened (test) → Start comes back
     await tester.pumpAndSettle();
 
-    // Double-tap empty space → lock; not allowed yet → explains + opens Accessibility settings.
-    final empty = tester.getBottomLeft(find.byType(SingleChildScrollView).first) + const Offset(30, -60);
-    await tester.tapAt(empty);
-    await tester.pump(const Duration(milliseconds: 60));
-    await tester.tapAt(empty);
-    await tester.pumpAndSettle();
-    expect(calls.where((c) => c.method == 'lockScreen'), isNotEmpty);
-    expect(ci('Open Accessibility settings'), findsOneWidget);
-    await tester.tap(ci('Open Accessibility settings'));
-    await tester.pumpAndSettle();
-    expect(calls.where((c) => c.method == 'openAccessibility'), isNotEmpty);
-
     // Wallpaper through tiles (switch on) → black around the tiles.
     await prefs.setFx('window', true);
     await tester.pumpAndSettle();

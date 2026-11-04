@@ -513,30 +513,6 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
     if (_start.hasClients) _start.animateTo(0, duration: Motion.snapDuration, curve: Motion.settle);
   }
 
-  /// Double-tap empty space (Interactions → Double-tap to lock): screen off. The first time,
-  /// explain and open Accessibility settings, where Android lets the user allow it.
-  Future<void> _lock() async {
-    if (await Apps.instance.lockScreen() || !mounted) return;
-    HapticFeedback.mediumImpact();
-    showOneSheet(
-      context,
-      header: const SheetHeader(
-        title: 'Double-tap to lock',
-        subtitle: 'Android needs you to allow “One Launcher · double-tap to lock” in Accessibility settings. It only turns the screen off — it reads nothing on screen.',
-      ),
-      actions: [
-        SheetAction(Icons.accessibility_new_rounded, 'Open Accessibility settings', () {
-          Navigator.pop(context);
-          Apps.instance.openAccessibility();
-        }),
-        SheetAction(Icons.toggle_off_outlined, 'Turn double-tap to lock off', () {
-          Navigator.pop(context);
-          prefs.setFx('lock', false);
-        }),
-      ],
-    );
-  }
-
   void _settings() {
     HapticFeedback.mediumImpact();
     showSettingsSheet(context, prefs: prefs, apps: _apps, theme: widget.theme);
@@ -668,7 +644,6 @@ class _TilesHomeState extends State<TilesHome> with WidgetsBindingObserver, Sing
                           onMove: _move,
                           onAllApps: () => _pages.animateToPage(2, duration: Motion.snapDuration, curve: Motion.settle),
                           onSettings: _settings,
-                          onDoubleTap: _lock,
                         ),
                       ),
                       NotificationListener<ScrollNotification>(
@@ -769,7 +744,6 @@ class _StartPage extends StatelessWidget {
     required this.onMove,
     required this.onAllApps,
     required this.onSettings,
-    required this.onDoubleTap,
     required this.openFolder,
     required this.gridKey,
     required this.onFolder,
@@ -790,7 +764,7 @@ class _StartPage extends StatelessWidget {
   final Prefs prefs;
   final String? selected;
   final ValueChanged<AppEntry> onLaunch;
-  final VoidCallback onOpenClock, onDone, onAllApps, onSettings, onDoubleTap;
+  final VoidCallback onOpenClock, onDone, onAllApps, onSettings;
   final ValueChanged<String> onEdit, onUnpin;
   final void Function(TileSpec tile, int step) onResize;
   final ValueChanged<TileSpec> onRecolour;
@@ -895,7 +869,6 @@ class _StartPage extends StatelessWidget {
             padding: EdgeInsets.fromLTRB(side, pad.top + DS.s24, side, pad.bottom + DS.s24),
             child: _EmptySpace(
               minHeight: c.maxHeight - pad.top - pad.bottom - 2 * DS.s24,
-              onDoubleTap: prefs.fx('lock') ? onDoubleTap : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -1622,26 +1595,16 @@ class _TilePressState extends State<TilePress> with SingleTickerProviderStateMix
   }
 }
 
-/// The Start page's content, at least a screen tall: its empty space (between and below tiles)
-/// takes the double-tap to lock — tiles themselves never wait on it.
+/// The Start page's content, at least a screen tall.
 class _EmptySpace extends StatelessWidget {
-  const _EmptySpace({required this.minHeight, required this.onDoubleTap, required this.child});
+  const _EmptySpace({required this.minHeight, required this.child});
   final double minHeight;
-  final VoidCallback? onDoubleTap;
   final Widget child;
 
   @override
   Widget build(BuildContext context) => ConstrainedBox(
     constraints: BoxConstraints(minHeight: math.max(0, minHeight)),
-    child: Stack(
-      children: [
-        if (onDoubleTap != null)
-          Positioned.fill(
-            child: GestureDetector(behavior: HitTestBehavior.opaque, onDoubleTap: onDoubleTap),
-          ),
-        child,
-      ],
-    ),
+    child: child,
   );
 }
 

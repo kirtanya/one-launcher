@@ -2464,7 +2464,6 @@ class _HomeEditorState extends State<_HomeEditor> {
           ('window', Icons.wallpaper_rounded, 'Wallpaper through tiles', 'The wallpaper shows only inside tiles'),
           ('folders', Icons.folder_copy_outlined, 'Folders on Start', 'Hold a tile over another to make a folder'),
           ('badges', Icons.mark_chat_unread_outlined, 'Notification badges', 'Unread counts on tiles · needs Notification access'),
-          ('lock', Icons.lock_outline_rounded, 'Double-tap to lock', 'Empty space · needs an Accessibility switch'),
           ('shortcuts', Icons.bolt_rounded, 'Shortcuts on tiles', 'App shortcuts in tile and app menus'),
         ])
           _SwitchRow(icon, title, sub, prefs.fx(id), (v) {

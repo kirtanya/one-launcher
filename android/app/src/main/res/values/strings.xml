@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="lock_service_description">Lets One Launcher turn the screen off when you double-tap empty space on the Tiles home screen. It also keeps apps you locked closed unless you open them from One Launcher. It does not read anything on your screen.</string>
+    <string name="lock_service_description">Keeps apps you locked in App lock closed unless you open them from One Launcher. It only sees which app is in front, and only while some app is locked. It does not read anything on your screen.</string>
 </resources>

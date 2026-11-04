@@ -60,11 +60,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(PixelSettings.of(prefs).dockCount, 7);
 
-    await reveal(tester, find.text('Double-tap to sleep'));
-    await tester.tap(find.text('Double-tap to sleep'));
-    await tester.pumpAndSettle();
-    expect(PixelSettings.of(prefs).doubleTapSleep, isFalse);
-
     await prefs.setPixelLayout({'pages': [[]], 'dock': [], 'folders': {}});
     await reveal(tester, find.text('Reset home layout'));
     await expectLater(find.byType(MaterialApp), matchesGoldenFile('shots/pixel_settings_more.png'));

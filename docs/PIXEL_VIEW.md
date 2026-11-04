@@ -21,7 +21,7 @@ palette (`DesignLanguage.pixel` uses Classic's palette; `DS.pixel` is true in th
   above the dock, dock of 5 icons, Google search pill at the bottom (G · mic · Lens).
 - Swipe up anywhere → all apps rises from the bottom (scrim follows the finger); search field at
   the top, a row of 5 suggested apps, divider, A–Z grid. Swipe down at the top closes it.
-- Swipe down on home → notification shade. Double tap empty space → screen off.
+- Swipe down on home → notification shade. (Pixel's double tap → screen off is left out on purpose.)
 - Long-press empty space → wide frosted menu: Wallpaper and style (+ current wallpaper thumbnail) · Widgets · Apps list · Home settings.
 - Long-press an icon → popup anchored at the icon (shortcuts, then small row: App info,
   Widgets, Pause app); once the drag moves → popup goes, icon follows the finger, targets
@@ -32,7 +32,7 @@ palette (`DesignLanguage.pixel` uses Classic's palette; `DS.pixel` is true in th
 
 ## Extra (the most requested on Pixel)
 Grid sizes up to 6x7, icon size, icon shapes, hide labels (home/drawer separately), dock 3–7
-icons + scrolling dock, lock home layout, big folders, double-tap to sleep, swipe-up = drawer or
+icons + scrolling dock, lock home layout, big folders, swipe-up = drawer or
 search, drawer sort (A–Z / recent / most used), drawer columns, keyboard on open, letter
 scroller, hide apps (existing `prefs.hidden`), App lock (existing `AppLock.of(prefs).gate`),
 themed icons (existing `prefs.themedIcons`), notification dots, new apps added to home.
