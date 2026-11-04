@@ -106,6 +106,19 @@ class Apps {
 
   /// Can App lock see the front app (Usage access)? It closes locked apps opened from notifications / recents.
   Future<bool> lockServiceOn() async {
+  /// "Reopen without lock" window in seconds (0 = off); sent with the locked list.
+  Future<void> setLockGrace(int seconds) => _call('setLockGrace', {'seconds': seconds});
+
+  /// Was [package] left (after a proper open) within the "Reopen without lock" window?
+  Future<bool> lockRecent(String package) async {
+    if (isDemo) return false;
+    try {
+      return await _ch.invokeMethod<bool>('lockRecent', {'package': package}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
     if (isDemo) return false;
     try {
       return await _ch.invokeMethod<bool>('lockServiceOn') ?? false;

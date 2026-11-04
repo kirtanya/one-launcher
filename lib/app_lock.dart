@@ -53,6 +53,13 @@ class AppLock {
   /// Use before any launch side effects: false = swallowed (nothing else should happen);
   /// true = go ahead (a locked app was told to the native guard first).
   Future<bool> gate(String package) async {
+    // Left a moment ago (within "Reopen without lock"): one tap is enough.
+    if (isLocked(package) && prefs.lockGrace > 0 && await Apps.instance.lockRecent(package)) {
+      _count = 0;
+      _tapped = null;
+      await Apps.instance.lockAllow(package);
+      return true;
+    }
     if (!tap(package)) {
       Apps.instance.clearLaunchFrom();
       // Same vague toast the native guard shows, so a lock doesn't announce itself.
@@ -64,7 +71,16 @@ class AppLock {
   }
 
   /// Sends the list to the native guard (call at startup and after every change).
-  Future<void> sync() => Apps.instance.setLockedApps(prefs.lockedApps);
+  Future<void> sync() async {
+    await Apps.instance.setLockGrace(prefs.lockGrace);
+    await Apps.instance.setLockedApps(prefs.lockedApps);
+  }
+
+  /// Changes "Reopen without lock" (the UI asks the PIN first).
+  Future<void> setGrace(int seconds) async {
+    await prefs.setLockGrace(seconds);
+    await Apps.instance.setLockGrace(prefs.lockGrace);
+  }
 
   Future<void> _save(List<String> list) async {
     await prefs.setLockedApps(list);

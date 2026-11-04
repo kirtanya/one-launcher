@@ -79,6 +79,13 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// "Reopen without lock": seconds after leaving a locked app in which it opens normally (0 = off, 5, 10).
+  int get lockGrace => switch (_sp.getInt('lockGrace')) { 5 => 5, 10 => 10, _ => 0 };
+  Future<void> setLockGrace(int s) async {
+    await _sp.setInt('lockGrace', s);
+    notifyListeners();
+  }
+
   /// 'salt:sha256' of the 4-digit PIN (never the PIN). Null = no PIN set yet.
   String? get lockPinHash => _sp.getString('lockPinHash');
   Future<void> setLockPinHash(String v) async {
@@ -360,6 +367,7 @@ class Prefs extends ChangeNotifier {
     'searchHistory',
     'lockedApps', // the lock and its PIN stay on this phone (a restore must not undo or leak them)
     'lockPinHash',
+    'lockGrace',
   };
 
   String exportBackup() {
@@ -402,10 +410,12 @@ class Prefs extends ChangeNotifier {
     final widgetOn = topEnabled.where((x) => x.startsWith('widget:')).toList();
     final keepLocked = _sp.getStringList('lockedApps');
     final keepPin = _sp.getString('lockPinHash');
+    final keepGrace = _sp.getInt('lockGrace');
 
     await _sp.clear();
     if (keepLocked != null) await _sp.setStringList('lockedApps', keepLocked);
     if (keepPin != null) await _sp.setString('lockPinHash', keepPin);
+    if (keepGrace != null) await _sp.setInt('lockGrace', keepGrace);
     _parsed.clear(); // drop cached settings from before the restore
     if (id != null) await _sp.setString('installId', id);
     var n = 0;

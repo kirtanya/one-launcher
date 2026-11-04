@@ -8,13 +8,15 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late List<(String, Object?)> calls;
   late DateTime clock;
+  var recent = false; // what the native guard answers to lockRecent
 
   Future<AppLock> make({Map<String, Object> initial = const {}}) async {
     calls = [];
+    recent = false;
     clock = DateTime(2026);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(const MethodChannel('one_launcher/apps'), (call) async {
       calls.add((call.method, call.arguments));
-      return null;
+      return call.method == 'lockRecent' ? recent : null;
     });
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async => null); // haptics
     SharedPreferences.setMockInitialValues({'lockedApps': ['com.bank'], ...initial});
@@ -75,6 +77,33 @@ void main() {
     expect(calls.last.$2, {'packages': ['com.bank']});
     await lock.lock('com.mail');
     expect(calls.last.$2, {'packages': ['com.bank', 'com.mail']});
+  });
+
+  test('reopen without lock: a just-left app opens on one tap, only when the window is on', () async {
+    var lock = await make();
+    recent = true;
+    expect(await lock.gate('com.bank'), isFalse, reason: 'off: the native answer is not even asked');
+    expect(calls.where((c) => c.$1 == 'lockRecent'), isEmpty);
+
+    lock = await make(initial: {'lockGrace': 5});
+    recent = true;
+    expect(await lock.gate('com.bank'), isTrue);
+    expect(calls.last.$1, 'lockAllow');
+    expect(calls.last.$2, {'package': 'com.bank'});
+    recent = false;
+    wait(1000);
+    expect(await lock.gate('com.bank'), isFalse, reason: 'window over: taps again');
+  });
+
+  test('setGrace stores it and tells the native guard; sync sends it too', () async {
+    final lock = await make();
+    await lock.setGrace(10);
+    expect(lock.prefs.lockGrace, 10);
+    expect(calls.last.$1, 'setLockGrace');
+    expect(calls.last.$2, {'seconds': 10});
+    await lock.sync();
+    expect(calls.map((c) => c.$1), containsAllInOrder(['setLockGrace', 'setLockedApps']));
+    expect(lock.prefs.exportBackup(), isNot(contains('lockGrace')), reason: 'phone-only, like the lock list');
   });
 
   test('sha256 matches a known vector', () {

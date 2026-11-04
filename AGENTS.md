@@ -251,7 +251,11 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   un-allowed app home with a HOME intent (background start allowed: we are the home app) + toast "App not supported"
   (deliberately vague). `lockServiceOn` = Usage access granted. Native: `AppLockGuard.kt` (locked set in prefs
   `app_lock`/`packages`, 5 s allowance after `lockAllow`).
-  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, change PIN, app switches); NOT in the
+  "Reopen without lock" (prefs `lockGrace` 0|5|10 s, phone-only, PIN to change, `AppLock.setGrace`): channel
+  `setLockGrace {seconds}` (also sent by `sync`) → `AppLockGuard.graceMs` (prefs `app_lock`/`graceMs`). When an
+  allowed app's allowance ends (user left it), `left[pkg]` is stamped; within graceMs `isAllowed` re-allows it
+  (recents / notification) and Dart `gate` asks `lockRecent {package}` so one tap opens it.
+  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, Reopen without lock Off/5 s/10 s, change PIN, app switches); NOT in the
   long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
   `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).

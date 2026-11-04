@@ -269,6 +269,12 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
     await prefs.setLockTaps(n);
   }
 
+  Future<void> _setGrace(int s) async {
+    if (s == prefs.lockGrace) return;
+    if (lock.hasPin && !await askPin(context, lock, title: 'Reopen without lock')) return;
+    await lock.setGrace(s);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -310,6 +316,28 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
                 selected: {prefs.lockTaps},
                 showSelectedIcon: false,
                 onSelectionChanged: (s) => _setTaps(s.first),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, 0),
+              child: Text('Reopen without lock', style: DS.rowTitle),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(DS.s24, 2, DS.s24, 0),
+              child: Text('A locked app you just left opens normally for a few seconds', style: DS.rowSub),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
+              child: SegmentedButton<int>(
+                key: const ValueKey('lock-grace'),
+                segments: const [
+                  ButtonSegment(value: 0, label: Text('Off')),
+                  ButtonSegment(value: 5, label: Text('5 s')),
+                  ButtonSegment(value: 10, label: Text('10 s')),
+                ],
+                selected: {prefs.lockGrace},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) => _setGrace(s.first),
               ),
             ),
             ListTile(
