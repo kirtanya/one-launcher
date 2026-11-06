@@ -287,13 +287,17 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   un-allowed app home with a HOME intent (background start allowed: we are the home app) + toast "App not supported"
   (deliberately vague). `lockServiceOn` = Usage access granted. Native: `AppLockGuard.kt` (locked set in prefs
   `app_lock`/`packages`, 5 s allowance after `lockAllow`).
-  "Reopen without lock" (prefs `lockGrace` 0|5|10 s, phone-only, PIN to change, `AppLock.setGrace`): channel
+  "Reopen without lock" (prefs `lockGrace` 0|5|10|300|600 s, phone-only, PIN to change, `AppLock.setGrace`): channel
   `setLockGrace {seconds}` (also sent by `sync`) → `AppLockGuard.graceMs` (prefs `app_lock`/`graceMs`). When an
   allowed app's allowance ends (user left it), `left[pkg]` is stamped; within graceMs `isAllowed` re-allows it
   (recents / notification) and Dart `gate` asks `lockRecent {package}` so one tap opens it.
-  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, Reopen without lock Off/5 s/10 s, change PIN, app switches); NOT in the
+  "Lock again when the screen locks" (prefs `lockRelock`, default on, phone-only, PIN to change, `AppLock.setRelock`):
+  channel `setLockRelock {on}` (also sent by `sync`) → `AppLockGuard.relockOnScreenOff` (prefs `app_lock`/`relockOnScreenOff`);
+  LockService's ACTION_SCREEN_OFF receiver calls `AppLockGuard.screenOff()`, which clears every allowance and `left`, so
+  the app still in front is sent home when it resumes after unlock.
+  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, Reopen without lock Off/5 s/10 s/5 min/10 min, Lock again when the screen locks, change PIN, app switches); NOT in the
   long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
-  `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`.
+  `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`, `test/app_lock_page_test.dart`.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).
 - `apps.dart`: the main platform channel `one_launcher/apps` (apps, icons, launching,
   shortcuts, widgets, notification counts, settings intents…).

@@ -129,6 +129,7 @@ class MainActivity : FlutterActivity() {
                 "toast" -> {
                     toast?.cancel()
                 "setLockGrace" -> { AppLockGuard.setGrace(this, call.argument<Int>("seconds") ?: 0); result.success(true) }
+                "setLockRelock" -> { AppLockGuard.setRelock(this, call.argument<Boolean>("on") ?: true); result.success(true) }
                 "lockRecent" -> result.success(call.argument<String>("package")?.let { AppLockGuard.recentlyLeft(it) } ?: false)
                     toast = android.widget.Toast.makeText(this, call.argument<String>("text") ?: "", android.widget.Toast.LENGTH_SHORT).also { it.show() }
                     result.success(true)

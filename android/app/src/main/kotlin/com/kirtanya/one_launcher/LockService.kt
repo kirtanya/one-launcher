@@ -8,8 +8,10 @@ import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
@@ -63,6 +65,11 @@ class LockService : Service() {
     private var lastKickPkg: String? = null
     private var lastKickAt = 0L
     private val main = Handler(Looper.getMainLooper())
+    // Screen off ends allowances (AppLockGuard.relockOnScreenOff): the app still in front is sent
+    // home when it resumes after unlock, as its resume is a new event.
+    private val screenOff = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) = AppLockGuard.screenOff()
+    }
     private var handled = 0L // timestamp of the newest resume already looked at
     private val tick = object : Runnable {
         override fun run() {
@@ -79,6 +86,7 @@ class LockService : Service() {
             instance = this
             AppLockGuard.load(this)
             handled = System.currentTimeMillis()
+            registerReceiver(screenOff, IntentFilter(Intent.ACTION_SCREEN_OFF))
             main.post(tick)
         }
         return START_STICKY
@@ -107,6 +115,7 @@ class LockService : Service() {
     }
 
     override fun onDestroy() {
+        if (instance != null) try { unregisterReceiver(screenOff) } catch (_: Exception) {}
         instance = null
         main.removeCallbacks(tick)
         super.onDestroy()

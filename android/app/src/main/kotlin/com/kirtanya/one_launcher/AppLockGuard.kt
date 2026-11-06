@@ -12,6 +12,7 @@ object AppLockGuard {
     private const val PREFS = "app_lock"
     private const val KEY = "packages"
     private const val GRACE_KEY = "graceMs"
+    private const val RELOCK_KEY = "relockOnScreenOff"
     const val GRACE_MS = 5000L
 
     @Volatile var locked: Set<String> = emptySet()
@@ -19,6 +20,10 @@ object AppLockGuard {
 
     /** "Reopen without lock": an app the user left (after opening it properly) reopens anywhere within this. 0 = off. */
     @Volatile var graceMs = 0L
+        private set
+
+    /** The screen turning off ends every allowance and "Reopen without lock" window (default on). */
+    @Volatile var relockOnScreenOff = true
         private set
 
     private class Allowance(val at: Long, var seen: Boolean = false)
@@ -33,6 +38,7 @@ object AppLockGuard {
             val sp = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             locked = sp.getStringSet(KEY, emptySet())?.toSet() ?: emptySet()
             graceMs = sp.getLong(GRACE_KEY, 0L)
+            relockOnScreenOff = sp.getBoolean(RELOCK_KEY, true)
             loaded = true
         }
     }
@@ -50,10 +56,23 @@ object AppLockGuard {
     }
 
     fun setGrace(ctx: Context, seconds: Int) {
-        graceMs = seconds.coerceIn(0, 60) * 1000L
+        graceMs = seconds.coerceIn(0, 600) * 1000L // up to 10 min
         synchronized(allowed) { if (graceMs == 0L) left.clear() }
         ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putLong(GRACE_KEY, graceMs).apply()
+    }
+
+    fun setRelock(ctx: Context, on: Boolean) {
+        relockOnScreenOff = on
+        ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(RELOCK_KEY, on).apply()
+    }
+
+    /** Screen off (with [relockOnScreenOff]): every locked app needs its taps again, even one still in front. */
+    fun screenOff() = synchronized(allowed) {
+        if (!relockOnScreenOff) return@synchronized
+        allowed.clear()
+        left.clear()
     }
 
     /** True when [pkg] was left (after a proper open) less than [graceMs] ago. */

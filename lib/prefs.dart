@@ -79,10 +79,18 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// "Reopen without lock": seconds after leaving a locked app in which it opens normally (0 = off, 5, 10).
-  int get lockGrace => switch (_sp.getInt('lockGrace')) { 5 => 5, 10 => 10, _ => 0 };
+  /// "Reopen without lock": seconds after leaving a locked app in which it opens normally
+  /// (0 = off, 5, 10 s, 5 or 10 min).
+  int get lockGrace => switch (_sp.getInt('lockGrace')) { 5 => 5, 10 => 10, 300 => 300, 600 => 600, _ => 0 };
   Future<void> setLockGrace(int s) async {
     await _sp.setInt('lockGrace', s);
+    notifyListeners();
+  }
+
+  /// App lock: locking the screen (screen off) locks every app again, whatever time is left.
+  bool get lockRelock => _sp.getBool('lockRelock') ?? true;
+  Future<void> setLockRelock(bool v) async {
+    await _sp.setBool('lockRelock', v);
     notifyListeners();
   }
 
@@ -368,6 +376,7 @@ class Prefs extends ChangeNotifier {
     'lockedApps', // the lock and its PIN stay on this phone (a restore must not undo or leak them)
     'lockPinHash',
     'lockGrace',
+    'lockRelock',
   };
 
   String exportBackup() {
@@ -411,11 +420,13 @@ class Prefs extends ChangeNotifier {
     final keepLocked = _sp.getStringList('lockedApps');
     final keepPin = _sp.getString('lockPinHash');
     final keepGrace = _sp.getInt('lockGrace');
+    final keepRelock = _sp.getBool('lockRelock');
 
     await _sp.clear();
     if (keepLocked != null) await _sp.setStringList('lockedApps', keepLocked);
     if (keepPin != null) await _sp.setString('lockPinHash', keepPin);
     if (keepGrace != null) await _sp.setInt('lockGrace', keepGrace);
+    if (keepRelock != null) await _sp.setBool('lockRelock', keepRelock);
     _parsed.clear(); // drop cached settings from before the restore
     if (id != null) await _sp.setString('installId', id);
     var n = 0;

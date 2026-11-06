@@ -109,6 +109,9 @@ class Apps {
   /// "Reopen without lock" window in seconds (0 = off); sent with the locked list.
   Future<void> setLockGrace(int seconds) => _call('setLockGrace', {'seconds': seconds});
 
+  /// Screen off ends every App lock allowance and "Reopen without lock" window (default on).
+  Future<void> setLockRelock(bool on) => _call('setLockRelock', {'on': on});
+
   /// Was [package] left (after a proper open) within the "Reopen without lock" window?
   Future<bool> lockRecent(String package) async {
     if (isDemo) return false;

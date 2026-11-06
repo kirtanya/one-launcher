@@ -73,6 +73,7 @@ class AppLock {
   /// Sends the list to the native guard (call at startup and after every change).
   Future<void> sync() async {
     await Apps.instance.setLockGrace(prefs.lockGrace);
+    await Apps.instance.setLockRelock(prefs.lockRelock);
     await Apps.instance.setLockedApps(prefs.lockedApps);
   }
 
@@ -80,6 +81,12 @@ class AppLock {
   Future<void> setGrace(int seconds) async {
     await prefs.setLockGrace(seconds);
     await Apps.instance.setLockGrace(prefs.lockGrace);
+  }
+
+  /// Changes "Lock again when the screen locks" (the UI asks the PIN first).
+  Future<void> setRelock(bool on) async {
+    await prefs.setLockRelock(on);
+    await Apps.instance.setLockRelock(on);
   }
 
   Future<void> _save(List<String> list) async {

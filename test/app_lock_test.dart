@@ -106,6 +106,27 @@ void main() {
     expect(lock.prefs.exportBackup(), isNot(contains('lockGrace')), reason: 'phone-only, like the lock list');
   });
 
+  test('5 and 10 minutes are kept; other values fall back to off', () async {
+    var lock = await make(initial: {'lockGrace': 600});
+    expect(lock.prefs.lockGrace, 600);
+    await lock.setGrace(300);
+    expect(calls.last.$2, {'seconds': 300});
+    lock = await make(initial: {'lockGrace': 42});
+    expect(lock.prefs.lockGrace, 0);
+  });
+
+  test('lock again on screen lock: on by default, sent by sync, phone-only', () async {
+    final lock = await make();
+    expect(lock.prefs.lockRelock, isTrue);
+    await lock.sync();
+    expect(calls.map((c) => c.$1), containsAllInOrder(['setLockGrace', 'setLockRelock', 'setLockedApps']));
+    await lock.setRelock(false);
+    expect(lock.prefs.lockRelock, isFalse);
+    expect(calls.last.$1, 'setLockRelock');
+    expect(calls.last.$2, {'on': false});
+    expect(lock.prefs.exportBackup(), isNot(contains('lockRelock')));
+  });
+
   test('sha256 matches a known vector', () {
     final h = sha256('abc'.codeUnits).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     expect(h, 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');

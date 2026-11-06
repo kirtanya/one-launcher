@@ -275,6 +275,11 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
     await lock.setGrace(s);
   }
 
+  Future<void> _setRelock(bool on) async {
+    if (lock.hasPin && !await askPin(context, lock, title: 'Lock again when the screen locks')) return;
+    await lock.setRelock(on);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -324,7 +329,7 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s24, 2, DS.s24, 0),
-              child: Text('A locked app you just left opens normally for a few seconds', style: DS.rowSub),
+              child: Text('A locked app you just left opens normally for this long', style: DS.rowSub),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
@@ -334,11 +339,22 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
                   ButtonSegment(value: 0, label: Text('Off')),
                   ButtonSegment(value: 5, label: Text('5 s')),
                   ButtonSegment(value: 10, label: Text('10 s')),
+                  ButtonSegment(value: 300, label: Text('5 min')),
+                  ButtonSegment(value: 600, label: Text('10 min')),
                 ],
                 selected: {prefs.lockGrace},
                 showSelectedIcon: false,
                 onSelectionChanged: (s) => _setGrace(s.first),
               ),
+            ),
+            SwitchListTile(
+              key: const ValueKey('lock-relock'),
+              contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
+              secondary: Icon(Icons.screen_lock_portrait_outlined, color: DS.ink),
+              title: Text('Lock again when the screen locks', style: DS.rowTitle),
+              subtitle: Text('Ends the time above, and locks an app that\'s still open', style: DS.rowSub),
+              value: prefs.lockRelock,
+              onChanged: _setRelock,
             ),
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
