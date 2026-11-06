@@ -888,6 +888,16 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Classic home: rows of 4 per page in the pinned & most used card (2–4; 2 pages).
+  int get heroRows => (_sp.getInt('heroRows') ?? 2).clamp(2, 4);
+  /// Classic home: app names under the pinned & most used icons (neutral black / white).
+  bool get heroLabels => _sp.getBool('heroLabels') ?? false;
+  Future<void> setHero({int? rows, bool? labels}) async {
+    if (rows != null) await _sp.setInt('heroRows', rows.clamp(2, 4));
+    if (labels != null) await _sp.setBool('heroLabels', labels);
+    notifyListeners();
+  }
+
   /// Classic home: the today panel left of home (swipe right). Tiles always has its today page.
   bool get classicToday => _sp.getBool('classicToday') ?? true;
   Future<void> setClassicToday(bool v) async {

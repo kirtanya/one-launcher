@@ -303,6 +303,12 @@ Future<void> showCustomiseFolder(
           danger: true,
         ),
       ] else ...[
+        SheetAction(Icons.view_agenda_outlined, 'Rows: ${prefs.heroRows}', () => then(() => _heroRows(context, prefs: prefs))),
+        SheetAction(
+          prefs.heroLabels ? Icons.label_off_outlined : Icons.label_outline_rounded,
+          prefs.heroLabels ? 'Hide app names' : 'Show app names',
+          () => then(() => prefs.setHero(labels: !prefs.heroLabels)),
+        ),
         if (prefs.favourites.isNotEmpty) SheetAction(Icons.push_pin_outlined, 'Unpin all', () => then(prefs.unpinAll)),
         SheetAction(
           Icons.history_rounded,
@@ -318,6 +324,24 @@ Future<void> showCustomiseFolder(
     ],
   );
 }
+
+/// Rows of 4 per page in the pinned & most used card.
+Future<void> _heroRows(BuildContext context, {required Prefs prefs}) => showOneSheet(
+  context,
+  header: const SheetHeader(title: 'Rows', subtitle: 'Pinned & most used, per page'),
+  actions: [
+    for (final n in const [2, 3, 4])
+      SheetAction(
+        Icons.view_agenda_outlined,
+        '$n rows',
+        () {
+          Navigator.pop(context);
+          prefs.setHero(rows: n);
+        },
+        trailing: prefs.heroRows == n ? Icon(Icons.check_rounded, color: DS.ink) : null,
+      ),
+  ],
+);
 
 /// Rename a folder. Empty name = back to the default.
 Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, required Folder folder}) {

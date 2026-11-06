@@ -206,7 +206,8 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   elsewhere `_onDragUpdate`/`_onDragEnd` (the open page follows the finger via `_dragX`, rubber-bands at the ends).
   Backdrops stay still and fade while content slides (like NowStage): `_backdrop` (DS.base under tab pages, whose
   `_TabPageBody` is transparent) and the Today panel's (`todayBackdrop`, `TodayPanel(backdrop: false)`, follows `_panel.page`).
-- `app_drawer.dart`: the sheet's list: hero card (pinned + most used), folders, search results
+- `app_drawer.dart`: the sheet's list: hero card (pinned + most used; 2 pages of `prefs.heroRows` (2–4) × 4, optional
+  names `prefs.heroLabels` in neutral black/white by the hero card's lightness, set in its ••• Customise sheet), folders, search results
   (`_SearchResults`, `searchResults()`), pull veil (fade via a sheet-coloured overlay, not
   Opacity), `_PullPill`.
 - `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`; dock 64, tabs `big` 56 / `small` 48), nav→search morph (`_NavSearch`),

@@ -104,7 +104,6 @@ class AppDrawer extends StatefulWidget {
 }
 
 class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
-  static const _mostUsedCount = 16; // green card: 2 pages × 8
   String? _openId; // the one open folder (Most used is the hero card, always open)
 
   /// Scroll the list to its very top (where the in-list search bar sits).
@@ -159,13 +158,13 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     return [for (final p in widget.prefs.favourites) ?byPkg[p]];
   }
 
-  /// Pinned apps first (in pin order), then the most-opened ones, up to 8.
+  /// Pinned apps first (in pin order), then the most-opened ones, up to 2 pages of the card.
   List<AppEntry> _pinnedAndMostUsed(List<AppEntry> apps) {
     final byPkg = {for (final a in apps) a.package: a};
     final list = _pinned(apps);
     final used = widget.prefs.launchCounts.entries.where((e) => byPkg.containsKey(e.key)).toList()..sort((a, b) => b.value.compareTo(a.value));
     for (final e in used) {
-      if (list.length >= _mostUsedCount) break;
+      if (list.length >= 2 * 4 * widget.prefs.heroRows) break; // green card: 2 pages
       if (!list.contains(byPkg[e.key])) list.add(byPkg[e.key]!);
     }
     return list;
@@ -458,6 +457,8 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     final hero = _HeroCard(
       apps: top,
       pinned: pinned,
+      rows: prefs.heroRows,
+      labels: prefs.heroLabels,
       onCustomise: () => showCustomiseFolder(context, prefs: prefs, folder: mostUsed, allApps: widget.apps),
       onLaunch: widget.onLaunch,
       onLongPress: _longPress,
@@ -772,18 +773,17 @@ class _PullPill extends StatelessWidget {
 
 // ---- Cards ------------------------------------------------------------------
 
-/// The green card: pinned apps first, then the most used. No header; a small menu sits at the bottom.
-/// The green card: pinned apps first, then the most used — up to 2 pages of 8 that you swipe
-/// left/right. No header; page dots and a small menu sit along the bottom.
+/// The green card: pinned apps first, then the most used — up to 2 pages of [rows] × 4 that you
+/// swipe left/right. No header; page dots and a small menu sit along the bottom.
 class _HeroCard extends StatefulWidget {
-  const _HeroCard({required this.apps, required this.pinned, required this.onCustomise, required this.onLaunch, required this.onLongPress});
+  const _HeroCard({required this.apps, required this.pinned, required this.rows, required this.labels, required this.onCustomise, required this.onLaunch, required this.onLongPress});
 
   final List<AppEntry> apps;
   final Set<String> pinned; // package ids
+  final int rows; // per page (Customise → Rows)
+  final bool labels; // app names under the icons, in neutral black / white
   final VoidCallback onCustomise;
   final ValueChanged<AppEntry> onLaunch, onLongPress;
-
-  static const perPage = 8;
 
   @override
   State<_HeroCard> createState() => _HeroCardState();
@@ -810,7 +810,8 @@ class _HeroCardState extends State<_HeroCard> {
                     delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
                     child: _GridApp(
                       app: a,
-                      label: false,
+                      label: widget.labels,
+                      neutral: true,
                       pinned: widget.pinned.contains(a.package),
                       onTap: () => widget.onLaunch(a),
                       onLongPress: () => widget.onLongPress(a),
@@ -821,7 +822,8 @@ class _HeroCardState extends State<_HeroCard> {
                   delay: (i ~/ 4) * 0.06 + (i % 4) * 0.02,
                   child: _GridApp(
                     app: a,
-                    label: false,
+                    label: widget.labels,
+                    neutral: true,
                     pinned: widget.pinned.contains(a.package),
                     onTap: () => widget.onLaunch(a),
                     onLongPress: () => widget.onLongPress(a),
@@ -834,10 +836,11 @@ class _HeroCardState extends State<_HeroCard> {
   @override
   Widget build(BuildContext context) {
     final apps = widget.apps;
-    const per = _HeroCard.perPage;
+    final per = 4 * widget.rows;
     final pages = [for (var p = 0; p < apps.length && p < 2 * per; p += per) apps.sublist(p, (p + per).clamp(0, apps.length))];
-    // One grid cell: padding 8+8 and the icon; the hero card shows no app names.
-    const cellH = 16 + DS.appIcon;
+    // One grid cell: padding 8+8 and the icon, plus the name line when names are on.
+    final label = DS.iconLabel;
+    final cellH = 16 + DS.appIcon + (widget.labels ? 6 + MediaQuery.textScalerOf(context).scale(label.fontSize!) * label.height! : 0);
     final rows = pages.isEmpty ? 0 : (pages.first.length / 4).ceil(); // height follows page 1
     return OneCard(
       tone: CardTone.hero,
@@ -1233,9 +1236,10 @@ class _FolderBodyState extends State<_FolderBody> {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.label = true, this.pinned = false});
+  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.label = true, this.neutral = false, this.pinned = false});
   final AppEntry app;
-  final bool label; // the app name under the icon (off in the hero card: icons only)
+  final bool label; // the app name under the icon (the hero card: Customise → Show app names)
+  final bool neutral; // name in plain black on a light card (light theme) / white on a dark one, no tint
   final bool pinned;
   final VoidCallback onTap, onLongPress;
 
@@ -1273,7 +1277,7 @@ class _GridApp extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   app.label,
-                  style: DS.iconLabel.copyWith(color: DS.ink),
+                  style: DS.iconLabel.copyWith(color: !neutral ? DS.ink : DS.hero.computeLuminance() > .4 ? Colors.black : Colors.white),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
