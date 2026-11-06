@@ -31,12 +31,15 @@ import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_metro.dart';
 import 'tv_one_stream.dart';
+import 'tv_quick_settings.dart';
 import 'tv_search.dart';
+import 'tv_title.dart';
 import 'tv_tiles.dart';
 import '../tiles/tiles_home.dart' show TileSpec;
 import 'tv_settings.dart';
 
 part 'tv_spotlight.dart';
+part 'tv_google.dart';
 
 enum TvKind { app, resume, program, action }
 
@@ -153,6 +156,7 @@ class _TvHomeState extends State<TvHome> {
     super.initState();
     tv.onAppsChanged = _load;
     tv.onHomePressed = _home;
+    tv.onQuickSettings = _quickSettings;
     tv.onSearchFor = _searchFor;
     tv.takeSearch().then((q) {
       if (q != null && mounted) _searchFor(q);
@@ -486,6 +490,81 @@ class _TvHomeState extends State<TvHome> {
   bool get _tilesView => prefs.homeView == 'tiles';
   bool get _spotlightView => prefs.homeView == 'spotlight'; // TV only: tv_spotlight.dart
   final _spotlightKey = GlobalKey<_SpotlightState>();
+  bool get _googleView => prefs.homeView == 'googletv'; // TV only: tv_google.dart
+  final _googleKey = GlobalKey<_GoogleTvState>();
+
+  /// Google TV's hero: Continue watching that has a picture (two at most), then the catalog's
+  /// trending titles — five in all.
+  List<TvItem> _googleHero() {
+    final out = <TvItem>[
+      if (TvLook.on('rowContinue'))
+        for (final c in _cont)
+          if (c.image != null || c.art != null) c,
+    ].take(2).toList();
+    for (final t in Catalog.instance.trending(12)) {
+      if (out.length >= 5) break;
+      out.add(
+        TvItem(
+          key: 'cat:${t.id}',
+          kind: TvKind.program,
+          title: t.title,
+          package: '',
+          appName: t.services.firstOrNull,
+          meta: _joinMeta([t.year, t.genres.take(2).join(', '), if (t.rating != null) '★ ${t.rating!.toStringAsFixed(1)}']),
+          description: t.overview,
+          image: t.backdrops.first,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Google TV's grid: Your apps first, then every other app A–Z, then All apps.
+  List<TvItem> _googleApps() {
+    final fav = _rows.where((r) => r.id == 'fav').firstOrNull?.items.where((it) => it.app != null).toList() ?? const <TvItem>[];
+    final seen = {for (final f in fav) f.package};
+    final rest = [
+      for (final a in _apps)
+        if (!prefs.hidden.contains(a.package) && !seen.contains(a.package)) a,
+    ]..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    return [
+      ...fav,
+      for (final a in rest) TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a, appName: a.label),
+      const TvItem(key: 'all-apps', kind: TvKind.action, title: 'All apps', package: ''),
+    ];
+  }
+
+  /// Quick settings (tv_quick_settings.dart): Google TV's Settings icon, or the remote's Settings
+  /// key while we're in front (again: closes it).
+  void _quickSettings() {
+    if (!mounted) return;
+    if (tvQuickSettingsOpen) return Navigator.of(context).pop();
+    showTvQuickSettings(context, extras: [TvQuickItem('customise', Icons.tune_rounded, 'Customise home', _customise)]);
+  }
+
+  /// A catalog title (hero) opens its page here (where to watch); the rest open as anywhere.
+  Future<void> _openGoogle(TvItem item) async {
+    if (!item.key.startsWith('cat:')) return _open(item);
+    final t = Catalog.instance.byId(item.key.substring(4));
+    if (t == null) return;
+    HapticFeedback.selectionClick();
+    final targets = await tv.searchTargets();
+    if (!mounted) return;
+    final apps = [
+      for (final a in _apps)
+        if (!prefs.hidden.contains(a.package)) a,
+    ];
+    Navigator.of(context).push(
+      tvFade(
+        TvTitlePage(
+          title: t,
+          apps: apps,
+          searchTargets: targets,
+          onOpenApp: (a) => _open(TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a)),
+        ),
+      ),
+    );
+  }
 
   /// Spotlight's columns: Classic's content rows, with the quick actions as a column of small
   /// cards after Your apps (the Resume button is the first Continue watching card already).
@@ -612,6 +691,7 @@ class _TvHomeState extends State<TvHome> {
     // Spotlight keeps its own focus and picture: the rows below aren't on screen there, and showing
     // their first item left Continue watching's picture behind One Stream (bug, 2026-10-31).
     if (_spotlightView) return _spotlightKey.currentState?.land();
+    if (_googleView) return _googleKey.currentState?.land();
     final quick = _rows.indexWhere((r) => r.id == 'quick' && r.items.any((it) => it.key != 'q:edit'));
     final resume = _rows.indexWhere((r) => r.id == 'resume');
     final apps = _rows.indexWhere((r) => !r.chips && r.items.any((it) => it.kind == TvKind.app));
@@ -907,7 +987,7 @@ class _TvHomeState extends State<TvHome> {
       leading: TvAppArt(app: a, width: 128),
       actions: [
         TvAction(Icons.open_in_new_rounded, 'Open', () => _open(item)),
-        if (row.id != 'recent' && row.items.length > 1) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
+        if (row.id != 'recent' && row.id != 'gtv' && row.items.length > 1) TvAction(Icons.open_with_rounded, 'Move', () => _startMove(_rows.indexOf(row), i)),
         if (folders.any((f) => f.id == row.id) || row.id == other.id) ...[
           TvAction(Icons.keyboard_arrow_up_rounded, 'Move “${row.title}” row up', () => _moveRow(row, -1)),
           TvAction(Icons.keyboard_arrow_down_rounded, 'Move “${row.title}” row down', () => _moveRow(row, 1)),
@@ -1139,6 +1219,7 @@ class _TvHomeState extends State<TvHome> {
         if (didPop) return;
         if (_moving != null) return _endMove(); // Back while moving an app = done
         if (_spotlightView) return _spotlightKey.currentState?.land();
+        if (_googleView) return TvLook.str('back') == 'none' ? null : _googleKey.currentState?.land();
         if (_tilesView) {
           final tiles = _tilesKey.currentState;
           if (tiles == null || tiles.endMove()) return;
@@ -1179,6 +1260,28 @@ class _TvHomeState extends State<TvHome> {
                 onTop: () => _focus(-1, 0),
                 quick: _tilesQuick(),
                 resumeCards: _tilesResume(),
+              ),
+            )
+          : _googleView
+          ? Scaffold(
+              backgroundColor: const Color(0xFF000000),
+              body: ListenableBuilder(
+                listenable: Catalog.instance, // trending titles arrive / update
+                builder: (context, _) {
+                  TvLook.read(prefs);
+                  return _GoogleTv(
+                    key: _googleKey,
+                    prefs: prefs,
+                    hero: _googleHero(),
+                    apps: _googleApps(),
+                    missingLabel: _missing.isEmpty ? null : _missingLabel,
+                    oneStream: OneStream.instance.available.value,
+                    onOpen: _openGoogle,
+                    onOptions: (items, i) => items[i].key.startsWith('cat:') ? _openGoogle(items[i]) : _options(TvRow('gtv', 'Your apps', items), i),
+                    onTab: (id) => id == 'apps' ? _allApps() : tv.launch(OneStream.package),
+                    onHeader: (id) => id == 'settings' ? _quickSettings() : _headerAction(id),
+                  );
+                },
               ),
             )
           : _spotlightView

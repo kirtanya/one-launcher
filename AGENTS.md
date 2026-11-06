@@ -27,6 +27,24 @@ Flutter Android launcher, two flavours from one codebase:
   look/prefs): pure black, focused item's picture full screen, title bottom-left (display only),
   one column on the right (Classic's content rows on their side; Your apps first, then Continue
   watching); ↑↓ in it, ←→ columns, ↑ top bar.
+  **Google TV** (`tv/tv_google.dart`, part of tv_home; homeView 'googletv', own Customise pages via
+  `tvSectionsFor` → `_googleReads`; reference scan in docs/GOOGLE_TV_VIEW.md + docs/google_tv_scan/):
+  top bar = pill tabs (Home · Apps · One Stream) + Search / Settings icons + clock; hero carousel =
+  Continue watching (max 2) + `Catalog.trending` (≤5 in all, auto-advance 12 s, not in the grid / reduced
+  motion); focused it grows (description + "Watch on <app>" pill) and the apps slide down; "Your apps"
+  = 5-col grid of 16:9 banners (no banner → icon/letter on a tvTint card), label under the focused
+  tile only; in the grid the top bar hides and the grid moves row by row (200 ms). Focus = TvRing
+  outline + glow, never scale (test checks the size). Focus labels 'gtv top <id>' / 'gtv hero' / 'gtv app <i>'.
+  **Quick settings** (`tv/tv_quick_settings.dart` + `QuickSettings.kt`, Sony-style bottom band; OK
+  grows a picker up out of the item, Back closes the picker, then the panel): opens from the Google TV
+  Settings icon and from the remote's Settings key (KEYCODE_SETTINGS, caught in
+  `TvActivity.dispatchKeyEvent` → channel "quickSettings": only while our activity is in front; no
+  global hook). Only real things: volume/mute (STREAM_MUSIC; "Fixed" when CEC owns it), our sleep timer
+  (AlarmManager → `SleepTimerReceiver`: screen off via `ShowNameService.sleep()` when that service is on,
+  else the screensaver), screensaver now, inputs (TvInputManager passthrough), network, Bluetooth, and
+  links shown only when they resolve to an exported, non-chooser activity (Display, Sound,
+  Accessibility, Sony's SmartSettings). No brightness/picture mode (not settable by apps). Channel:
+  qsState / qsVolume / qsMute / qsSleep / qsOpen; Menu stays "options" (OK-hold).
   Debug on the TV (hot reload, data kept): debug builds are signed with the release key, so
   `flutter build apk --debug --flavor tv -t lib/main_tv.dart --build-number=<above installed>` →
   `adb install -r` (never let flutter install: a failed install uninstalls = data wiped) →

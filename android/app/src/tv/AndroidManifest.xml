@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage"/>
     <!-- Brightness from the phone's remote (granted once: "Modify system settings") -->
     <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions"/>
+    <!-- Quick settings: is Bluetooth on (Android 11 and older ask for this to read it) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
     <application
         android:label="One Launcher TV"
         android:banner="@drawable/tv_banner"
@@ -78,6 +80,8 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/show_names" />
         </service>
+        <!-- Quick settings' sleep timer ran out (QuickSettings.kt) -->
+        <receiver android:name=".SleepTimerReceiver" android:exported="false"/>
         <!-- Invisible: the phone remote opens onelauncher://picture (the TV's picture panel),
              onelauncher://brightness?level=N or onelauncher://launch?package=P (its quick apps;
              see BrightnessActivity.kt). -->
@@ -115,5 +119,17 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="nuvio"/>
         </intent>
+        <!-- Quick settings: which of the TV's own pages open here (QuickSettings.kt) -->
+        <intent><action android:name="android.settings.SETTINGS"/></intent>
+        <intent><action android:name="android.settings.WIFI_SETTINGS"/></intent>
+        <intent><action android:name="android.settings.BLUETOOTH_SETTINGS"/></intent>
+        <intent><action android:name="android.settings.DISPLAY_SETTINGS"/></intent>
+        <intent><action android:name="android.settings.SOUND_SETTINGS"/></intent>
+        <intent><action android:name="android.settings.ACCESSIBILITY_SETTINGS"/></intent>
+        <intent><action android:name="com.android.tv.action.VIEW_INPUTS"/></intent>
+        <intent><action android:name="com.google.android.pano.action.SLEEP"/></intent>
+        <package android:name="com.android.tv.settings"/>
+        <package android:name="com.android.systemui"/>
+        <package android:name="com.sony.dtv.smartui"/>
     </queries>
 </manifest>

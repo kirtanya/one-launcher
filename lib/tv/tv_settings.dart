@@ -138,7 +138,7 @@ const tvSearchOptions = <TvOption>[
 final tvTilesHomeView = TvOption(
   'homeView',
   'Home view',
-  const [('classic', 'Cinematic'), ('spotlight', 'Spotlight'), ('tiles', 'Tiles'), ('third', 'Real')],
+  const [('classic', 'Cinematic'), ('spotlight', 'Spotlight'), ('googletv', 'Google TV'), ('tiles', 'Tiles'), ('third', 'Real')],
   Prefs.homeViewDefault,
   read: (p) => p.homeView,
   write: (p, v) => p.setHomeView(v as String),
@@ -413,6 +413,13 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
       ),
     ];
   }
+  if (view == 'googletv') {
+    // Google TV (tv_google.dart) reads only these: its rows, cards and landing are its own.
+    return [
+      for (final (name, icon, opts) in tvSections)
+        if (opts.any((o) => _googleReads.contains(o.key))) (name, icon, [for (final o in opts) if (_googleReads.contains(o.key)) o]),
+    ];
+  }
   final skip = view == 'spotlight' ? const {'rowsAt', 'appCards', 'rowTitles', 'resume', 'controls', 'quickLabels', 'quickSize', 'landing'} : _spotlightOnly;
   return [
     for (final (name, icon, opts) in tvSections)
@@ -427,6 +434,9 @@ List<(String, IconData, List<TvOption>)> tvSectionsFor(String view) {
         ),
   ];
 }
+
+/// The options the Google TV view reads (its hero shows Continue watching first).
+const _googleReads = {'backdrop', 'dim', 'artQuality', 'hero', 'clock', 'clock24', 'date', 'rowContinue', 'motion', 'back', 'history', 'remoteMic'};
 
 const _spotlightNames = {'Streaming apps’ rows': 'Streaming apps’ columns'};
 

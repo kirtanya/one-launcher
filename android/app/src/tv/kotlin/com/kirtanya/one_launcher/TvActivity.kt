@@ -61,6 +61,7 @@ class TvActivity : FlutterActivity() {
         pool to ids
     }
     private val oneStream by lazy { OneStream(this) }
+    private val quick by lazy { QuickSettings(this) }
     // What's playing / paused right now (needs Notification access, like the phone's Now playing).
     private val media by lazy { MediaWatcher(this, artWidth = 960, square = false) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
 
@@ -76,6 +77,7 @@ class TvActivity : FlutterActivity() {
         channel.setMethodCallHandler { call, result ->
             if (media.handle(call, result)) return@setMethodCallHandler
             if (oneStream.handle(call, result)) return@setMethodCallHandler
+            if (quick.handle(call, result)) return@setMethodCallHandler
             when (call.method) {
                 "sound" -> {
                     val (pool, ids) = sounds
@@ -310,6 +312,16 @@ class TvActivity : FlutterActivity() {
         super.onNewIntent(intent)
         if (intent.hasCategory(Intent.CATEGORY_HOME) && ::channel.isInitialized) channel.invokeMethod("homePressed", null)
         takeSearch(intent)
+    }
+
+    // The remote's Settings key while we're in front: our Quick settings panel (the home decides;
+    // it toggles). Only here — other apps keep the key (no global hook).
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_SETTINGS && ::channel.isInitialized) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) channel.invokeMethod("quickSettings", null)
+            return true
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun loadApps(): List<Map<String, Any>> {

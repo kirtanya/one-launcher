@@ -23,6 +23,7 @@ class TvApps {
   static bool demo = kIsWeb;
 
   VoidCallback? onHomePressed;
+  VoidCallback? onQuickSettings; // the remote's Settings key while we're in front
   VoidCallback? onAppsChanged;
   VoidCallback? onResumed; // back on the home screen (Continue watching may have changed)
 
@@ -60,6 +61,8 @@ class TvApps {
       switch (call.method) {
         case 'homePressed':
           onHomePressed?.call();
+        case 'quickSettings':
+          onQuickSettings?.call();
         case 'appsChanged':
           _art.clear();
           _ready.clear();
@@ -77,6 +80,31 @@ class TvApps {
       }
     });
   }
+
+  // ---- Quick settings (QuickSettings.kt) ----
+
+  /// Live state: volume, volumeMax, volumeFixed, muted, sleepAt (ms, 0 = off), sleepOff (the timer
+  /// can turn the screen off), network ('wifi' | 'ethernet' | 'other' | 'none'), bluetooth (bool or
+  /// null), inputs (names), links (ids of the TV's pages that open here).
+  Future<Map<String, Object?>> qsState() async => demo
+      ? {
+          'volume': 12,
+          'volumeMax': 100,
+          'volumeFixed': false,
+          'muted': false,
+          'sleepAt': 0,
+          'sleepOff': true,
+          'network': 'wifi',
+          'bluetooth': true,
+          'inputs': const ['HDMI 1', 'HDMI 2'],
+          'links': const ['settings', 'screensaver', 'inputs', 'network', 'bluetooth', 'display', 'sound', 'accessibility'],
+        }
+      : await _ch.invokeMapMethod<String, Object?>('qsState') ?? const {};
+  Future<int?> qsVolume(int v) async => demo ? v : await _ch.invokeMethod<int>('qsVolume', {'value': v});
+  Future<bool?> qsMute(bool on) async => demo ? on : await _ch.invokeMethod<bool>('qsMute', {'on': on});
+  Future<int> qsSleep(int minutes) async =>
+      demo ? (minutes > 0 ? DateTime.now().millisecondsSinceEpoch + minutes * 60000 : 0) : await _ch.invokeMethod<int>('qsSleep', {'minutes': minutes}) ?? 0;
+  Future<bool> qsOpen(String id) async => !demo && await _ch.invokeMethod<bool>('qsOpen', {'id': id}) == true;
 
   /// Read show names (ShowNameService.kt): which show an app's episode belongs to, read from its
   /// player overlay. Empty until switched on in Accessibility settings.

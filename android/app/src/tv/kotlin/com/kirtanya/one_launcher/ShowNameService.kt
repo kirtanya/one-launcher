@@ -192,6 +192,12 @@ class ShowNameService : AccessibilityService() {
             return pkg.takeIf { pm.getLeanbackLaunchIntentForPackage(it) != null || pm.getLaunchIntentForPackage(it) != null }
         }
 
+        /** Quick settings' sleep timer: the service is running, so it can turn the screen off. */
+        fun canSleep(): Boolean = instance != null && android.os.Build.VERSION.SDK_INT >= 28
+
+        /** Screen off now (the sleep timer ran out). false when the service isn't running. */
+        fun sleep(): Boolean = canSleep() && try { instance!!.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) } catch (e: Exception) { false }
+
         /** Told when a new show name is read (the launcher redraws its artwork). */
         @Volatile var onChange: (() -> Unit)? = null
 
