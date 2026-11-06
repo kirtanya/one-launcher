@@ -1236,11 +1236,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                   ),
 
                                   // ---- Remote / Settings: pages under the nav. ----
-                                  // Their backdrop stays put and fades; only the content slides.
+                                  // Their backdrop stays put and fades; only the content slides (clear pages).
                                   Positioned.fill(
                                     child: IgnorePointer(
                                       child: AnimatedBuilder(
                                         animation: Listenable.merge([_backdrop, _dragX]),
+                                        // The theme's own surface (light / dark), faded in place; the pages over it are
+                                        // clear, so nothing with a hard edge slides.
                                         builder: (context, child) => Opacity(opacity: _homeAway, child: child),
                                         child: ColoredBox(color: DS.base),
                                       ),

@@ -204,10 +204,12 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   unchanged; back at the top / on tab change). Horizontal swipes walk `_swipeOrder` (Today ← Home ↔ Smart home ↔
   Search; Settings counts as Home, the remote as Smart home) via `_swipeNav`: the Today pager takes them on home,
   elsewhere `_onDragUpdate`/`_onDragEnd` (the open page follows the finger via `_dragX`, rubber-bands at the ends).
-  Backdrops stay still and fade while content slides (like NowStage): `_backdrop` (DS.base under tab pages, whose
-  `_TabPageBody` is transparent) and the Today panel's (`todayBackdrop`, `TodayPanel(backdrop: false)`, follows `_panel.page`).
+  Backdrops stay still and fade while content slides (like NowStage): `_backdrop` (the theme's DS.base, light or dark — the
+  user's call — faded by `_homeAway`). `_TabPageBody` is transparent, and on
+  sliding pages (`_NavInset.clear`) so is each route's Material — the covered route fades out under a pushed one) and the Today panel's (`todayBackdrop`, `TodayPanel(backdrop: false)`, follows `_panel.page`).
 - `app_drawer.dart`: the sheet's list: hero card (pinned + most used; 2 pages of `prefs.heroRows` (2–4) × 4, optional
-  names `prefs.heroLabels` in neutral black/white by the hero card's lightness, set in its ••• Customise sheet), folders, search results
+  names `prefs.heroLabels` in neutral black/white by the hero card's lightness, set in its ••• Customise sheet; back on
+  page 1 whenever the launcher is left (paused/hidden), so coming home lands there), folders, search results
   (`_SearchResults`, `searchResults()`), pull veil (fade via a sheet-coloured overlay, not
   Opacity), `_PullPill`.
 - `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`; dock 64, tabs `big` 56 / `small` 48), nav→search morph (`_NavSearch`),
@@ -295,7 +297,7 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   channel `setLockRelock {on}` (also sent by `sync`) → `AppLockGuard.relockOnScreenOff` (prefs `app_lock`/`relockOnScreenOff`);
   LockService's ACTION_SCREEN_OFF receiver calls `AppLockGuard.screenOff()`, which clears every allowance and `left`, so
   the app still in front is sent home when it resumes after unlock.
-  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, Reopen without lock Off/5 s/10 s/5 min/10 min, Lock again when the screen locks, change PIN, app switches); NOT in the
+  UI: only Settings → Apps → App lock (`showAppLockPage`; Usage access row, double/triple, Reopen without lock Off/5 s/10 s/5 min/10 min, Lock again when the screen locks, change PIN, app switches — switches and segments themed with DS ink / Metro accent via a local Theme, since ThemeData is always dark); NOT in the
   long-press menu (user's call). Unlock / off / tap-count change ask the PIN (`askPin`); first lock sets it (`ensurePin`).
   `lockedApps` + `lockPinHash` are phone-only: not exported, kept across a backup restore. Tests: `test/app_lock_test.dart`, `test/app_lock_page_test.dart`.
 - `prefs.dart`: every setting. `perView` keys are stored per home view (`tiles.<k>`, `third.<k>`).

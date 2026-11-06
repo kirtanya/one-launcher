@@ -66,4 +66,22 @@ void main() {
     await tester.pumpAndSettle();
     expect(prefs.heroRows, 4);
   });
+
+  testWidgets('leaving the launcher on page 2 brings it back on page 1', (tester) async {
+    await _pump(tester, {'heroLabels': true});
+    final pager = find.ancestor(of: find.text('App one'), matching: find.byType(PageView)).first;
+    await tester.fling(pager, const Offset(-400, 0), 1500);
+    await tester.pumpAndSettle();
+    expect(find.text('App nine'), findsOneWidget, reason: 'on page 2 now');
+    expect(find.text('App one'), findsNothing);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('App one'), findsOneWidget, reason: 'back on page 1');
+  });
 }

@@ -319,7 +319,9 @@ class SheetHost extends InheritedWidget {
       // On a nav tab's page the content runs under the floating nav: room to scroll past it.
       final inset = _NavInset.of(context);
       return Material(
-        color: _NavInset.within(context) ? DS.base : DS.card, // a nav tab's page: the lowest surface
+        // A nav tab's page: the lowest surface — or none on one that slides in beside home.
+        type: _NavInset.clearOf(context) ? MaterialType.transparency : MaterialType.canvas,
+        color: _NavInset.within(context) ? DS.base : DS.card,
         child: scrollable
             ? SingleChildScrollView(
                 padding: EdgeInsets.only(bottom: inset),
@@ -344,7 +346,8 @@ class SheetHost extends InheritedWidget {
         position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(inC),
         child: SlideTransition(
           position: Tween(begin: Offset.zero, end: const Offset(-.25, 0)).animate(outC),
-          child: child,
+          // Under a clear page the one it covers fades, so the two don't show through each other.
+          child: _NavInset.clearOf(context) ? FadeTransition(opacity: ReverseAnimation(outC), child: child) : child,
         ),
       );
     },
@@ -424,6 +427,7 @@ class _TabPageBodyState extends State<_TabPageBody> {
               padding: EdgeInsets.only(top: mq.padding.top),
               child: _NavInset(
                 bottom: bottom,
+                clear: !widget.rise,
                 child: SheetSearchScope(
                   onActive: (_) {},
                   child: Column(
@@ -497,10 +501,16 @@ class _TabPageBodyState extends State<_TabPageBody> {
 
 /// How much of a page's bottom the floating nav covers (0 outside nav tab pages).
 class _NavInset extends InheritedWidget {
-  const _NavInset({required this.bottom, required super.child});
+  const _NavInset({required this.bottom, this.clear = false, required super.child});
   final double bottom;
 
+  /// A page that slides in beside home (Smart home, Remote): no surface of its own, so the
+  /// home's fading dim (and the wallpaper) shows through, like the Today panel.
+  final bool clear;
+
   static double of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_NavInset>()?.bottom ?? 0;
+
+  static bool clearOf(BuildContext context) => context.getInheritedWidgetOfExactType<_NavInset>()?.clear ?? false;
 
   /// On a nav tab's page at all.
   static bool within(BuildContext context) => context.getInheritedWidgetOfExactType<_NavInset>() != null;

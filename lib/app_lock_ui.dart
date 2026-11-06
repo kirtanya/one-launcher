@@ -293,7 +293,28 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
             final la = lock.isLocked(a.package), lb = lock.isLocked(b.package);
             return la == lb ? a.label.toLowerCase().compareTo(b.label.toLowerCase()) : (la ? -1 : 1);
           });
-        return Column(
+        // The app's theme is always dark Material: switches and choices take the launcher's own
+        // colours here (as in Settings), so they read right in light and dark looks.
+        final on = DS.metro ? DS.hero : DS.ink;
+        return Theme(
+          data: Theme.of(context).copyWith(
+            switchTheme: SwitchThemeData(
+              thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? (DS.metro ? Colors.white : DS.card) : DS.inkFaint),
+              trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? on : (DS.metro ? Colors.transparent : DS.card)),
+              trackOutlineColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? on : DS.inkFaint),
+            ),
+            segmentedButtonTheme: SegmentedButtonThemeData(
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? on : Colors.transparent),
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (s) => !s.contains(WidgetState.selected) ? DS.ink : (DS.metro ? Colors.white : on.computeLuminance() > .4 ? Colors.black : Colors.white),
+                ),
+                side: WidgetStatePropertyAll(BorderSide(color: DS.hairline)),
+                textStyle: WidgetStatePropertyAll(DS.rowTitle.copyWith(fontSize: 13, fontWeight: FontWeight.w500)),
+              ),
+            ),
+          ),
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -375,6 +396,7 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
               ),
             const SizedBox(height: DS.s8),
           ],
+          ),
         );
       },
     );

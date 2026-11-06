@@ -789,12 +789,27 @@ class _HeroCard extends StatefulWidget {
   State<_HeroCard> createState() => _HeroCardState();
 }
 
-class _HeroCardState extends State<_HeroCard> {
+class _HeroCardState extends State<_HeroCard> with WidgetsBindingObserver {
   final _pages = PageController();
   int _page = 0;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  // Leaving the launcher: back to the first page while it's out of sight, so coming home lands there.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.hidden && state != AppLifecycleState.paused) return;
+    if (_pages.hasClients && _pages.page != 0) _pages.jumpToPage(0);
+    if (_page != 0) setState(() => _page = 0);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pages.dispose();
     super.dispose();
   }
