@@ -1771,6 +1771,30 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
         open: (c) => _showTodaySettings(c, prefs: prefs),
       ),
 
+      if (!tiles) ...[
+        _Setting(
+          home,
+          'Bottom bar',
+          Icons.space_dashboard_outlined,
+          'Bottom bar',
+          prefs.dockStyle == 'search' ? 'Full search bar, Smart home and Settings buttons on its right' : 'Now · Home · Smart home · Search tabs',
+          keywords: 'nav navbar dock tabs search bar remote smart home buttons',
+          choices: const [('nav', 'Nav bar'), ('search', 'Search bar')],
+          choice: prefs.dockStyle,
+          onChoice: prefs.setDockStyle,
+        ),
+        _Setting(
+          home,
+          'Bottom bar',
+          Icons.graphic_eq_rounded,
+          'Now page',
+          prefs.classicToday ? 'Swipe right on home · Now tab in the nav bar' : 'Hidden · no Now tab',
+          keywords: 'now today side panel tab hide',
+          value: prefs.classicToday,
+          onChanged: prefs.setClassicToday,
+        ),
+      ],
+
       // ---- Apps: folders, pins, hidden ----
       _Setting(
         appsCat,

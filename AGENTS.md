@@ -211,6 +211,8 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   (`_SearchResults`, `searchResults()`), pull veil (fade via a sheet-coloured overlay, not
   Opacity), `_PullPill`.
 - `search_dock.dart`: bottom nav (`_NavBar`, `_NavButton`; dock 64, tabs `big` 56 / `small` 48), nav→search morph (`_NavSearch`),
+  or, with `prefs.dockStyle == 'search'` (Settings → Home screen → Bottom bar), the earlier `_searchLayout` (full pill +
+  Smart home and settings circles; home.dart passes `onHome: null`). Now page on/off = `prefs.classicToday` (also drops the Now tab),
   `_surface()`. `search_history.dart`: recent searches (card for top bar; `RecentSearchPills`
   above the bottom bar). Once something is typed, `SearchFilterPills` (same file;
   `SearchFilter` All · Apps · Movies & shows · Web/Google · Other = shortcuts + phone settings) take the recent pills' place (home.dart

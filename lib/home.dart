@@ -266,9 +266,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // The nav's Smart home tab (it took the remote's place; the remote is its first tile).
     onRemote: prefs.remoteButton ? _openSmart : null,
     onRemoteLongPress: () => offerHideRemote(context, prefs: prefs),
-    // At the bottom the dock is the nav (Home · Smart home · Search; Settings = long-press Home); in the drawer, just search.
+    // At the bottom the dock is the nav (Home · Smart home · Search; Settings = long-press Home), unless
+    // Settings → Bottom bar picks the search bar; in the drawer, just search.
     tab: _tab,
-    onHome: inline ? null : _navHome,
+    onHome: inline || prefs.dockStyle == 'search' ? null : _navHome,
     onNow: inline || !_sidePanel ? null : _openNow,
     pull: _pull, // pull-to-search drives the nav → search morph
     pullFull: pullToOpen,

@@ -741,6 +741,14 @@ class Prefs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Classic home's bottom bar: 'nav' (Now · Home · Smart home · Search tabs) or 'search' (the
+  /// earlier full search pill with the Smart home and settings circles on its right).
+  String get dockStyle => _sp.getString('dockStyle') == 'search' ? 'search' : 'nav';
+  Future<void> setDockStyle(String v) async {
+    await _sp.setString('dockStyle', v);
+    notifyListeners();
+  }
+
   bool get remoteButton => _sp.getBool('remoteButton') ?? true;
   Future<void> setRemoteButton(bool v) async {
     await _sp.setBool('remoteButton', v);
