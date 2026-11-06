@@ -44,6 +44,7 @@ class ShowNameService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val pkg = event?.packageName?.toString() ?: return
         if (pkg == packageName) return
+        if (pkg == GOOGLE_HOME) return takeHome(event)
         if (pkg == GOOGLE_SEARCH) return takeVoiceSearch(event)
         val now = SystemClock.uptimeMillis()
         if (now - (lastLook[pkg] ?: 0L) < 1500) return // overlays redraw often; a look every 1.5 s is plenty
@@ -58,6 +59,30 @@ class ShowNameService : AccessibilityService() {
         val show = showBeside(root, titles)
         android.util.Log.i("OneShow", "$pkg playing $titles → ${show?.second ?: "no show beside it on screen"}")
         if (show != null) save(this, pkg, show.first, show.second)
+    }
+
+    // ---- Home → One Launcher ----
+    // Google TV's launcher declares a higher Home priority than any app, so even with us as the
+    // default home (the HOME role) the Home key opens it. When its home screen comes up and the
+    // role is ours, bring ours to the front (TvActivity takes it as a Home press).
+    private var lastHome = 0L
+
+    private fun takeHome(event: AccessibilityEvent) {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        if (event.className?.toString() != "$GOOGLE_HOME.home.HomeActivity") return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastHome < 1000 || !isHome(this)) return
+        lastHome = now
+        try {
+            startActivity(
+                android.content.Intent(android.content.Intent.ACTION_MAIN)
+                    .addCategory(android.content.Intent.CATEGORY_HOME)
+                    .setClass(this, TvActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("OneHome", "couldn't bring the launcher up", e)
+        }
     }
 
     // ---- The remote's mic → One Launcher search ----
@@ -174,6 +199,14 @@ class ShowNameService : AccessibilityService() {
     companion object {
         @Volatile private var instance: ShowNameService? = null
         private const val GOOGLE_SEARCH = "com.google.android.katniss"
+        private const val GOOGLE_HOME = "com.google.android.apps.tv.launcherx"
+
+        /** The user made us the default home (Settings → Apps → Default apps → Home). */
+        private fun isHome(c: Context): Boolean = try {
+            android.os.Build.VERSION.SDK_INT >= 29 && c.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+        } catch (e: Exception) {
+            false
+        }
 
         /** Until then Google's results are left alone: we sent the user there ("search everywhere"). */
         @Volatile var googleUntil = 0L

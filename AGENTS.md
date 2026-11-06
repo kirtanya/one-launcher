@@ -43,6 +43,10 @@ Flutter Android launcher, two flavours from one codebase:
   and are tested, but nothing in the launcher opens them (no Settings-key handler either).
   **Default home on Google TV (Sony BRAVIA)**: setting us as Home gives us the HOME role, but
   `launcherx` HomeActivity declares priority 2 (ours 0), so the Home key still opens Google TV.
+  Fix (user chose it, 2026-11-06): `ShowNameService.takeHome` — when launcherx's HomeActivity comes
+  up (TYPE_WINDOW_STATE_CHANGED) and we hold ROLE_HOME, it starts TvActivity with CATEGORY_HOME
+  (→ onNewIntent → homePressed). Needs that accessibility service on (permissions panel lists it as
+  "Accessibility: show names & Home"); Google TV flashes briefly first. Dashboard/settings untouched.
   Debug on the TV (hot reload, data kept): debug builds are signed with the release key, so
   `flutter build apk --debug --flavor tv -t lib/main_tv.dart --build-number=<above installed>` →
   `adb install -r` (never let flutter install: a failed install uninstalls = data wiped) →

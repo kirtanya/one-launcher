@@ -135,7 +135,7 @@ class _TvHomeState extends State<TvHome> {
     if (tv.media.value?['granted'] == false)
       (Icons.play_circle_outline_rounded, 'Notification access', 'Continue watching, what’s playing', tv.openNotificationAccess),
     if (!TvApps.demo && !tv.shows.value.on)
-      (Icons.subtitles_outlined, 'Accessibility: read show names', 'Episode pictures for apps like JioHotstar', tv.openAccessibility),
+      (Icons.subtitles_outlined, 'Accessibility: show names & Home', 'Episode pictures; Home opens One Launcher, not Google TV', tv.openAccessibility),
   ];
 
   String get _missingLabel => _missing.length == 1 ? '1 permission needed' : '${_missing.length} permissions needed';

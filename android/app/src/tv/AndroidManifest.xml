@@ -71,7 +71,7 @@
         <service
             android:name=".ShowNameService"
             android:exported="false"
-            android:label="One Launcher TV: read show names"
+            android:label="One Launcher TV: show names &amp; Home"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
