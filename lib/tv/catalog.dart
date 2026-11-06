@@ -49,11 +49,21 @@ class Catalog extends ChangeNotifier {
   Prefs? _prefs;
   List<ShowTitle> _titles = const []; // most popular first
   final _byId = <String, ShowTitle>{};
+  DateTime _lastNotify = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _indexed = false; // _byId is built on first lookup, not on every catalog load (30k entries)
+
+  Map<String, ShowTitle> get _index {
+    if (!_indexed) {
+      _byId.addEntries(_titles.map((t) => MapEntry(t.id, t)));
+      _indexed = true;
+    }
+    return _byId;
+  }
   final _addons = <String, Addon>{}; // manifest link → addon (saved with the catalog; refreshed on update)
   List<String> _builtFrom = const []; // the sources the saved catalog was made from
 
   /// The catalog's entry for an IMDb id, if it has one.
-  ShowTitle? byId(String id) => _byId[id];
+  ShowTitle? byId(String id) => _index[id];
 
   /// When the catalog last updated (null = never).
   DateTime? updated;
@@ -340,7 +350,12 @@ class Catalog extends ChangeNotifier {
         }
         done++;
         progress = done / jobs.length;
-        notifyListeners();
+        // Throttled: each notify rebuilds listeners; the finally below always sends the last one.
+        final t = DateTime.now();
+        if (t.difference(_lastNotify).inMilliseconds >= 250) {
+          _lastNotify = t;
+          notifyListeners();
+        }
       });
       if (jobs.isNotEmpty && answered.isEmpty) {
         error = 'Couldn’t reach the catalogs. Check the TV’s internet.';
@@ -407,9 +422,8 @@ class Catalog extends ChangeNotifier {
 
   void _setTitles(List<ShowTitle> titles) {
     _titles = titles;
-    _byId
-      ..clear()
-      ..addEntries(titles.map((t) => MapEntry(t.id, t)));
+    _byId.clear();
+    _indexed = false;
     version++;
   }
 
@@ -461,12 +475,12 @@ class Catalog extends ChangeNotifier {
     final add = <ShowTitle>[];
     var changed = false;
     for (final t in found) {
-      final had = _byId[t.id];
+      final had = _index[t.id];
       if (had == null) {
         add.add(t);
       } else if ((had.year == null && t.year != null) || (had.rating == null && t.rating != null)) {
         final better = had.filledFrom(t);
-        _byId[t.id] = better;
+        _index[t.id] = better;
         final i = _titles.indexOf(had);
         if (i >= 0) _titles = [..._titles]..[i] = better;
         changed = true;

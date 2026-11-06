@@ -53,7 +53,7 @@ void main() {
     await tester.pumpWidget(OneLauncherTv(prefs: prefs));
     await tester.pumpAndSettle();
     expect(find.text('Network'), findsOneWidget, reason: 'labels by default');
-    double chipHeight() => tester.getSize(find.ancestor(of: find.byIcon(Icons.wifi_rounded), matching: find.byType(AnimatedContainer)).first).height;
+    double chipHeight() => tester.getSize(find.ancestor(of: find.byIcon(Icons.wifi_rounded), matching: find.byType(Container)).first).height;
     expect(chipHeight(), 40);
 
     await prefs.setTvSetting('quickLabels', 'never');

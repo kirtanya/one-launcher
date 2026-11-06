@@ -120,12 +120,17 @@ class _TvHomeState extends State<TvHome> {
   final _h = <String, ScrollController>{};
   final _nodes = <String, FocusNode>{};
   final _col = <String, int>{};
-  int _row = 0; // focused row (-1 = top bar)
-
-  TvItem? _hero; // what the title block describes (instant)
-  TvItem? _chip; // focused quick action: named in the hint line, the title block stays
-  TvItem? _backdrop; // what the big picture shows (settles after a beat, so fast moves don't flicker)
-  Timer? _backdropTimer;
+  // Focus-driven state lives in notifiers: a focus move rebuilds only the title block, the
+  // picture and the row titles that listen, never the rows and their cards.
+  final _rowN = ValueNotifier<int>(0); // focused row (-1 = top bar)
+  final _heroN = ValueNotifier<TvItem?>(null); // what the title block describes (instant)
+  final _chipN = ValueNotifier<TvItem?>(null); // focused quick action: named in the hint line, the title block stays
+  final _backdropN = ValueNotifier<TvItem?>(null); // what the big picture shows (settles after a beat, so fast moves don't flicker)
+  int get _row => _rowN.value;
+  TvItem? get _hero => _heroN.value;
+  TvItem? get _backdrop => _backdropN.value;
+  Timer? _backdropTimer, _catalogTimer;
+  final _sinceFocus = Stopwatch()..start(); // a held D-pad key: scroll jumps instead of restarting animations
 
   // Inputs, Settings… are quick action chips now; "N permissions needed" while something is off.
   List<String> get _header => ['search', 'voice', 'customise', if (_missing.isNotEmpty) 'perms'];
@@ -169,16 +174,32 @@ class _TvHomeState extends State<TvHome> {
     prefs.addListener(_regroup);
     OneStream.instance.available.addListener(_loadContent); // installed / removed: its resume items
     _load();
-    Catalog.instance.start(prefs); // search's catalog: load the saved one, update when due
+    // Search's catalog: load the saved one, update when due — after the first frame + 3 s, so
+    // its disk read and network don't compete with the home's first draw.
+    // (Google TV's hero is the catalog's trending titles, so there it starts at once.)
+    if (_googleView) {
+      Catalog.instance.start(prefs);
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _catalogTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) Catalog.instance.start(prefs);
+        });
+      });
+    }
   }
 
   @override
   void dispose() {
-    tv.media.removeListener(_regroup);
+    tv.media.removeListener(_onMedia);
     tv.shows.removeListener(_regroup);
     prefs.removeListener(_regroup);
     OneStream.instance.available.removeListener(_loadContent);
     _backdropTimer?.cancel();
+    _catalogTimer?.cancel();
+    _rowN.dispose();
+    _heroN.dispose();
+    _chipN.dispose();
+    _backdropN.dispose();
     _v.dispose();
     for (final c in _h.values) {
       c.dispose();
@@ -201,15 +222,23 @@ class _TvHomeState extends State<TvHome> {
     }
   }
 
+  int _contentSeq = 0;
+
+  /// Everything runs at once. The TV's own content (Watch Next, channels, history, what's playing)
+  /// lands in one regroup — that's what the returned future waits for. One Stream's Continue
+  /// watching (it can take seconds) lands in its own regroup whenever it arrives.
   Future<void> _loadContent() async {
-    final results = await Future.wait([tv.watchNext(), tv.channels(), tv.history()]);
-    final stream = await OneStream.instance.continueWatching(limit: 12);
-    await tv.refreshMedia();
-    if (!mounted) return;
-    _watchNext = results[0];
-    _channels = results[1];
-    _history = results[2];
-    _stream = stream;
+    final seq = ++_contentSeq;
+    OneStream.instance.continueWatching(limit: 12).then((stream) {
+      if (!mounted || seq != _contentSeq) return;
+      _stream = stream;
+      _regroup();
+    }, onError: (_) {});
+    final results = await Future.wait([tv.watchNext(), tv.channels(), tv.history(), tv.refreshMedia()]);
+    if (!mounted || seq != _contentSeq) return;
+    _watchNext = results[0] as List<Map>;
+    _channels = results[1] as List<Map>;
+    _history = results[2] as List<Map>;
     _regroup();
   }
 
@@ -243,7 +272,7 @@ class _TvHomeState extends State<TvHome> {
           package: m['package'] as String? ?? '',
           appName: m['app'] as String?,
           meta: _joinMeta([m['artist'] as String?, if (dur > 0) _left(dur - pos)]),
-          art: art is Uint8List ? MemoryImage(art) : null,
+          art: art is Uint8List ? _nowArt(art) : null,
           image: art is Uint8List ? null : _lookupArt(m['title'] as String, m['artist'] as String?, m['package'] as String? ?? ''),
           progress: dur > 0 ? (pos / dur).clamp(0, 1) : null,
           playing: m['playing'] == true,
@@ -290,7 +319,7 @@ class _TvHomeState extends State<TvHome> {
           package: pkg,
           appName: (h['app'] as String?) ?? appName(pkg),
           meta: _joinMeta([h['subtitle'] as String?, if (dur > 0 && pos > 0) _left(dur - pos), _ago((h['at'] as num?)?.toInt())]),
-          art: artPath != null && !TvApps.demo ? FileImage(File(artPath)) : null,
+          art: artPath != null && !TvApps.demo ? _historyArt(artPath) : null,
           image: artPath == null ? _lookupArt(title, h['subtitle'] as String?, pkg) : null,
           progress: dur > 0 && pos > 0 ? (pos / dur).clamp(0, 1) : null,
           historyKey: h['key'] as String?,
@@ -363,6 +392,35 @@ class _TvHomeState extends State<TvHome> {
     final firstContent = _rows.where((r) => !r.chips).firstOrNull;
     if (_hero == null && firstContent != null) _show(firstContent.items.first, now: true);
   }
+
+  // One decoded picture for what's playing: the channel hands over a fresh byte list with every
+  // playback event, so the picture is told apart by length + sampled bytes, not identity.
+  String? _artSig;
+  ImageProvider? _artImage;
+  static String _sigOf(Uint8List b) {
+    if (b.isEmpty) return '0';
+    final step = math.max(1, b.length ~/ 24);
+    var h = 17;
+    for (var i = 0; i < b.length; i += step) {
+      h = (h * 31 + b[i]) & 0x3fffffff;
+    }
+    return '${b.length}:$h:${b.last}';
+  }
+
+  /// At most 640 px wide: the backdrop shows it at about that size, so the host's bigger picture
+  /// isn't decoded in full.
+  static const _artWidth = 640;
+  ImageProvider _nowArt(Uint8List art) {
+    final sig = _sigOf(art);
+    if (sig != _artSig || _artImage == null) {
+      _artSig = sig;
+      _artImage = ResizeImage(MemoryImage(art), width: _artWidth, policy: ResizeImagePolicy.fit);
+    }
+    return _artImage!;
+  }
+
+  /// A history picture, decoded at the size it's drawn (not the file's full size).
+  ImageProvider _historyArt(String path) => ResizeImage(FileImage(File(path)), width: _artWidth, policy: ResizeImagePolicy.fit);
 
   /// A row's apps in the user's order (Hold OK → Move); new apps keep their place after.
   List<AppEntry> _ordered(String row, List<AppEntry> apps) {
@@ -479,7 +537,7 @@ class _TvHomeState extends State<TvHome> {
   String? _mediaSeen;
   void _onMedia() {
     final m = tv.media.value;
-    final sig = m == null ? '' : [for (final e in m.entries) if (e.key != 'position' && e.key != 'at' && e.key != 'speed') '${e.key}=${e.value is List || e.value is Uint8List ? identityHashCode(e.value) : e.value}'].join('|');
+    final sig = m == null ? '' : [for (final e in m.entries) if (e.key != 'position' && e.key != 'at' && e.key != 'speed') '${e.key}=${e.value is Uint8List ? _sigOf(e.value as Uint8List) : (e.value is List ? e.value.toString() : e.value)}'].join('|');
     if (sig == _mediaSeen) return;
     _mediaSeen = sig;
     _regroup();
@@ -801,9 +859,13 @@ class _TvHomeState extends State<TvHome> {
 
   void _onFocus(int r, int i) {
     _col[_rowId(r)] = i;
-    if (_row != r) setState(() => _row = r);
+    _rowN.value = r;
     if (r >= 0) _show(_withContent(_rows[r].items[i]));
-    const dur = Duration(milliseconds: 420);
+    // A held key repeats every ~50–100 ms: jump, so the scroll keeps up instead of restarting
+    // a 420 ms animation under every press.
+    final held = _sinceFocus.elapsedMilliseconds < 150;
+    _sinceFocus.reset();
+    final dur = held ? Duration.zero : const Duration(milliseconds: 420);
     const curve = Curves.easeOutCubic;
     // Vertical: the focused row slides to the top of the rows area; rows above slide out.
     if (_v.hasClients) {
@@ -815,7 +877,8 @@ class _TvHomeState extends State<TvHome> {
           y += _rows[k].height;
         }
       }
-      _v.animateTo(y.clamp(0.0, _v.position.maxScrollExtent), duration: dur, curve: curve);
+      final to = y.clamp(0.0, _v.position.maxScrollExtent);
+      dur == Duration.zero ? _v.jumpTo(to) : _v.animateTo(to, duration: dur, curve: curve); // key repeat: jump
     }
     // Horizontal: one card peeks on the left so you can tell there's more.
     final h = r < 0 ? null : _h[_rowId(r)];
@@ -826,7 +889,7 @@ class _TvHomeState extends State<TvHome> {
     } else if (h != null && h.hasClients) {
       final row = _rows[r];
       final x = ((i - 1) * (row.cardW + TvDS.gap)).clamp(0.0, h.position.maxScrollExtent);
-      h.animateTo(x, duration: dur, curve: curve);
+      dur == Duration.zero ? h.jumpTo(x) : h.animateTo(x, duration: dur, curve: curve);
     }
   }
 
@@ -851,17 +914,18 @@ class _TvHomeState extends State<TvHome> {
   /// Title block switches at once; the big picture waits until focus rests a moment.
   void _show(TvItem item, {bool now = false}) {
     // A chip keeps the show / app on screen (title and picture); only the hint names the chip.
-    if (item.kind == TvKind.action) return setState(() => _chip = item);
-    setState(() {
-      _hero = item;
-      _chip = null;
-    });
+    if (item.kind == TvKind.action) {
+      _chipN.value = item;
+      return;
+    }
+    _heroN.value = item;
+    _chipN.value = null;
     _backdropTimer?.cancel();
     if (now) {
-      _backdrop = item;
+      _backdropN.value = item;
     } else {
       _backdropTimer = Timer(const Duration(milliseconds: 260), () {
-        if (mounted) setState(() => _backdrop = item);
+        if (mounted) _backdropN.value = item;
       });
     }
   }
@@ -1277,8 +1341,9 @@ class _TvHomeState extends State<TvHome> {
           : _spotlightView
           ? Scaffold(
               backgroundColor: const Color(0xFF000000),
-              body: Builder(
-                builder: (context) {
+              body: ListenableBuilder(
+                listenable: Listenable.merge([_heroN, _backdropN]),
+                builder: (context, _) {
                   TvLook.read(prefs);
                   return _Spotlight(
                     key: _spotlightKey,
@@ -1312,7 +1377,12 @@ class _TvHomeState extends State<TvHome> {
                       Positioned.fill(
                         child: TvLook.str('backdrop') == 'off'
                             ? const SizedBox.expand()
-                            : _Backdrop(item: _backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
+                            : RepaintBoundary(
+                                child: ValueListenableBuilder<TvItem?>(
+                                  valueListenable: _backdropN,
+                                  builder: (context, backdrop, _) => _Backdrop(item: backdrop, glowOnly: TvLook.str('backdrop') == 'glow'),
+                                ),
+                              ),
                       ),
                       // Fades into pure black (the canvas grey looked washed out next to the picture).
                       TvScrims(strength: TvLook.number('dim'), colour: TvDS.scrim, cinema: true),
@@ -1323,11 +1393,14 @@ class _TvHomeState extends State<TvHome> {
                         top: TvDS.heroTop,
                         width: TvDS.heroW,
                         height: rowsTop - TvDS.heroTop - DS.s12,
-                        child: _HeroInfo(
-                          item: TvLook.on('hero') || _moving != null ? _hero : null,
-                          chip: _chip,
-                          rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
-                          moving: _moving != null,
+                        child: ListenableBuilder(
+                          listenable: Listenable.merge([_heroN, _chipN, _rowN]),
+                          builder: (context, _) => _HeroInfo(
+                            item: TvLook.on('hero') || _moving != null ? _hero : null,
+                            chip: _chipN.value,
+                            rowTitle: _row >= 0 && _row < _rows.length && !_rows[_row].chips ? _rows[_row].title : null,
+                            moving: _moving != null,
+                          ),
                         ),
                       ),
 
@@ -1382,9 +1455,12 @@ class _TvHomeState extends State<TvHome> {
     );
   }
 
-  Widget _buildRow(int r, TvRow row) {
+  /// Each row paints into its own layer: a focus move repaints two cards, not the whole screen.
+  Widget _buildRow(int r, TvRow row) => RepaintBoundary(child: _buildRowBody(r, row));
+
+  Widget _buildRowBody(int r, TvRow row) {
     final h = _h.putIfAbsent(row.id, ScrollController.new);
-    final focusedRow = _row == r;
+    final glow = TvLook.str('focus') == 'glow';
     if (row.chips) {
       return SizedBox(
         height: row.height,
@@ -1449,11 +1525,14 @@ class _TvHomeState extends State<TvHome> {
               padding: EdgeInsets.only(left: TvDS.safe.left),
               child: SizedBox(
                 height: TvDS.cardRowTitleH,
-                child: AnimatedDefaultTextStyle(
-                  duration: Motion.snapDuration,
-                  curve: Motion.settle,
-                  style: focusedRow ? TvDS.rowTitleFocused : TvDS.rowTitle,
-                  child: Text(row.title),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _rowN,
+                  builder: (context, focused, _) => AnimatedDefaultTextStyle(
+                    duration: Motion.snapDuration,
+                    curve: Motion.settle,
+                    style: focused == r ? TvDS.rowTitleFocused : TvDS.rowTitle,
+                    child: Text(row.title),
+                  ),
                 ),
               ),
             ),
@@ -1489,6 +1568,7 @@ class _TvHomeState extends State<TvHome> {
                         width: row.cardW,
                         height: row.cardH,
                         focusNode: _node(r, i),
+                        glow: glow,
                         moving: _moving == _key(r, i),
                         onSelect: () => _moving != null ? _endMove() : _open(item),
                         onOptions: () => _options(row, i),
@@ -1534,21 +1614,11 @@ class _Backdrop extends StatelessWidget {
 
   Widget _picture(TvItem it) {
     if (glowOnly) return _wash(it);
-    // Settles in from a slight zoom (1.8 s), then holds still: on the TV a long Ken Burns drift
+    // Settles in from a slight zoom (450 ms — it was 1.8 s of full-screen redraw after every focus move), then holds still: on the TV a long Ken Burns drift
     // redrew the full-screen picture every frame (≈22 frames/s, a quarter of the CPU, while idle).
     // Reduced motion: still from the start.
     final still = TvLook.str('motion') == 'reduced';
-    Widget settle(Widget child) => still
-        ? child
-        : RepaintBoundary(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 1.06, end: 1),
-              duration: const Duration(milliseconds: 1800),
-              curve: Curves.easeOutCubic,
-              builder: (context, scale, child) => Transform.scale(scale: scale, alignment: _focusPoint, child: child),
-              child: child,
-            ),
-          );
+    Widget settle(Widget child) => still ? child : _Settle(alignment: _focusPoint, child: child);
     if (it.art != null) {
       return settle(_Wide(image: it.art!, onError: () => _wash(it)));
     }
@@ -1580,10 +1650,34 @@ class _Backdrop extends StatelessWidget {
   }
 
   /// No artwork: a soft glow in a colour picked from the title, so each item still feels distinct.
-  Widget _wash(TvItem it) => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: RadialGradient(center: const Alignment(.4, -.3), radius: 1.1, colors: [tvTint(it.title).withValues(alpha: .55), Colors.transparent]),
-    ),
+  Widget _wash(TvItem it) => TvBaked.gradient(RadialGradient(center: const Alignment(.4, -.3), radius: 1.1, colors: [tvTint(it.title).withValues(alpha: .55), Colors.transparent]));
+}
+
+/// The settle: scales 1.06 → 1 over 450 ms, then holds still. An [AnimationController] drives a
+/// [ScaleTransition], so the picture (its own layer) is painted once and only its transform
+/// changes per frame — the child is never rebuilt.
+class _Settle extends StatefulWidget {
+  const _Settle({required this.alignment, required this.child});
+  final Alignment alignment;
+  final Widget child;
+
+  @override
+  State<_Settle> createState() => _SettleState();
+}
+
+class _SettleState extends State<_Settle> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 450))..forward();
+  late final _scale = Tween<double>(begin: 1.06, end: 1).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: ScaleTransition(scale: _scale, alignment: widget.alignment, child: RepaintBoundary(child: widget.child)),
   );
 }
 
@@ -1599,27 +1693,51 @@ class _TrendingShow extends StatefulWidget {
   State<_TrendingShow> createState() => _TrendingShowState();
 }
 
-class _TrendingShowState extends State<_TrendingShow> {
+class _TrendingShowState extends State<_TrendingShow> with WidgetsBindingObserver {
   static const every = Duration(seconds: 10), fade = Duration(milliseconds: 700); // each picture stays 10 s
   List<({String title, String image})> _titles = const [];
   int _i = -1; // showing
   MemoryImage? _shown;
   Timer? _timer, _retry;
 
+  bool _resumed = true; // paused while the app isn't in front: nothing to redraw behind a closed screen
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _resumed = WidgetsBinding.instance.lifecycleState == null || WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     AppTrending.instance.titles(widget.package).then((list) {
       if (!mounted || list.isEmpty) return;
       _titles = list;
       _next();
-      _timer = Timer.periodic(every, (_) => _next());
+      _startTimer();
     });
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = _resumed && _titles.isNotEmpty ? Timer.periodic(every, (_) => _next()) : null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final now = state == AppLifecycleState.resumed;
+    if (now == _resumed) return;
+    _resumed = now;
+    if (now) {
+      _startTimer();
+      if (_shown == null) _next();
+    } else {
+      _timer?.cancel();
+      _timer = null;
+      _retry?.cancel();
+    }
   }
 
   /// Moves on to the next picture that has loaded, and starts loading the one after it.
   void _next() {
-    if (_titles.isEmpty || !mounted) return;
+    if (_titles.isEmpty || !mounted || !_resumed) return;
     final n = (_i + 1) % _titles.length;
     final img = TvApps.instance.imageNow(_src(n), width: ArtQuality.width);
     if (img == null) {
@@ -1637,7 +1755,11 @@ class _TrendingShowState extends State<_TrendingShow> {
       _shown = img;
     });
     AppTrending.instance.showing.value = (package: widget.package, title: _titles[n].title);
-    TvApps.instance.image(_src((n + 1) % _titles.length), width: ArtQuality.width);
+    // The one after: fetched, then decoded into the image cache, so its crossfade starts on a
+    // ready picture (the same MemoryImage the picture draws, so the cache entry is the one used).
+    TvApps.instance.image(_src((n + 1) % _titles.length), width: ArtQuality.width).then((m) {
+      if (m != null && mounted) precacheImage(m, context);
+    }, onError: (_) {});
   }
 
   /// Title [i]'s picture at Customise → Picture quality's size.
@@ -1645,6 +1767,7 @@ class _TrendingShowState extends State<_TrendingShow> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _retry?.cancel();
     // After this frame: the caption listens to it, and the tree is locked while widgets go away.
@@ -1695,10 +1818,14 @@ class _Wide extends StatefulWidget {
 }
 
 class _WideState extends State<_Wide> {
-  double? _aspect; // width / height, once the picture is known
+  ui.Image? _img; // the decoded picture (a handle of our own; the previous one stays until the next is in)
   ImageStream? _stream;
   late final _listener = ImageStreamListener(
-    (info, _) => _set(() => _aspect = info.image.width / info.image.height),
+    (info, _) {
+      final old = _img;
+      _set(() => _img = info.image.clone());
+      old?.dispose();
+    },
     onError: (_, _) => _set(() => _failed = true),
   );
   bool _failed = false;
@@ -1730,74 +1857,175 @@ class _WideState extends State<_Wide> {
   @override
   void dispose() {
     _stream?.removeListener(_listener);
+    _img?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_failed && widget.onError != null) return widget.onError!();
-    final aspect = _aspect;
-    if (aspect == null) return const SizedBox.expand(); // a moment until its shape is known
-    return LayoutBuilder(
-      builder: (context, c) {
-        // As big as fits in the 75% box, keeping its shape.
-        final bw = c.maxWidth * _Wide.share, bh = c.maxHeight * _Wide.share;
-        final w = math.min(bw, bh * aspect), h = w / aspect;
-        // Copies across and down until the screen is full (a very narrow picture stops at 8).
-        final cols = math.min(8, (c.maxWidth / w).ceil()), rows = math.min(8, (c.maxHeight / h).ceil());
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            for (var j = 0; j < rows; j++)
-              for (var i = 0; i < cols; i++)
-                Positioned(
-                  left: i * w,
-                  top: j * h,
-                  width: w,
-                  height: h,
-                  // Odd places are flipped: each copy mirrors its neighbour at the shared edge.
-                  child: _pic(flipX: i.isOdd, flipY: j.isOdd),
-                ),
-            CustomPaint(painter: _MirrorShade(w, h)),
-          ],
-        );
-      },
+    final img = _img;
+    if (img == null) return const SizedBox.expand(); // a moment until its shape is known
+    // The picture, all its flipped copies and the shade over them, baked once per picture into one
+    // screen-sized texture: on the TV's Mali every full-screen draw costs several ms a frame, and
+    // this was 4–9 of them (copies + shade) redrawn on every focus move.
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return SizedBox.expand(
+      child: TvBaked(painter: _WideBake(img, widget.opacity, dpr), id: ('wide', widget.image, widget.opacity, dpr)),
     );
-  }
-
-  Widget _pic({required bool flipX, required bool flipY}) {
-    final img = Image(
-      image: widget.image,
-      fit: BoxFit.fill, // the box already has the picture's shape: nothing cropped or stretched
-      gaplessPlayback: true,
-      filterQuality: FilterQuality.low, // a still, near 1:1 picture: cheap sampling looks the same
-      opacity: widget.opacity < 1 ? AlwaysStoppedAnimation(widget.opacity) : null,
-    );
-    return flipX || flipY ? Transform.flip(flipX: flipX, flipY: flipY, child: img) : img;
   }
 }
 
-/// Darkens the flipped copies (35%), clear at the picture's edge and full 7% of the screen width
-/// further out, so nothing marks where they begin. Both fades go into one layer before it's
-/// darkened, so the corner (where they meet) is no darker than the strips.
-class _MirrorShade extends CustomPainter {
-  const _MirrorShade(this.w, this.h);
-  final double w, h;
-
-  static const dark = .35, fade = .07;
+/// The picture as big as fits in the 75% box (top-left, its own shape), flipped copies repeated
+/// outward to fill the screen, each starting at an edge like a reflection; then [_MirrorShade] (baked, over them).
+class _WidePainter extends CustomPainter {
+  const _WidePainter(this.image, this.opacity);
+  final ui.Image image;
+  final double opacity;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final all = Offset.zero & size, f = size.width * fade;
-    const ramp = [Color(0x00000000), Color(0xFF000000)];
-    canvas.saveLayer(all, Paint()..color = const Color(0xFF000000).withValues(alpha: dark));
-    canvas.drawRect(Rect.fromLTRB(w, 0, size.width, size.height), Paint()..shader = ui.Gradient.linear(Offset(w, 0), Offset(w + f, 0), ramp));
-    canvas.drawRect(Rect.fromLTRB(0, h, size.width, size.height), Paint()..shader = ui.Gradient.linear(Offset(0, h), Offset(0, h + f), ramp));
+    final aspect = image.width / image.height;
+    // As big as fits in the 75% box, keeping its shape.
+    final bw = size.width * _Wide.share, bh = size.height * _Wide.share;
+    final w = math.min(bw, bh * aspect), h = w / aspect;
+    // Copies across and down until the screen is full (a very narrow picture stops at 8).
+    final cols = math.min(8, (size.width / w).ceil()), rows = math.min(8, (size.height / h).ceil());
+    final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final dst = Rect.fromLTWH(0, 0, w, h);
+    final paint = Paint()
+      ..filterQuality = FilterQuality.low // a still, near 1:1 picture: cheap sampling looks the same
+      ..isAntiAlias = false;
+    if (opacity < 1) paint.color = Color.fromRGBO(0, 0, 0, opacity);
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    for (var j = 0; j < rows; j++) {
+      for (var i = 0; i < cols; i++) {
+        // Odd places are flipped: each copy mirrors its neighbour at the shared edge.
+        final fx = i.isOdd, fy = j.isOdd;
+        canvas.save();
+        canvas.translate(i * w + (fx ? w : 0), j * h + (fy ? h : 0));
+        if (fx || fy) canvas.scale(fx ? -1 : 1, fy ? -1 : 1);
+        canvas.drawImageRect(image, src, dst, paint);
+        canvas.restore();
+      }
+    }
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_MirrorShade old) => old.w != w || old.h != h;
+  bool shouldRepaint(_WidePainter old) => old.image != image || old.opacity != opacity;
+}
+
+/// [_WidePainter] then [_MirrorShadeFor]: what [_Wide] bakes.
+class _WideBake extends CustomPainter {
+  const _WideBake(this.image, this.opacity, this.dpr);
+  final ui.Image image;
+  final double opacity, dpr;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    _WidePainter(image, opacity).paint(canvas, size);
+    _MirrorShadeFor(image.width / image.height, dpr).paint(canvas, size);
+  }
+
+  @override
+  bool shouldRepaint(_WideBake old) => old.image != image || old.opacity != opacity || old.dpr != dpr;
+}
+
+/// [_MirrorShade] for a picture of this [aspect] (its size worked out as [_WidePainter] does), so
+/// the shade can be baked on its own.
+class _MirrorShadeFor extends CustomPainter {
+  const _MirrorShadeFor(this.aspect, this.dpr);
+  final double aspect, dpr;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bw = size.width * _Wide.share, bh = size.height * _Wide.share;
+    final w = math.min(bw, bh * aspect), h = w / aspect;
+    _MirrorShade(w, h, dpr).paint(canvas, size);
+  }
+
+  @override
+  bool shouldRepaint(_MirrorShadeFor old) => old.aspect != aspect || old.dpr != dpr;
+}
+
+/// Darkens the flipped copies (35%), clear at the picture's edge and full 7% of the screen width
+/// further out, so nothing marks where they begin. Drawn straight onto the screen, no layer: the
+/// two fades are one layer's alpha (a1 + a2 − a1·a2) × .35, so the corner (where they meet) is no
+/// darker than the strips. That corner's fade square is a mesh of per-vertex alphas; everything
+/// around it is a plain gradient or flat black.
+class _MirrorShade extends CustomPainter {
+  const _MirrorShade(this.w, this.h, [this.dpr = 1]);
+  final double w, h, dpr;
+
+  static const dark = .35, fade = .07;
+  static const _cell = 8; // the corner mesh's cell, in device pixels
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Worked in device pixels with every edge on a whole pixel: neighbouring pieces meet without
+    // seams or overlaps (no anti-aliasing), and no mesh edge runs through a pixel centre.
+    final wp = (w * dpr).roundToDouble(), hp = (h * dpr).roundToDouble();
+    final right = (size.width * dpr).roundToDouble(), bottom = (size.height * dpr).roundToDouble();
+    final f = (size.width * fade * dpr).roundToDouble();
+    canvas.save();
+    canvas.scale(1 / dpr);
+    final clear = Color.fromRGBO(0, 0, 0, 0), full = Color.fromRGBO(0, 0, 0, dark);
+    Paint flat() => Paint()
+      ..color = full
+      ..isAntiAlias = false;
+    // Right of the picture, beside the first row of copies: fades in going right.
+    if (wp < right) {
+      canvas.drawRect(
+        Rect.fromLTRB(wp, 0, right, math.min(hp, bottom)),
+        Paint()
+          ..shader = ui.Gradient.linear(Offset(wp, 0), Offset(wp + f, 0), [clear, full])
+          ..isAntiAlias = false,
+      );
+    }
+    // Below it: fades in going down.
+    if (hp < bottom) {
+      canvas.drawRect(
+        Rect.fromLTRB(0, hp, math.min(wp, right), bottom),
+        Paint()
+          ..shader = ui.Gradient.linear(Offset(0, hp), Offset(0, hp + f), [clear, full])
+          ..isAntiAlias = false,
+      );
+    }
+    if (wp >= right || hp >= bottom) {
+      canvas.restore();
+      return;
+    }
+    // The corner: past either fade it's flat; inside both, a mesh of the combined alpha.
+    if (wp + f < right) canvas.drawRect(Rect.fromLTRB(wp + f, hp, right, bottom), flat());
+    if (hp + f < bottom) canvas.drawRect(Rect.fromLTRB(wp, hp + f, math.min(wp + f, right), bottom), flat());
+    if (f > 0) {
+      final n = (f / _cell).ceil();
+      final pos = <Offset>[], col = <Color>[], idx = <int>[];
+      for (var y = 0; y <= n; y++) {
+        for (var x = 0; x <= n; x++) {
+          final px = math.min(x * _cell.toDouble(), f), py = math.min(y * _cell.toDouble(), f);
+          final u = px / f, v = py / f;
+          pos.add(Offset(wp + px, hp + py));
+          col.add(Color.fromRGBO(0, 0, 0, dark * (u + v - u * v)));
+        }
+      }
+      for (var y = 0; y < n; y++) {
+        for (var x = 0; x < n; x++) {
+          final a = y * (n + 1) + x, b = a + 1, c = a + n + 1, d = c + 1;
+          idx.addAll([a, b, c, b, d, c]);
+        }
+      }
+      final mesh = ui.Vertices(ui.VertexMode.triangles, pos, colors: col, indices: idx);
+      canvas.drawVertices(mesh, BlendMode.src, Paint()..isAntiAlias = false);
+      mesh.dispose();
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MirrorShade old) => old.w != w || old.h != h || old.dpr != dpr;
 }
 
 // ---- Title block ---------------------------------------------------------------
@@ -2159,7 +2387,9 @@ class _Card extends StatelessWidget {
     this.onFocus,
     this.moving = false,
     this.round = false,
+    this.glow = false,
   });
+  final bool glow; // Customise → Focus: glow (read once per row build, not per card)
   final bool moving; // being reordered: shows ‹ › and lifts a little higher
   final bool round; // an app as a circle (its icon), not a banner
   final TvItem item;
@@ -2182,29 +2412,28 @@ class _Card extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        // Plain Container: the ring toggles at once, no decoration lerp per focus change.
+        builder: (context, f) => Container(
           width: width,
           height: height,
           // Ring + glow only on the focused card (one blur on screen at a time).
           foregroundDecoration: TvRing(on: f, radius: radius),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
-            boxShadow: f && TvLook.str('focus') == 'glow' ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
+            boxShadow: f && glow ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null,
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(radius),
-            child: Stack(
+          // Every card rounds its own picture and shade with filled shapes: no ClipRRect.
+          child: Stack(
               fit: StackFit.expand,
               children: [
                 item.app != null
-                    ? (round ? TvAppIcon(app: item.app!, size: width) : TvAppArt(app: item.app!, width: width))
-                    : _ProgramArt(item: item, width: width, height: height),
+                    ? (round ? TvAppIcon(app: item.app!, size: width, round: true) : TvAppArt(app: item.app!, width: width, radius: radius))
+                    : _ProgramArt(item: item, width: width, height: height, radius: radius),
                 // Moving: arrows on both sides say "← → to slide me".
                 if (moving)
-                  const ColoredBox(
-                    color: Color(0x66000000),
-                    child: Row(
+                  DecoratedBox(
+                    decoration: BoxDecoration(color: const Color(0x66000000), borderRadius: BorderRadius.circular(radius)),
+                    child: const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Icon(Icons.chevron_left_rounded, size: 36, color: TvDS.ink),
@@ -2214,7 +2443,6 @@ class _Card extends StatelessWidget {
                   ),
               ],
             ),
-          ),
         ),
       ),
     );
@@ -2223,21 +2451,24 @@ class _Card extends StatelessWidget {
 
 /// A show / film card: its still (or a tinted title card), app name, progress along the bottom.
 class _ProgramArt extends StatelessWidget {
-  const _ProgramArt({required this.item, required this.width, required this.height});
+  const _ProgramArt({required this.item, required this.width, required this.height, required this.radius});
   final TvItem item;
-  final double width, height;
+  final double width, height, radius;
 
   @override
   Widget build(BuildContext context) {
     Widget picture;
+    // Decoded at the slot's size (physical px ≈ 2 × logical), not the picture's own.
+    final px = (width * 2).round();
+    ImageProvider sized(ImageProvider p) => p is ResizeImage || px <= 0 ? p : ResizeImage(p, width: px, policy: ResizeImagePolicy.fit);
     if (item.art != null) {
       // A saved picture that won't open: the title card, never a black box.
-      picture = Image(image: item.art!, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, _, _) => _titleCard());
+      picture = TvRoundImage(image: sized(item.art!), radius: radius, fit: BoxFit.cover, error: _titleCard());
     } else if (item.image != null) {
       final ready = TvApps.instance.imageNow(item.image!);
       picture = FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(item.image!),
-        builder: (context, s) => s.data == null ? _titleCard() : Image(image: s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+        builder: (context, s) => s.data == null ? _titleCard() : TvRoundImage(image: sized(s.data!), radius: radius, fit: BoxFit.cover, placeholder: _titleCard()),
       );
     } else {
       picture = _titleCard();
@@ -2247,11 +2478,7 @@ class _ProgramArt extends StatelessWidget {
       children: [
         picture,
         // Bottom shade so the name and progress read on any picture.
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xB3000000)], stops: [.45, 1]),
-          ),
-        ),
+        TvBaked(painter: _RRectGradient(_shade, radius), id: ('shade', radius)),
         Positioned(
           left: DS.s12,
           right: DS.s12,
@@ -2274,19 +2501,43 @@ class _ProgramArt extends StatelessWidget {
     );
   }
 
+  static const _shade = LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xB3000000)], stops: [.45, 1]);
+
   /// No still: the title set large on a tint from its name — still looks intentional.
-  Widget _titleCard() => DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [tvTint(item.title), TvDS.canvas]),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s12, 34),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(item.title, style: TvDS.panelTitle.copyWith(fontSize: 20, height: 1.1), maxLines: 2, overflow: TextOverflow.ellipsis),
+  Widget _titleCard() => Stack(
+    fit: StackFit.expand,
+    children: [
+      TvBaked(
+        painter: _RRectGradient(LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [tvTint(item.title), TvDS.canvas]), radius),
+        id: ('title', tvTint(item.title), radius),
       ),
+      _titleText(),
+    ],
+  );
+
+  Widget _titleText() => Padding(
+    padding: const EdgeInsets.fromLTRB(DS.s12, DS.s12, DS.s12, 34),
+    child: Align(
+      alignment: Alignment.topLeft,
+      child: Text(item.title, style: TvDS.panelTitle.copyWith(fontSize: 20, height: 1.1), maxLines: 2, overflow: TextOverflow.ellipsis),
     ),
   );
+}
+
+/// A gradient filling a rounded rectangle of the box — for [TvBaked] shades over rounded cards.
+class _RRectGradient extends CustomPainter {
+  const _RRectGradient(this.g, this.radius);
+  final Gradient g;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = Offset.zero & size;
+    canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(radius)), Paint()..shader = g.createShader(r));
+  }
+
+  @override
+  bool shouldRepaint(_RRectGradient o) => o.g != g || o.radius != radius;
 }
 
 // ---- Quick action chips ----------------------------------------------------------
@@ -2326,8 +2577,7 @@ class _QuickChip extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           height: 40 * k,
           padding: EdgeInsets.symmetric(horizontal: (edit || labels == 'never' || (labels == 'focus' && !f) ? DS.s12 : DS.s16) * k),
           decoration: BoxDecoration(
@@ -2388,8 +2638,7 @@ class _ResumeButton extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           height: 40,
           padding: const EdgeInsets.only(left: DS.s12, right: DS.s20),
           // Outlined at rest (a light ring over a soft shade, like the chips), white when focused.
@@ -2450,8 +2699,7 @@ class _MediaButton extends StatelessWidget {
         onSelect: onSelect,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
@@ -2497,8 +2745,7 @@ class _AllAppsTile extends StatelessWidget {
         onSelect: onSelect,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           width: width,
           height: height,
           decoration: BoxDecoration(

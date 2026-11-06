@@ -40,7 +40,7 @@ class _GoogleTv extends StatefulWidget {
 
 enum _GZone { top, hero, grid }
 
-class _GoogleTvState extends State<_GoogleTv> {
+class _GoogleTvState extends State<_GoogleTv> with WidgetsBindingObserver {
   // 1920×1080 px from the scan, halved (the TV draws 960×540 logical).
   static const _inset = 58.0; // left / right
   static const _cols = 5;
@@ -74,6 +74,7 @@ class _GoogleTvState extends State<_GoogleTv> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _restartAuto();
     WidgetsBinding.instance.addPostFrameCallback((_) => land());
   }
@@ -93,8 +94,21 @@ class _GoogleTvState extends State<_GoogleTv> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The hero only advances while the launcher is in front.
+    if (state == AppLifecycleState.resumed) {
+      if (_auto == null) _restartAuto();
+    } else {
+      _auto?.cancel();
+      _auto = null;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _auto?.cancel();
+    _auto = null;
     for (final n in [..._tabNodes.values, ..._iconNodes.values, ..._gridNodes.values, _heroNode]) {
       n.dispose();
     }
@@ -115,6 +129,7 @@ class _GoogleTvState extends State<_GoogleTv> {
   /// the hero is on screen, and not with reduced motion.
   void _restartAuto() {
     _auto?.cancel();
+    _auto = null;
     if (widget.hero.length < 2 || TvLook.str('motion') == 'reduced') return;
     _auto = Timer.periodic(_advance, (_) {
       if (!mounted || _zone == _GZone.grid || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
@@ -208,10 +223,14 @@ class _GoogleTvState extends State<_GoogleTv> {
           children: [
             const ColoredBox(color: Color(0xFF000000)),
             // ---- The hero's picture: dims away in the grid ----
-            AnimatedOpacity(
-              opacity: inGrid ? .18 : 1,
-              duration: _anim,
-              child: TvLook.str('backdrop') == 'off' ? const SizedBox.expand() : _Backdrop(item: item, glowOnly: TvLook.str('backdrop') == 'glow'),
+            // Full-opacity picture + a fading black overlay (no full-screen opacity layer): same look.
+            if (TvLook.str('backdrop') != 'off') _Backdrop(item: item, glowOnly: TvLook.str('backdrop') == 'glow'),
+            IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: inGrid ? .82 : 0,
+                duration: _anim,
+                child: const ColoredBox(color: Color(0xFF000000), child: SizedBox.expand()),
+              ),
             ),
             TvScrims(strength: TvLook.number('dim'), colour: const Color(0xFF000000), cinema: true),
 
@@ -522,8 +541,7 @@ class _GoogleTab extends StatelessWidget {
       onFocus: onFocus,
       onSelect: onSelect,
       onMove: onMove,
-      builder: (context, f) => AnimatedContainer(
-        duration: TvLook.anim(Motion.pressIn * 2),
+      builder: (context, f) => Container(
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: DS.s16),
         alignment: Alignment.center,
@@ -566,8 +584,7 @@ class _GoogleIcon extends StatelessWidget {
         onFocus: onFocus,
         onSelect: onSelect,
         onMove: onMove,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           width: 32,
           height: 32,
           decoration: BoxDecoration(color: f ? const Color(0xFFFFFFFF) : const Color(0x00FFFFFF), shape: BoxShape.circle),
@@ -612,7 +629,7 @@ class _GoogleTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(_r),
                 boxShadow: f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22, spreadRadius: 2)] : null,
               ),
-              child: ClipRRect(borderRadius: BorderRadius.circular(_r), child: _art()),
+              child: _art(context),
             ),
             SizedBox(
               height: _GoogleTvState._labelH,
@@ -631,23 +648,23 @@ class _GoogleTile extends StatelessWidget {
     ),
   );
 
-  Widget _art() {
+  Widget _art(BuildContext context) {
     final a = item.app;
     if (a == null) return _card(const Icon(Icons.apps_rounded, size: 30, color: TvDS.ink), tint: const Color(0xFF2B2F36));
     final ready = TvApps.instance.artNow(a.package);
     Widget view(TvArt? art) => art != null && art.banner
-        ? Image(image: art.image, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.medium)
+        ? TvRoundImage(image: tvSized(art.image, _w, context), radius: _r, fit: BoxFit.cover)
         : _card(
             art != null
-                ? Image(image: art.image, width: 34, height: 34, gaplessPlayback: true, filterQuality: FilterQuality.medium)
+                ? Image(image: tvSized(art.image, 34, context), width: 34, height: 34, gaplessPlayback: true, filterQuality: FilterQuality.low)
                 : Text(a.label.isEmpty ? '?' : a.label[0].toUpperCase(), style: TvDS.tileName.copyWith(fontSize: 22)),
           );
     return ready != null ? view(ready) : FutureBuilder<TvArt?>(future: TvApps.instance.art(a.package), builder: (context, s) => view(s.data));
   }
 
   /// No banner: the icon (or a letter) and the name, on a calm colour from the name.
-  Widget _card(Widget icon, {Color? tint}) => ColoredBox(
-    color: tint ?? Color.lerp(tvTint(item.title), const Color(0xFF000000), .35)!,
+  Widget _card(Widget icon, {Color? tint}) => DecoratedBox(
+    decoration: BoxDecoration(color: tint ?? Color.lerp(tvTint(item.title), const Color(0xFF000000), .35)!, borderRadius: BorderRadius.circular(_r)),
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

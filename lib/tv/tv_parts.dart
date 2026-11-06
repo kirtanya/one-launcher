@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -21,6 +24,177 @@ PageRoute<void> tvFade(Widget page) => PageRouteBuilder(
   reverseTransitionDuration: const Duration(milliseconds: 160),
   transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
 );
+
+/// Decodes [p] at its slot size (logical width × devicePixelRatio) instead of full resolution.
+ImageProvider tvSized(ImageProvider p, double logicalW, BuildContext c) {
+  final px = (logicalW * MediaQuery.devicePixelRatioOf(c)).round();
+  if (px <= 0 || p is ResizeImage) return p;
+  return ResizeImage(p, width: px, policy: ResizeImagePolicy.fit);
+}
+
+// ---- Cheap drawing on the TV's GPU ---------------------------------------------
+// Measured on a Mali-G31 TV (2026-11-06, SurfaceFlinger timestats + PERF_LOG raster times):
+// Impeller draws gradients with more than two plain stops through a slow shader (~10 ms for
+// one column-sized quad), and every ClipRRect / ClipOval is a stencil pass. So smooth shading is
+// painted once into a picture and drawn as a texture ([TvBaked]); rounded pictures are one
+// shape filled with the image ([TvRoundImage]), never a clip.
+
+final _baked = <Object, ui.Image>{}; // insertion order = least recently used first
+var _bakedBytes = 0;
+
+/// Paints [painter] once into a picture at screen resolution (cached by [id] + size) and draws
+/// that 1:1: one texture draw per frame instead of the gradients' shaders. Full resolution on
+/// purpose: Impeller dithers gradients, and a smaller bake scaled up shows the dither as dots.
+class TvBaked extends StatelessWidget {
+  const TvBaked({super.key, required this.painter, required this.id});
+
+  /// A gradient filling the box (same pixels as a [DecoratedBox] with it).
+  TvBaked.gradient(Gradient g, {Key? key}) : this(key: key, painter: _GradientPainter(g), id: g);
+
+  final CustomPainter painter;
+  final Object id; // everything the painting depends on, besides the size
+
+  static ui.Image _bake(CustomPainter p, Object id, Size size, double scale) {
+    final w = math.max(1, (size.width * scale).round()), h = math.max(1, (size.height * scale).round());
+    final key = (id, w, h);
+    final hit = _baked.remove(key);
+    if (hit != null) return _baked[key] = hit; // most recent last
+    final r = ui.PictureRecorder();
+    final c = Canvas(r)..scale(w / size.width, h / size.height);
+    p.paint(c, size);
+    final pic = r.endRecording();
+    final img = pic.toImageSync(w, h);
+    pic.dispose();
+    // Keep ~32 MB of these (a full screen is ~8 MB); pictures on screen hold their own clone.
+    _bakedBytes += w * h * 4;
+    while (_bakedBytes > 32 << 20 && _baked.isNotEmpty) {
+      final old = _baked.remove(_baked.keys.first)!;
+      _bakedBytes -= old.width * old.height * 4;
+      old.dispose();
+    }
+    return _baked[key] = img;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return IgnorePointer(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final size = c.biggest;
+          if (!size.isFinite || size.isEmpty) return const SizedBox.shrink();
+          // RawImage takes ownership of what it's given: hand it a clone, the cache keeps its own.
+          return RawImage(image: _bake(painter, id, size, dpr).clone(), width: size.width, height: size.height, fit: BoxFit.fill, filterQuality: FilterQuality.none);
+        },
+      ),
+    );
+  }
+}
+
+class _GradientPainter extends CustomPainter {
+  const _GradientPainter(this.g);
+  final Gradient g;
+
+  @override
+  void paint(Canvas canvas, Size size) => canvas.drawRect(Offset.zero & size, Paint()..shader = g.createShader(Offset.zero & size));
+
+  @override
+  bool shouldRepaint(_GradientPainter o) => o.g != g;
+}
+
+/// [image] drawn to fill its box ([fit], centred) with rounded corners — one rounded rect filled
+/// with the picture, no clip layer. A circle: radius ≥ half the side. Shows [placeholder] until
+/// the picture is ready (and [error] or the placeholder if it fails); keeps the old picture while a
+/// new one loads.
+class TvRoundImage extends StatefulWidget {
+  const TvRoundImage({super.key, required this.image, required this.radius, this.fit = BoxFit.cover, this.placeholder, this.error});
+  final ImageProvider image;
+  final double radius;
+  final BoxFit fit;
+  final Widget? placeholder, error;
+
+  @override
+  State<TvRoundImage> createState() => _TvRoundImageState();
+}
+
+class _TvRoundImageState extends State<TvRoundImage> {
+  ImageStream? _stream;
+  ImageInfo? _info;
+  bool _failed = false;
+  late final _listener = ImageStreamListener(
+    (info, _) {
+      if (!mounted) return info.dispose();
+      setState(() {
+        _info?.dispose();
+        _info = info;
+        _failed = false;
+      });
+    },
+    onError: (_, _) {
+      if (mounted) setState(() => _failed = true);
+    },
+  );
+
+  void _resolve() {
+    final s = widget.image.resolve(createLocalImageConfiguration(context));
+    if (s.key == _stream?.key) return;
+    _stream?.removeListener(_listener);
+    _stream = s..addListener(_listener);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(TvRoundImage old) {
+    super.didUpdateWidget(old);
+    if (old.image != widget.image) _resolve();
+  }
+
+  @override
+  void dispose() {
+    _stream?.removeListener(_listener);
+    _info?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = _info;
+    if (info == null) return (_failed ? widget.error : null) ?? widget.placeholder ?? const SizedBox.expand();
+    return CustomPaint(painter: _RoundImagePainter(info.image, widget.radius, widget.fit), child: const SizedBox.expand());
+  }
+}
+
+class _RoundImagePainter extends CustomPainter {
+  const _RoundImagePainter(this.image, this.radius, this.fit);
+  final ui.Image image;
+  final double radius;
+  final BoxFit fit;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final box = Offset.zero & size;
+    final img = Size(image.width.toDouble(), image.height.toDouble());
+    final fs = applyBoxFit(fit, img, size);
+    final src = Alignment.center.inscribe(fs.source, Offset.zero & img);
+    final dst = Alignment.center.inscribe(fs.destination, box);
+    final sx = dst.width / src.width, sy = dst.height / src.height;
+    final m = Matrix4.identity()
+      ..translateByDouble(dst.left - src.left * sx, dst.top - src.top * sy, 0, 1)
+      ..scaleByDouble(sx, sy, 1, 1);
+    final paint = Paint()
+      ..shader = ImageShader(image, TileMode.clamp, TileMode.clamp, m.storage, filterQuality: FilterQuality.low)
+      ..isAntiAlias = true;
+    canvas.drawRRect(RRect.fromRectAndRadius(dst.intersect(box), Radius.circular(radius)), paint);
+  }
+
+  @override
+  bool shouldRepaint(_RoundImagePainter o) => o.image != image || o.radius != radius || o.fit != fit;
+}
 
 // ---- Tiles -------------------------------------------------------------------
 
@@ -48,8 +222,7 @@ class TvAppTile extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: TvDS.rowPadTop),
-              AnimatedContainer(
-                duration: Motion.pressIn * 2,
+              Container(
                 width: TvDS.tileW,
                 height: TvDS.tileH,
                 // Ring + glow only on the focused tile (one blur on screen at a time). Tiles: the
@@ -59,10 +232,7 @@ class TvAppTile extends StatelessWidget {
                   borderRadius: TvMetro.corners(TvDS.rTile),
                   boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 18)] : null),
                 ),
-                child: ClipRRect(
-                  borderRadius: TvMetro.corners(TvDS.rTile),
-                  child: TvAppArt(app: app, width: TvDS.tileW),
-                ),
+                child: TvAppArt(app: app, width: TvDS.tileW, radius: TvMetro.radius(TvDS.rTile)),
               ),
               const SizedBox(height: DS.s12),
               // Name under the focused tile — banners are just artwork; icon tiles already show it.
@@ -83,19 +253,25 @@ class TvAppTile extends StatelessWidget {
 /// An app as a circle (Customise → App cards → Circle): its own icon filling it, or its initial
 /// on a quiet disc until the icon arrives. The round clip comes from the card.
 class TvAppIcon extends StatelessWidget {
-  const TvAppIcon({super.key, required this.app, required this.size});
+  const TvAppIcon({super.key, required this.app, required this.size, this.round = false});
   final AppEntry app;
   final double size;
+  final bool round; // a circle drawn as one shape (no ClipOval needed around it)
 
   @override
   Widget build(BuildContext context) {
     final ready = TvApps.instance.iconNow(app.package);
-    Widget view(ImageProvider? icon) => ColoredBox(
+    Widget letter() => Text(app.label.isEmpty ? '?' : app.label[0].toUpperCase(), style: TvDS.tileName.copyWith(fontSize: size * .36));
+    Widget roundView(ImageProvider? icon) => DecoratedBox(
+      decoration: BoxDecoration(color: TvDS.surface, shape: BoxShape.circle),
+      child: icon != null ? TvRoundImage(image: tvSized(icon, size, context), radius: size / 2) : Center(child: letter()),
+    );
+    Widget view(ImageProvider? icon) => round ? roundView(icon) : ColoredBox(
       color: TvDS.surface,
       child: Center(
         child: icon != null
             // TV app icons are squares with their own background: they fill the circle, which crops them.
-            ? Image(image: icon, width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.medium)
+            ? Image(image: tvSized(icon, size, context), width: size, height: size, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.low)
             : Text(app.label.isEmpty ? '?' : app.label[0].toUpperCase(), style: TvDS.tileName.copyWith(fontSize: size * .36)),
       ),
     );
@@ -107,9 +283,12 @@ class TvAppIcon extends StatelessWidget {
 }
 
 class TvAppArt extends StatelessWidget {
-  const TvAppArt({super.key, required this.app, required this.width});
+  const TvAppArt({super.key, required this.app, required this.width, this.radius = 0});
   final AppEntry app;
   final double width;
+
+  /// Rounded corners drawn into the picture itself (no ClipRRect stencil pass); 0 = square.
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -118,25 +297,31 @@ class TvAppArt extends StatelessWidget {
       width: width,
       height: width * 9 / 16,
       child: ready != null
-          ? _view(ready)
-          : FutureBuilder<TvArt?>(future: TvApps.instance.art(app.package), builder: (context, s) => s.data != null ? _view(s.data!) : _fallback(null)),
+          ? _view(context, ready)
+          : FutureBuilder<TvArt?>(future: TvApps.instance.art(app.package), builder: (context, s) => s.data != null ? _view(context, s.data!) : _fallback(context, null)),
     );
   }
 
-  Widget _view(TvArt art) =>
-      art.banner ? Image(image: art.image, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.medium) : _fallback(art.image);
+  Widget _view(BuildContext context, TvArt art) {
+    if (!art.banner) return _fallback(context, art.image);
+    final img = tvSized(art.image, width, context);
+    return radius > 0 ? TvRoundImage(image: img, radius: radius) : Image(image: img, fit: BoxFit.cover, gaplessPlayback: true, filterQuality: FilterQuality.low);
+  }
 
-  Widget _fallback(ImageProvider? icon) {
+  Widget _fallback(BuildContext context, ImageProvider? icon) {
     final s = width / TvDS.tileW;
-    return ColoredBox(
-      color: TvMetro.on ? TvMetro.tileFill : TvDS.surface, // Tiles: an accent tile
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: TvMetro.on ? TvMetro.tileFill : TvDS.surface, // Tiles: an accent tile
+        borderRadius: radius > 0 ? BorderRadius.circular(radius) : null,
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox.square(
             dimension: 44 * s,
             child: icon != null
-                ? Image(image: icon, gaplessPlayback: true, filterQuality: FilterQuality.medium)
+                ? Image(image: tvSized(icon, 44 * s, context), gaplessPlayback: true, filterQuality: FilterQuality.low)
                 : DecoratedBox(
                     decoration: TvMetro.on
                         ? BoxDecoration(color: Colors.white24, borderRadius: TvMetro.corners(0))
@@ -237,7 +422,7 @@ Future<void> showTvPanel(
                             if (leading != null) ...[
                               Align(
                                 alignment: Alignment.centerLeft,
-                                child: ClipRRect(borderRadius: TvMetro.corners(TvDS.rTile), child: leading),
+                                child: _roundLead(leading, TvMetro.radius(TvDS.rTile)),
                               ),
                               const SizedBox(height: DS.s16),
                             ],
@@ -386,6 +571,17 @@ class _TvRingPainter extends BoxPainter {
   }
 }
 
+/// [w] with rounded corners: when it is app artwork (bare, or in a SizedBox) the radius goes into
+/// the picture ([TvAppArt.radius]); anything else keeps the ClipRRect.
+Widget _roundLead(Widget w, double r) {
+  if (w is TvAppArt) return TvAppArt(app: w.app, width: w.width, radius: r);
+  if (w is SizedBox && w.child is TvAppArt) {
+    final a = w.child! as TvAppArt;
+    return SizedBox(width: w.width, height: w.height, child: TvAppArt(app: a.app, width: a.width, radius: r));
+  }
+  return ClipRRect(borderRadius: BorderRadius.circular(r), child: w);
+}
+
 /// A calm colour from a name (same name → same colour): used where there's no artwork.
 Color tvTint(String name) => HSLColor.fromAHSL(1, (name.hashCode % 360).abs().toDouble(), .38, .42).toColor();
 
@@ -402,96 +598,77 @@ class TvScrims extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // All gradients baked once into one picture (a texture draw per frame, no gradient shaders);
+    // re-baked only when the strength / colour / look change.
     final c = colour ?? TvDS.canvas;
-    double a(double x) => (x * strength).clamp(0, 1).toDouble();
-    if (cinema) {
-      return IgnorePointer(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    c.withValues(alpha: a(.88)),
-                    c.withValues(alpha: a(.66)),
-                    c.withValues(alpha: a(.24)),
-                    c.withValues(alpha: 0),
-                  ],
-                  stops: const [0, .26, .5, .7],
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    c.withValues(alpha: a(.5)),
-                    c.withValues(alpha: 0),
-                    c.withValues(alpha: 0),
-                    c.withValues(alpha: a(.72)),
-                    c.withValues(alpha: a(.94)),
-                  ],
-                  stops: const [0, .22, .36, .6, .82],
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(.3, -.3),
-                  radius: 1.25,
-                  colors: [
-                    c.withValues(alpha: 0),
-                    c.withValues(alpha: 0),
-                    c.withValues(alpha: a(.45)),
-                  ],
-                  stops: const [0, .55, 1],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
     return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  c,
-                  c.withValues(alpha: (.92 * strength).clamp(0, 1)),
-                  c.withValues(alpha: (.35 * strength).clamp(0, 1)),
-                  c.withValues(alpha: 0),
-                ],
-                stops: const [0, .3, .55, .75],
-              ),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  TvDS.scrim.withValues(alpha: (.35 * strength).clamp(0, 1)),
-                  c.withValues(alpha: 0),
-                  c.withValues(alpha: (.85 * strength).clamp(0, 1)),
-                  c,
-                ],
-                stops: const [0, .2, .58, .74],
-              ),
-            ),
-          ),
-        ],
+      child: RepaintBoundary(
+        child: TvBaked(painter: _ScrimPainter(strength, c, cinema), id: ('scrims', strength, c.toARGB32(), cinema)),
       ),
     );
   }
+}
+
+class _ScrimPainter extends CustomPainter {
+  _ScrimPainter(this.strength, this.c, this.cinema);
+  final double strength;
+  final Color c;
+  final bool cinema;
+
+  double a(double x) => (x * strength).clamp(0, 1).toDouble();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    void fill(Gradient g) => canvas.drawRect(rect, Paint()..shader = g.createShader(rect));
+    if (cinema) {
+      fill(
+        LinearGradient(
+          colors: [c.withValues(alpha: a(.88)), c.withValues(alpha: a(.66)), c.withValues(alpha: a(.24)), c.withValues(alpha: 0)],
+          stops: const [0, .26, .5, .7],
+        ),
+      );
+      fill(
+        LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [c.withValues(alpha: a(.5)), c.withValues(alpha: 0), c.withValues(alpha: 0), c.withValues(alpha: a(.72)), c.withValues(alpha: a(.94))],
+          stops: const [0, .22, .36, .6, .82],
+        ),
+      );
+      fill(
+        RadialGradient(
+          center: const Alignment(.3, -.3),
+          radius: 1.25,
+          colors: [c.withValues(alpha: 0), c.withValues(alpha: 0), c.withValues(alpha: a(.45))],
+          stops: const [0, .55, 1],
+        ),
+      );
+      return;
+    }
+    fill(
+      LinearGradient(
+        colors: [c, c.withValues(alpha: (.92 * strength).clamp(0, 1)), c.withValues(alpha: (.35 * strength).clamp(0, 1)), c.withValues(alpha: 0)],
+        stops: const [0, .3, .55, .75],
+      ),
+    );
+    fill(
+      LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          TvDS.scrim.withValues(alpha: (.35 * strength).clamp(0, 1)),
+          c.withValues(alpha: 0),
+          c.withValues(alpha: (.85 * strength).clamp(0, 1)),
+          c,
+        ],
+        stops: const [0, .2, .58, .74],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ScrimPainter o) => o.strength != strength || o.c != c || o.cinema != cinema;
 }
 
 /// A pill button: icon (or a small picture) + label (+ quiet detail); white when focused.
@@ -525,7 +702,7 @@ class TvActionPill extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (leading != null)
-                      ClipRRect(borderRadius: BorderRadius.circular(6), child: leading)
+                      _roundLead(leading!, 6)
                     else if (icon != null)
                       Icon(icon, size: 22, color: f ? TvDS.onLight : TvDS.ink),
                     const SizedBox(width: DS.s12),
@@ -554,7 +731,7 @@ class TvActionPill extends StatelessWidget {
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (leading != null) ClipRRect(borderRadius: TvMetro.corners(0), child: leading) else if (icon != null) Icon(icon, size: 22, color: Colors.white),
+        if (leading != null) _roundLead(leading!, TvMetro.radius(0)) else if (icon != null) Icon(icon, size: 22, color: Colors.white),
         const SizedBox(width: DS.s12),
         Text(TvMetro.cased(label), style: TvDS.panelRow.copyWith(fontSize: 15, color: Colors.white)),
         if (detail != null) ...[

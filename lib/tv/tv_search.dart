@@ -323,14 +323,19 @@ class _TvSearchState extends State<TvSearch> {
       borderRadius: BorderRadius.circular(6),
       child: SizedBox.square(dimension: 26, child: w),
     );
+    // 26 px chips: a tiny clip, but a favicon needs none at all.
     if (id == 'apps') return Icon(Icons.apps_rounded, size: 24, color: ink);
     if (byPkg[_chipApps[id]] case final app?) return clip(TvAppIcon(app: app, size: 26));
     if (_chipSites[id] case final site?) {
-      return clip(
-        FutureBuilder<MemoryImage?>(
+      return SizedBox.square(
+        dimension: 26,
+        child: FutureBuilder<MemoryImage?>(
           future: TvApps.instance.image('https://www.google.com/s2/favicons?domain=$site&sz=128', width: 64).catchError((Object _) => null),
-          builder: (context, snap) =>
-              snap.data == null ? ColoredBox(color: tvTint(site)) : Image(image: snap.data!, fit: BoxFit.cover, filterQuality: FilterQuality.medium),
+          builder: (context, snap) => snap.data == null
+              ? DecoratedBox(
+                  decoration: BoxDecoration(color: tvTint(site), borderRadius: BorderRadius.circular(6)),
+                )
+              : TvRoundImage(image: snap.data!, radius: 6),
         ),
       );
     }
@@ -819,17 +824,15 @@ class _TvSearchState extends State<TvSearch> {
                       ),
                     ),
                   ),
-                  const IgnorePointer(
+                  IgnorePointer(
                     child: SizedBox(
                       height: fade,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0xFF000000), Color(0xB3000000), Color(0x00000000)],
-                            stops: [0, .5, 1],
-                          ),
+                      child: TvBaked.gradient(
+                        const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xFF000000), Color(0xB3000000), Color(0x00000000)],
+                          stops: [0, .5, 1],
                         ),
                       ),
                     ),
@@ -1002,18 +1005,15 @@ class _VideoCard extends StatelessWidget {
                   borderRadius: TvMetro.corners(TvDS.rTile),
                   boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
                 ),
-                child: ClipRRect(
-                  borderRadius: TvMetro.corners(TvDS.rTile),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ShowImage(urls: [if (v.thumb.isNotEmpty) v.thumb], decodeWidth: 448, fallbackTitle: v.title),
-                      if (v.live)
-                        Positioned(right: DS.s8, bottom: DS.s8, child: badge('LIVE', const Color(0xFFCC0000)))
-                      else if (v.length != null)
-                        Positioned(right: DS.s8, bottom: DS.s8, child: badge(v.length!, const Color(0xCC000000))),
-                    ],
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ShowImage(urls: [if (v.thumb.isNotEmpty) v.thumb], decodeWidth: 448, fallbackTitle: v.title, radius: TvMetro.radius(TvDS.rTile)),
+                    if (v.live)
+                      Positioned(right: DS.s8, bottom: DS.s8, child: badge('LIVE', const Color(0xFFCC0000)))
+                    else if (v.length != null)
+                      Positioned(right: DS.s8, bottom: DS.s8, child: badge(v.length!, const Color(0xCC000000))),
+                  ],
                 ),
               ),
               const SizedBox(height: DS.s12),

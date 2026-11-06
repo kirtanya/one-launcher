@@ -302,7 +302,23 @@ class TvTilesStartState extends State<TvTilesStart> {
   void _pageTo(bool top) {
     if (!_page.hasClients) return;
     final y = top ? 0.0 : (_gridTop - TvDS.safe.top).clamp(0.0, _page.position.maxScrollExtent);
-    if ((_page.offset - y).abs() > 1) _page.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 380)), curve: Curves.easeOutCubic);
+    if ((_page.offset - y).abs() <= 1) return;
+    if (_rapid()) {
+      _page.jumpTo(y);
+    } else {
+      _page.animateTo(y, duration: TvLook.anim(const Duration(milliseconds: 380)), curve: Curves.easeOutCubic);
+    }
+  }
+
+  DateTime _lastFocusMove = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Held D-pad: focus moves < 150 ms apart jump instead of animating (a queue of scroll
+  /// animations is what drops frames on a weak GPU).
+  bool _rapid() {
+    final now = DateTime.now();
+    final r = now.difference(_lastFocusMove).inMilliseconds < 150;
+    _lastFocusMove = now;
+    return r;
   }
 
   /// Slide the item's own row (sideways only) so it sits comfortably in view.
@@ -310,7 +326,7 @@ class TvTilesStartState extends State<TvTilesStart> {
     final ro = ctx.findRenderObject();
     final pos = Scrollable.maybeOf(ctx)?.position;
     if (ro == null || pos == null || pos.axis != Axis.horizontal) return;
-    pos.ensureVisible(ro, alignment: .3, duration: TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic);
+    pos.ensureVisible(ro, alignment: .3, duration: _rapid() ? Duration.zero : TvLook.anim(const Duration(milliseconds: 320)), curve: Curves.easeOutCubic);
   }
 
   bool _moveQuick(int i, AxisDirection d) {
@@ -570,24 +586,20 @@ class TvTilesStartState extends State<TvTilesStart> {
     final a = TvMetro.accent;
     switch (TvLook.str('tileBg')) {
       case 'glow':
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              center: const Alignment(-.6, -.4),
-              radius: 1.3,
-              colors: [a.withValues(alpha: .75), a.withValues(alpha: .18), TvDS.canvas],
-              stops: const [0, .55, 1],
-            ),
+        return TvBaked.gradient(
+          RadialGradient(
+            center: const Alignment(-.6, -.4),
+            radius: 1.3,
+            colors: [a.withValues(alpha: .75), a.withValues(alpha: .18), TvDS.canvas],
+            stops: const [0, .55, 1],
           ),
         );
       case 'gradient':
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color.lerp(a, Colors.black, .35)!, Color.lerp(a, Colors.black, .82)!],
-            ),
+        return TvBaked.gradient(
+          LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color.lerp(a, Colors.black, .35)!, Color.lerp(a, Colors.black, .82)!],
           ),
         );
       case 'accent':
@@ -602,11 +614,9 @@ class TvTilesStartState extends State<TvTilesStart> {
           switchOutCurve: Curves.easeIn,
           layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
           child: art == null
-              ? DecoratedBox(
+              ? TvBaked.gradient(
+                  RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .45), TvDS.canvas]),
                   key: const ValueKey('glow'),
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .45), TvDS.canvas]),
-                  ),
                 )
               : TvArtWash(key: ValueKey(art), art: art),
         );
@@ -614,16 +624,12 @@ class TvTilesStartState extends State<TvTilesStart> {
         // The artwork of what you're watching, dimmed; no artwork: the accent glow.
         final art = widget.resume?.art ?? widget.resumeCards.map((r) => r.info.art).nonNulls.firstOrNull;
         if (art == null) {
-          return DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .55), TvDS.canvas]),
-            ),
-          );
+          return TvBaked.gradient(RadialGradient(center: const Alignment(.6, -.6), radius: 1.2, colors: [a.withValues(alpha: .55), TvDS.canvas]));
         }
         return Stack(
           fit: StackFit.expand,
           children: [
-            Image(image: art, fit: BoxFit.cover, gaplessPlayback: true),
+            _slotImage(art, fit: BoxFit.cover),
             const ColoredBox(color: Color(0xB3000000)),
           ],
         );
@@ -896,8 +902,7 @@ class TvTilesStartState extends State<TvTilesStart> {
         );
         // Focus: Metro's frame (Customise → Tiles → Focus / Focus colour), a small lift, and
         // (Tilt on focus) a slight lean. Moving: always the white frame.
-        tile = AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        tile = Container(
           decoration: BoxDecoration(borderRadius: radius, boxShadow: _shadow(f)),
           foregroundDecoration: moving
               ? BoxDecoration(
@@ -940,7 +945,7 @@ class TvTilesStartState extends State<TvTilesStart> {
   Widget _appIcon(AppEntry app, {required Widget fallback}) {
     final ready = TvApps.instance.iconNow(app.package);
     Widget icon(ImageProvider p) {
-      final img = Image(image: p, gaplessPlayback: true);
+      final img = _slotImage(p);
       return TvLook.str('tileIconStyle') == 'white' ? ColorFiltered(colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn), child: img) : img;
     }
 
@@ -1019,17 +1024,15 @@ class TvTilesStartState extends State<TvTilesStart> {
       return Stack(
         fit: StackFit.expand,
         children: [
-          Image(image: banner.image, fit: BoxFit.cover, gaplessPlayback: true),
+          _slotImage(banner.image, fit: BoxFit.cover),
           if (names)
             Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: top ? Alignment.bottomCenter : Alignment.topCenter,
-                    end: top ? Alignment.topCenter : Alignment.bottomCenter,
-                    colors: const [Color(0x00000000), Color(0x99000000)],
-                    stops: const [.55, 1],
-                  ),
+              child: TvBaked.gradient(
+                LinearGradient(
+                  begin: top ? Alignment.bottomCenter : Alignment.topCenter,
+                  end: top ? Alignment.topCenter : Alignment.bottomCenter,
+                  colors: const [Color(0x00000000), Color(0x99000000)],
+                  stops: const [.55, 1],
                 ),
               ),
             ),
@@ -1153,21 +1156,28 @@ class _ResumeFace extends StatefulWidget {
   State<_ResumeFace> createState() => _ResumeFaceState();
 }
 
-class _ResumeFaceState extends State<_ResumeFace> {
+class _ResumeFaceState extends State<_ResumeFace> with WidgetsBindingObserver {
   Timer? _flip;
   bool _back = false;
+  bool _active = true;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _active = state == AppLifecycleState.resumed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _active = (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
     // Customise → Tiles → Live tile speed.
     _flip = Timer.periodic(Duration(milliseconds: (TvLook.number('tileFlip') * 1000).round()), (_) {
-      if (mounted && widget.live && widget.info?.art != null) setState(() => _back = !_back);
+      if (mounted && _active && widget.live && widget.info?.art != null) setState(() => _back = !_back);
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _flip?.cancel();
     super.dispose();
   }
@@ -1209,9 +1219,19 @@ class _ResumeFaceState extends State<_ResumeFace> {
           if (i.app != null) Text(TvMetro.cased(i.app!), style: TvDS.tileName.copyWith(color: Colors.white70)),
           if (i.progress != null) ...[
             const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(math.min(2, DS.metroRadius)),
-              child: LinearProgressIndicator(value: i.progress, minHeight: 3, color: Colors.white, backgroundColor: Colors.white24),
+            SizedBox(
+              height: 3,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(math.min(2, DS.metroRadius))),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: i.progress!.clamp(0.0, 1.0),
+                    heightFactor: 1,
+                    child: DecoratedBox(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(math.min(2, DS.metroRadius)))),
+                  ),
+                ),
+              ),
             ),
           ],
         ],
@@ -1222,10 +1242,10 @@ class _ResumeFaceState extends State<_ResumeFace> {
         : Stack(
             fit: StackFit.expand,
             children: [
-              Image(image: i.art!, fit: BoxFit.cover, gaplessPlayback: true),
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
+              _slotImage(i.art!, fit: BoxFit.cover),
+              Positioned.fill(
+                child: TvBaked.gradient(
+                  const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [Color(0x00000000), Color(0xB3000000)],
@@ -1249,7 +1269,7 @@ class _ResumeFaceState extends State<_ResumeFace> {
           transform: Matrix4.identity()
             ..setEntry(3, 2, .0015)
             ..rotateX((1 - a.value) * math.pi / 2),
-          child: Opacity(opacity: a.value < .5 ? 0 : 1, child: child),
+          child: a.value < .5 ? const SizedBox.shrink() : child,
         ),
       ),
       child: KeyedSubtree(key: ValueKey(_back), child: _back ? details : art),
@@ -1338,9 +1358,9 @@ class TvArtWash extends StatelessWidget {
         ),
       ),
       const ColoredBox(color: Color(0x8C000000)),
-      const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
+      Positioned.fill(
+        child: TvBaked.gradient(
+          const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [Color(0x66000000), Color(0x00000000), Color(0xB3000000)],
@@ -1348,11 +1368,26 @@ class TvArtWash extends StatelessWidget {
           ),
         ),
       ),
-      const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Color(0x80000000), Color(0x00000000)], stops: [0, .5]),
-        ),
+      Positioned.fill(
+        child: TvBaked.gradient(const LinearGradient(colors: [Color(0x80000000), Color(0x00000000)], stops: [0, .5])),
       ),
     ],
   );
 }
+
+/// An image decoded at its slot's physical size (not the artwork's full size): logical slot ×
+/// devicePixelRatio, `fit` policy, never upscaled. Cover slots may be taller than the art is
+/// wide, so the decode width covers a 16:9 picture filling the slot's height too.
+Widget _slotImage(ImageProvider p, {BoxFit? fit}) => LayoutBuilder(
+  builder: (context, k) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final ok = k.hasBoundedWidth && k.hasBoundedHeight && k.maxWidth > 0 && k.maxHeight > 0;
+    final w = ok ? math.max(k.maxWidth, fit == BoxFit.cover ? k.maxHeight * 16 / 9 : 0.0) : 960.0;
+    return Image(
+      image: ResizeImage(p, width: math.max(1, (w * dpr).round()), policy: ResizeImagePolicy.fit),
+      fit: fit,
+      filterQuality: FilterQuality.low,
+      gaplessPlayback: true,
+    );
+  },
+);

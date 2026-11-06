@@ -66,6 +66,27 @@ object ArtFetch {
         null
     }
 
+    /**
+     * [uri]'s picture as JPEG bytes at most [maxWidth] wide. A source that already is a JPEG no wider
+     * than that is returned untouched (no decode / re-encode). Call off the main thread.
+     */
+    fun loadJpeg(context: Context, uri: String, maxWidth: Int, quality: Int): ByteArray? = try {
+        val raw = open(context, Uri.parse(uri))?.use { it.readBytes() }
+        if (raw == null) null
+        else if (raw.size > 3 && raw[0] == 0xFF.toByte() && raw[1] == 0xD8.toByte() && jpegWidth(raw) in 1..maxWidth) raw
+        else decode(raw, maxWidth)?.let { bmp -> java.io.ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, quality, it) }.toByteArray() }
+            .also { if (it == null) Log.w(TAG, "no picture from $uri (${raw.size} bytes)") }
+    } catch (e: Throwable) {
+        Log.w(TAG, "couldn't load $uri: $e")
+        null
+    }
+
+    private fun jpegWidth(raw: ByteArray): Int {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(raw, 0, raw.size, o)
+        return o.outWidth
+    }
+
     /** Decodes JPEG / PNG / WebP (BitmapFactory), then anything else the system knows (HEIF, AVIF…). */
     fun decode(raw: ByteArray, maxWidth: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

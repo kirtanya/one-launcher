@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'one_stream.dart';
@@ -16,9 +17,10 @@ import 'ui/theme.dart';
 /// Same design language as the phone app, laid out for a TV and a remote.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (const bool.fromEnvironment('PERF_LOG')) _logFrameTimes();
   // A small TV (32-bit, little memory): keep decoded pictures to what's on screen and near it.
   PaintingBinding.instance.imageCache
-    ..maximumSize = 80
+    ..maximumSize = 60
     ..maximumSizeBytes = 48 << 20;
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   TvApps.instance.init();
@@ -28,8 +30,32 @@ Future<void> main() async {
   Prefs.homeViewDefault = 'spotlight'; // a fresh TV install opens on Spotlight, small cards (user, 2026-10-31)
   final prefs = await Prefs.load();
   final theme = OneTheme(prefs); // same colour engine as the phone (Customise → Colours)
-  await theme.refreshSystem();
+  await theme.refreshSystem().timeout(const Duration(milliseconds: 200), onTimeout: () {}); // never hold the first frame
   runApp(OneLauncherTv(prefs: prefs, theme: theme));
+}
+
+/// Measuring builds only (`--dart-define=PERF_LOG=true`, read by tool/tv_jank.sh): every ~2 s, log
+/// frame count and p50/p90 of build (Dart/UI thread) and raster (GPU thread) to logcat.
+void _logFrameTimes() {
+  final build = <int>[], raster = <int>[];
+  var last = DateTime.now();
+  SchedulerBinding.instance.addTimingsCallback((timings) {
+    for (final t in timings) {
+      build.add(t.buildDuration.inMicroseconds);
+      raster.add(t.rasterDuration.inMicroseconds);
+    }
+    if (DateTime.now().difference(last).inMilliseconds < 2000 || build.isEmpty) return;
+    last = DateTime.now();
+    String stats(List<int> v) {
+      final s = [...v]..sort();
+      String at(double q) => (s[(s.length * q).floor().clamp(0, s.length - 1)] / 1000).toStringAsFixed(1);
+      return 'p50=${at(.5)} p90=${at(.9)} max=${(s.last / 1000).toStringAsFixed(1)}';
+    }
+
+    debugPrint('PERF frames=${build.length} build[${stats(build)}] raster[${stats(raster)}]');
+    build.clear();
+    raster.clear();
+  });
 }
 
 class OneLauncherTv extends StatefulWidget {

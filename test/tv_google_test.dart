@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:one_launcher/main_tv.dart';
 import 'package:one_launcher/prefs.dart';
 import 'package:one_launcher/tv/tv_apps.dart';
+import 'package:one_launcher/tv/tv_parts.dart';
 import 'package:one_launcher/tv/tv_quick_settings.dart';
 import 'package:one_launcher/tv/tv_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,7 +46,7 @@ Future<Prefs> _start(WidgetTester tester) async {
 }
 
 /// The grid tile's focus: outline + glow only — its size never changes (user, 2026-11-06).
-Size _cardSize(WidgetTester t, int i) => t.getSize(find.descendant(of: find.byKey(ValueKey('gtv:$i')), matching: find.byType(ClipRRect)).first);
+Size _cardSize(WidgetTester t, int i) => t.getSize(find.descendant(of: find.byKey(ValueKey('gtv:$i')), matching: find.byWidgetPredicate((w) => w is Container && w.foregroundDecoration is TvRing)).first);
 
 void main() {
   testWidgets('TV Google TV: lands on the Home tab; ↓ hero grows, ↓ the apps grid scrolls row by row, Back lands', (tester) async {

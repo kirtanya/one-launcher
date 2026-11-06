@@ -51,6 +51,24 @@ class TvApps {
 
   final _demoColours = <String, Color>{};
 
+  static const _cap = 40;
+
+  static bool _sameBytes(Uint8List a, Uint8List b) {
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Keeps [ready] (and its matching [futures]) to the newest [_cap] entries.
+  static void _trim<T>(Map<String, Future<T?>> futures, Map<String, Object> ready) {
+    while (ready.length > _cap) {
+      final k = ready.keys.first;
+      ready.remove(k);
+      futures.remove(k);
+    }
+  }
+
   void init() {
     if (demo) return;
     refreshShows();
@@ -64,8 +82,21 @@ class TvApps {
         case 'quickSettings':
           onQuickSettings?.call();
         case 'appsChanged':
-          _art.clear();
-          _ready.clear();
+          final a = call.arguments;
+          final pkg = a is String ? a : (a is Map ? a['package'] as String? : null);
+          if (pkg != null && pkg.isNotEmpty) {
+            // Only that package's pictures are stale.
+            _art.remove(pkg);
+            _ready.remove(pkg);
+            _icons.remove(pkg);
+            _iconsReady.remove(pkg);
+            _backdrops.remove(pkg);
+            _backdropsReady.remove(pkg);
+            _colours.remove(pkg);
+          } else {
+            _art.clear();
+            _ready.clear();
+          }
           onAppsChanged?.call();
           OneStream.instance.refresh(); // One Stream installed / removed
         case 'resumed':
@@ -76,7 +107,11 @@ class TvApps {
         case 'searchFor':
           onSearchFor?.call(call.arguments as String);
         case 'mediaChanged':
-          media.value = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
+          final m = {...(call.arguments as Map), 'at': DateTime.now().millisecondsSinceEpoch};
+          // Same artwork bytes as last time: keep the old object, so image caches keep their key.
+          final old = media.value?['art'], now = m['art'];
+          if (old is Uint8List && now is Uint8List && old.length == now.length && _sameBytes(old, now)) m['art'] = old;
+          media.value = m;
       }
     });
   }
@@ -157,7 +192,9 @@ class TvApps {
     return _art.putIfAbsent(package, () async {
       final bytes = await _ch.invokeMethod<Uint8List>('getArt', {'package': package});
       if (bytes == null) return null;
-      return _ready[package] = TvArt(MemoryImage(bytes), banner: _banner.contains(package));
+      final r = _ready[package] = TvArt(MemoryImage(bytes), banner: _banner.contains(package));
+      _trim(_art, _ready);
+      return r;
     });
   }
 
@@ -213,7 +250,9 @@ class TvApps {
     return _images.putIfAbsent('$uri@$width', () async {
       final bytes = await _ch.invokeMethod<Uint8List>('getImage', {'uri': uri, 'width': width});
       if (bytes == null) return null;
-      return _imagesReady['$uri@$width'] = MemoryImage(bytes);
+      final r = _imagesReady['$uri@$width'] = MemoryImage(bytes);
+      _trim(_images, _imagesReady);
+      return r;
     });
   }
 
@@ -226,7 +265,9 @@ class TvApps {
     return _icons.putIfAbsent(package, () async {
       final bytes = await _ch.invokeMethod<Uint8List>('getIcon', {'package': package});
       if (bytes == null) return null;
-      return _iconsReady[package] = MemoryImage(bytes);
+      final r = _iconsReady[package] = MemoryImage(bytes);
+      _trim(_icons, _iconsReady);
+      return r;
     });
   }
 
@@ -248,7 +289,9 @@ class TvApps {
     return _backdrops.putIfAbsent(package, () async {
       final bytes = await _ch.invokeMethod<Uint8List>('getBackdrop', {'package': package});
       if (bytes == null) return null;
-      return _backdropsReady[package] = MemoryImage(bytes);
+      final r = _backdropsReady[package] = MemoryImage(bytes);
+      _trim(_backdrops, _backdropsReady);
+      return r;
     });
   }
 
@@ -302,6 +345,14 @@ class TvApps {
       PaintingBinding.instance.imageCache
         ..clear()
         ..clearLiveImages();
+      _images.clear();
+      _imagesReady.clear();
+      _icons.clear();
+      _iconsReady.clear();
+      _backdrops.clear();
+      _backdropsReady.clear();
+      _art.clear();
+      _ready.clear();
     }
     return _call('openAction', {'id': id});
   }

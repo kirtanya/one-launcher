@@ -3,11 +3,10 @@ package com.kirtanya.one_launcher
 import android.app.Activity
 import android.content.Intent
 import android.database.Cursor
-import android.graphics.Bitmap
 import android.media.tv.TvContract
 import android.net.Uri
 import android.os.Build
-import java.io.ByteArrayOutputStream
+import java.io.File
 
 /**
  * Shows and films from the streaming apps, where Android lets a launcher see them.
@@ -18,6 +17,10 @@ import java.io.ByteArrayOutputStream
  * home screen simply leaves those rows out. Where a TV does allow it, they appear.
  */
 class TvContent(private val activity: Activity) {
+    private companion object {
+        const val MAX_CACHE = 40L * 1024 * 1024
+    }
+
     private val resolver get() = activity.contentResolver
 
     fun watchNext(): List<Map<String, Any?>> {
@@ -77,10 +80,46 @@ class TvContent(private val activity: Activity) {
         }
     }
 
-    /** Artwork from a program (https, content:// or android.resource://), at most [maxWidth] wide, as JPEG. */
-    fun image(uri: String, maxWidth: Int): ByteArray? = ArtFetch.load(activity, uri, maxWidth)?.let { bmp ->
+    /**
+     * Artwork from a program (https, content:// or android.resource://), at most [maxWidth] wide, as JPEG.
+     * Kept in cacheDir/art (keyed by sha1(uri + width), ~40 MB, oldest deleted first) so a cold start
+     * doesn't fetch and re-encode every backdrop again.
+     */
+    fun image(uri: String, maxWidth: Int): ByteArray? {
+        val dir = File(activity.cacheDir, "art")
+        val file = File(dir, sha1("$uri|$maxWidth"))
+        try {
+            if (file.isFile) {
+                file.setLastModified(System.currentTimeMillis())
+                return file.readBytes()
+            }
+        } catch (e: Exception) {
+        }
         // Full-screen pictures (Customise → Picture quality) show their JPEG edges at 88; 92 doesn't.
-        ByteArrayOutputStream().also { bmp.compress(Bitmap.CompressFormat.JPEG, 92, it) }.toByteArray()
+        val bytes = ArtFetch.loadJpeg(activity, uri, maxWidth, 92) ?: return null
+        try {
+            dir.mkdirs()
+            val tmp = File(dir, file.name + ".tmp")
+            tmp.writeBytes(bytes)
+            if (!tmp.renameTo(file)) tmp.delete()
+            trim(dir)
+        } catch (e: Exception) {
+        }
+        return bytes
+    }
+
+    private fun sha1(s: String) = java.security.MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    @Synchronized
+    private fun trim(dir: File) {
+        val files = dir.listFiles() ?: return
+        var total = files.sumOf { it.length() }
+        if (total <= MAX_CACHE) return
+        for (f in files.sortedBy { it.lastModified() }) {
+            if (total <= MAX_CACHE * 3 / 4) break
+            total -= f.length()
+            f.delete()
+        }
     }
 
     private fun <T> query(uri: Uri, map: (Cursor) -> T?): List<T> = try {

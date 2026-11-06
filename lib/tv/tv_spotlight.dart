@@ -147,7 +147,13 @@ class _SpotlightState extends State<_Spotlight> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusCard(0, animate: false));
   }
 
+  DateTime _lastFocusAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   void _focusCard(int i, {bool animate = true}) {
+    // Held / fast presses (< 150 ms apart): jump, don't queue a new scroll animation per press.
+    final now = DateTime.now();
+    if (now.difference(_lastFocusAt) < const Duration(milliseconds: 150)) animate = false;
+    _lastFocusAt = now;
     final row = _row;
     if (row == null || row.items.isEmpty) return;
     final at = i.clamp(0, row.items.length - 1);
@@ -353,15 +359,10 @@ class _SpotlightState extends State<_Spotlight> {
           // ring, and wide open sideways for it) instead of drawing over the title and top bar.
           child: ClipRect(
             clipper: const _ColumnClip(),
-            child: ShaderMask(
-              shaderCallback: (r) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFFFFF), Color(0xFFFFFFFF), Color(0x00FFFFFF)],
-                stops: [0, .78, 1],
-              ).createShader(r),
-              blendMode: BlendMode.dstIn,
-              child: ListView.builder(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ListView.builder(
                 key: ValueKey('spotlight:${row.id}'),
                 controller: _scrollOf(row.id),
                 clipBehavior: Clip.none,
@@ -418,7 +419,20 @@ class _SpotlightState extends State<_Spotlight> {
                     ),
                   );
                 },
-              ),
+                ),
+                // Cards fade out toward the bottom: a black fall-off on top (the picture behind the
+                // column's foot is ~95% black already), no full-column saveLayer.
+                Positioned.fill(
+                  child: TvBaked.gradient(
+                    const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x00000000), Color(0x00000000), Color(0xFF000000)],
+                      stops: [0, .78, 1],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -435,38 +449,37 @@ class _SpotlightScrims extends StatelessWidget {
   const _SpotlightScrims();
 
   @override
-  Widget build(BuildContext context) => const IgnorePointer(
-    child: Stack(
-      fit: StackFit.expand,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerRight,
-              end: Alignment.centerLeft,
-              colors: [Color(0xE9000000), Color(0x9E000000), Color(0x00000000)],
-              stops: [0, .36, .66],
-            ),
-          ),
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [Color(0xF2000000), Color(0xB6000000), Color(0x00000000)],
-              stops: [0, .3, .62],
-            ),
-          ),
-        ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x91000000), Color(0x00000000)], stops: [0, .22]),
-          ),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) => const RepaintBoundary(child: TvBaked(painter: _SpotlightScrimPainter(), id: 'spotlight-scrims'));
+}
+
+class _SpotlightScrimPainter extends CustomPainter {
+  const _SpotlightScrimPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    void fill(Gradient g) => canvas.drawRect(rect, Paint()..shader = g.createShader(rect));
+    fill(
+      const LinearGradient(
+        begin: Alignment.centerRight,
+        end: Alignment.centerLeft,
+        colors: [Color(0xE9000000), Color(0x9E000000), Color(0x00000000)],
+        stops: [0, .36, .66],
+      ),
+    );
+    fill(
+      const LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+        colors: [Color(0xF2000000), Color(0xB6000000), Color(0x00000000)],
+        stops: [0, .3, .62],
+      ),
+    );
+    fill(const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x91000000), Color(0x00000000)], stops: [0, .22]));
+  }
+
+  @override
+  bool shouldRepaint(_SpotlightScrimPainter o) => false;
 }
 
 /// A quick action in Spotlight's column: a small card — its icon (or the app's banner) and name.
@@ -503,8 +516,7 @@ class _QuickCard extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => AnimatedContainer(
-          duration: TvLook.anim(Motion.pressIn * 2),
+        builder: (context, f) => Container(
           width: width,
           height: height,
           padding: const EdgeInsets.symmetric(horizontal: DS.s16),
@@ -516,10 +528,7 @@ class _QuickCard extends StatelessWidget {
           child: Row(
             children: [
               if (item.app != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: SizedBox(width: 48, height: 27, child: TvAppArt(app: item.app!, width: 48)),
-                )
+                SizedBox(width: 48, height: 27, child: TvAppArt(app: item.app!, width: 48, radius: 6))
               else
                 Icon(icon ?? Icons.bolt_rounded, size: 24, color: f ? TvDS.onLight : TvDS.ink),
               const SizedBox(width: DS.s12),
@@ -573,13 +582,12 @@ class _SmallCard extends StatelessWidget {
         onLongSelect: onOptions,
         onMove: onMove,
         onFocus: onFocus,
-        builder: (context, f) => pill ? _pill(app, f) : _show(f),
+        builder: (context, f) => pill ? _pill(app, f) : _show(context, f),
       ),
     );
   }
 
-  Widget _pill(AppEntry? app, bool f) => AnimatedContainer(
-    duration: TvLook.anim(Motion.pressIn * 2),
+  Widget _pill(AppEntry? app, bool f) => Container(
     width: width,
     height: height,
     padding: EdgeInsets.symmetric(horizontal: height * .14),
@@ -591,9 +599,7 @@ class _SmallCard extends StatelessWidget {
     child: Row(
       children: [
         if (app != null)
-          ClipOval(
-            child: TvAppIcon(app: app, size: height * .66),
-          )
+          TvAppIcon(app: app, size: height * .66, round: true)
         else
           SizedBox.square(
             dimension: height * .66,
@@ -614,27 +620,22 @@ class _SmallCard extends StatelessWidget {
 
   /// A show as a pill like the apps': its still as the icon, the title. The left panel says the
   /// rest (episode, time left); this is just the way in.
-  Widget _show(bool f) {
+  Widget _show(BuildContext context, bool f) {
     final h = height * .62;
+    Widget tint() => DecoratedBox(decoration: BoxDecoration(color: tvTint(item.title), borderRadius: BorderRadius.circular(h / 2)));
     Widget picture;
     if (item.art != null) {
-      picture = Image(
-        image: item.art!,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, _, _) => ColoredBox(color: tvTint(item.title)),
-      );
+      picture = TvRoundImage(image: tvSized(item.art!, h * 16 / 9, context), radius: h / 2, placeholder: tint(), error: tint());
     } else if (item.image != null) {
       final ready = TvApps.instance.imageNow(item.image!);
       picture = FutureBuilder<MemoryImage?>(
         future: ready != null ? Future.value(ready) : TvApps.instance.image(item.image!),
-        builder: (context, s) => s.data == null ? ColoredBox(color: tvTint(item.title)) : Image(image: s.data!, fit: BoxFit.cover, gaplessPlayback: true),
+        builder: (context, s) => s.data == null ? tint() : TvRoundImage(image: tvSized(s.data!, h * 16 / 9, context), radius: h / 2),
       );
     } else {
-      picture = ColoredBox(color: tvTint(item.title));
+      picture = tint();
     }
-    return AnimatedContainer(
-      duration: TvLook.anim(Motion.pressIn * 2),
+    return Container(
       width: width,
       height: height,
       padding: EdgeInsets.symmetric(horizontal: height * .14),
@@ -645,10 +646,7 @@ class _SmallCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(h / 2),
-            child: SizedBox(width: h * 16 / 9, height: h, child: picture),
-          ),
+          SizedBox(width: h * 16 / 9, height: h, child: picture),
           SizedBox(width: height * .2),
           Expanded(
             child: Text(

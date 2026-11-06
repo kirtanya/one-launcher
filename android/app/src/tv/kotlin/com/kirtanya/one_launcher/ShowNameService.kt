@@ -48,17 +48,29 @@ class ShowNameService : AccessibilityService() {
         if (pkg == GOOGLE_SEARCH) return takeVoiceSearch(event)
         val now = SystemClock.uptimeMillis()
         if (now - (lastLook[pkg] ?: 0L) < 1500) return // overlays redraw often; a look every 1.5 s is plenty
+        lastLook[pkg] = now // before playing(): non-media apps no longer cost an IPC on every event
         val titles = playing(pkg)
         if (titles.isEmpty()) return // not a media app right now: read nothing
-        lastLook[pkg] = now
+        // Same title already walked recently (found: 30 s, nothing found: 5 s): skip the tree walk.
+        val walked = lastWalk[pkg]
+        if (walked != null && walked.titles == titles && now - walked.at < (if (walked.found) 30_000 else 5_000)) return
         val root = try { rootInActiveWindow } catch (e: Exception) { null }
-        if (root == null || root.packageName?.toString() != pkg) {
-            android.util.Log.i("OneShow", "$pkg playing $titles; screen not readable (${root?.packageName})")
+        if (root == null) return
+        if (root.packageName?.toString() != pkg) {
+            recycle(root)
             return
         }
-        val show = showBeside(root, titles)
-        android.util.Log.i("OneShow", "$pkg playing $titles → ${show?.second ?: "no show beside it on screen"}")
+        val show = try { showBeside(root, titles) } finally { recycle(root) }
+        lastWalk[pkg] = Walk(titles, now, show != null)
         if (show != null) save(this, pkg, show.first, show.second)
+    }
+
+    private class Walk(val titles: Set<String>, val at: Long, val found: Boolean)
+    private val lastWalk = mutableMapOf<String, Walk>()
+
+    @Suppress("DEPRECATION")
+    private fun recycle(n: AccessibilityNodeInfo?) {
+        if (android.os.Build.VERSION.SDK_INT < 33) try { n?.recycle() } catch (e: Exception) {}
     }
 
     // ---- Home → One Launcher ----
@@ -124,13 +136,13 @@ class ShowNameService : AccessibilityService() {
             ?.firstOrNull { it.isVisibleToUser }?.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
         val words = text("super_header") ?: text("entity_row_header_title")
         if (words.isNullOrEmpty() || (words == lastWords && now - lastTaken < 5000)) {
-            main.postDelayed(::look, 250)
+            // 250 ms for the first 2 s of the poll (lookUntil = last event + 15 s), then 500 ms.
+            main.postDelayed(::look, if (lookUntil - now > 13_000) 250 else 500)
             return
         }
         lookUntil = 0L
         lastWords = words
         lastTaken = now
-        android.util.Log.i("OneVoice", "remote mic said '$words' → One Launcher search")
         // No Back to close Google's page: on a slow start it landed on our search and closed it
         // (home instead of results). Ours opens on top; Google's page stays behind in its own task.
         startActivity(
@@ -157,15 +169,26 @@ class ShowNameService : AccessibilityService() {
         val wanted = titles.associateBy { it.lowercase() }
         val stack = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
         var seen = 0
-        while (stack.isNotEmpty() && seen++ < 600) {
-            val node = stack.removeLast()
-            val text = node.text?.toString()?.trim()
-            val title = text?.let { wanted[it.lowercase()] }
-            if (title != null) {
-                val parent = node.parent
-                if (parent != null) pick(parent, node, title)?.let { return title to it }
+        try {
+            while (stack.isNotEmpty() && seen++ < 600) {
+                val node = stack.removeLast()
+                val text = node.text?.toString()?.trim()
+                val title = text?.let { wanted[it.lowercase()] }
+                if (title != null) {
+                    val parent = node.parent
+                    if (parent != null) {
+                        val found = try { pick(parent, node, title) } finally { recycle(parent) }
+                        if (found != null) {
+                            if (node !== root) recycle(node)
+                            return title to found
+                        }
+                    }
+                }
+                for (i in node.childCount - 1 downTo 0) node.getChild(i)?.let(stack::add)
+                if (node !== root) recycle(node)
             }
-            for (i in node.childCount - 1 downTo 0) node.getChild(i)?.let(stack::add)
+        } finally {
+            stack.forEach { if (it !== root) recycle(it) }
         }
         return null
     }
@@ -177,15 +200,19 @@ class ShowNameService : AccessibilityService() {
         var passed = false
         for (i in 0 until parent.childCount) {
             val c = parent.getChild(i) ?: continue
-            if (c == episode) {
-                passed = true
-                continue
+            try {
+                if (c == episode) {
+                    passed = true
+                    continue
+                }
+                val t = c.text?.toString()?.trim() ?: continue
+                if (!looksLikeShow(t, title)) continue
+                val id = c.viewIdResourceName?.substringAfter('/')?.lowercase() ?: ""
+                if (named == null && id.contains("title") && !id.contains("sub")) named = t
+                if (!passed) before = t
+            } finally {
+                recycle(c)
             }
-            val t = c.text?.toString()?.trim() ?: continue
-            if (!looksLikeShow(t, title)) continue
-            val id = c.viewIdResourceName?.substringAfter('/')?.lowercase() ?: ""
-            if (named == null && id.contains("title") && !id.contains("sub")) named = t
-            if (!passed) before = t
         }
         return named ?: before
     }
@@ -198,6 +225,7 @@ class ShowNameService : AccessibilityService() {
 
     companion object {
         @Volatile private var instance: ShowNameService? = null
+        private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
         private const val GOOGLE_SEARCH = "com.google.android.katniss"
         private const val GOOGLE_HOME = "com.google.android.apps.tv.launcherx"
 
@@ -252,7 +280,7 @@ class ShowNameService : AccessibilityService() {
             pairs.put(key, show) // newest last
             while (pairs.length() > MAX) pairs.remove(pairs.keys().next())
             p.edit().putString("pairs", pairs.toString()).putString("last:$pkg", show).apply()
-            Handler(Looper.getMainLooper()).post { onChange?.invoke() }
+            mainHandler.post { onChange?.invoke() }
         }
 
         /** For the launcher: {pairs: {"pkg|episode": show}, last: {pkg: show}, on: Boolean}. */

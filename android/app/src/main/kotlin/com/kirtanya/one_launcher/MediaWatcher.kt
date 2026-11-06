@@ -46,8 +46,8 @@ class MediaWatcher(
     private var artBytes: ByteArray? = null
 
     private val callback = object : MediaController.Callback() {
-        override fun onPlaybackStateChanged(state: PlaybackState?) = send()
-        override fun onMetadataChanged(metadata: MediaMetadata?) = send()
+        override fun onPlaybackStateChanged(state: PlaybackState?) = sendSoon()
+        override fun onMetadataChanged(metadata: MediaMetadata?) = sendSoon()
         override fun onSessionDestroyed() = refresh()
     }
 
@@ -72,6 +72,7 @@ class MediaWatcher(
     fun stop() {
         if (listening) sessions.removeOnActiveSessionsChangedListener(sessionsChanged)
         listening = false
+        main.removeCallbacks(sendTask)
         controller?.unregisterCallback(callback)
         controller = null
     }
@@ -93,7 +94,19 @@ class MediaWatcher(
         send()
     }
 
-    private fun send() = push(state())
+    private fun send() {
+        main.removeCallbacks(sendTask)
+        push(state())
+    }
+
+    // TV: apps fire several callbacks per track change; one push ~250 ms after the first.
+    // (Dart replaces its whole map on each push, so every push still carries the cached art.)
+    private val sendTask = Runnable { push(state()) }
+    private fun sendSoon() {
+        if (square) return send() // phone: unchanged
+        if (!sendPending()) main.postDelayed(sendTask, 250)
+    }
+    private fun sendPending() = main.hasCallbacks(sendTask)
 
     fun state(): Map<String, Any?> {
         if (!granted()) return mapOf("granted" to false)
@@ -110,7 +123,9 @@ class MediaWatcher(
             position += ((SystemClock.elapsedRealtime() - st.lastPositionUpdateTime) * st.playbackSpeed).toLong()
         }
         val pm = activity.packageManager
-        val appLabel = try { pm.getApplicationLabel(pm.getApplicationInfo(c.packageName, 0)).toString() } catch (e: Exception) { c.packageName }
+        val appLabel = labels.getOrPut(c.packageName) {
+            try { pm.getApplicationLabel(pm.getApplicationInfo(c.packageName, 0)).toString() } catch (e: Exception) { c.packageName }
+        }
         return mapOf(
             "granted" to true,
             "active" to (title != null),
@@ -130,6 +145,7 @@ class MediaWatcher(
         )
     }
 
+    private val labels = HashMap<String, String>()
     private val iconCache = HashMap<String, ByteArray>()
 
     /** The session's first 3 custom actions (shuffle, repeat, like…) with white PNG icons. */

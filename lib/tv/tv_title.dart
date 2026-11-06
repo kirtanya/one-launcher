@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import '../apps.dart';
 import '../one_stream.dart';
 import '../ui/ds.dart';
-import '../ui/motion.dart';
 import 'catalog.dart';
 import '../ratings.dart';
 import 'tv_apps.dart';
@@ -105,8 +104,7 @@ class TvPoster extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AnimatedContainer(
-                duration: Motion.pressIn * 2,
+              Container(
                 width: w,
                 height: h,
                 // Tiles: the Metro frame and the tile corners.
@@ -115,15 +113,12 @@ class TvPoster extends StatelessWidget {
                   borderRadius: TvMetro.corners(TvDS.rTile),
                   boxShadow: TvMetro.on ? TvMetro.glow(f) : (f ? const [BoxShadow(color: TvDS.glow, blurRadius: 22)] : null),
                 ),
-                child: ClipRRect(
-                  borderRadius: TvMetro.corners(TvDS.rTile),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title),
-                      if (t.rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(t.rating!)),
-                    ],
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ShowImage(urls: t.posters, decodeWidth: 240, fallbackTitle: t.title, radius: TvMetro.radius(TvDS.rTile)),
+                    if (t.rating != null) Positioned(top: DS.s8, left: DS.s8, child: ImdbBadge(t.rating!)),
+                  ],
                 ),
               ),
               const SizedBox(height: DS.s12),
@@ -150,11 +145,12 @@ class TvPoster extends StatelessWidget {
 /// A poster / backdrop: the first of [urls] that loads (fetched through Android, decoded small —
 /// TVs have little memory); a tinted title card while loading or when none does.
 class ShowImage extends StatelessWidget {
-  const ShowImage({super.key, required this.urls, this.decodeWidth = 400, this.fallbackTitle, this.alignment = Alignment.center});
+  const ShowImage({super.key, required this.urls, this.decodeWidth = 400, this.fallbackTitle, this.alignment = Alignment.center, this.radius = 0});
   final List<String> urls;
   final int decodeWidth;
   final String? fallbackTitle;
   final Alignment alignment;
+  final double radius; // > 0: the picture and the title card get rounded corners (no clip layer)
 
   /// The first picture that loads (each is cached, so a failed one isn't asked again).
   static Future<MemoryImage?> _first(List<String> urls, int width) async {
@@ -169,6 +165,7 @@ class ShowImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final fallback = DecoratedBox(
       decoration: BoxDecoration(
+        borderRadius: radius > 0 ? BorderRadius.circular(radius) : null,
         gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [tvTint(fallbackTitle ?? ''), TvDS.canvas]),
       ),
       child: fallbackTitle == null
@@ -185,7 +182,7 @@ class ShowImage extends StatelessWidget {
     // The best picture already here at this size: shown at once. A lesser one that's here (e.g. the
     // poster while the backdrop loads) holds the place until the best one arrives.
     final best = TvApps.instance.imageNow(urls.first, width: decodeWidth);
-    if (best != null) return Image(image: best, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true);
+    if (best != null) return radius > 0 ? TvRoundImage(image: best, radius: radius, placeholder: fallback) : Image(image: best, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true);
     final meanwhile = urls.skip(1).map((u) => TvApps.instance.imageNow(u, width: decodeWidth)).nonNulls.firstOrNull;
     return FutureBuilder<MemoryImage?>(
       future: _first(urls, decodeWidth),
@@ -194,6 +191,8 @@ class ShowImage extends StatelessWidget {
         duration: const Duration(milliseconds: 300),
         child: s.data == null
             ? KeyedSubtree(key: const ValueKey(0), child: fallback)
+            : radius > 0
+            ? TvRoundImage(key: ValueKey(s.data), image: s.data!, radius: radius, placeholder: fallback)
             : Image(key: ValueKey(s.data), image: s.data!, fit: BoxFit.cover, alignment: alignment, gaplessPlayback: true),
       ),
     );
@@ -378,17 +377,31 @@ class _TvTitlePageState extends State<TvTitlePage> {
       // Up out of the first row onto the buttons: the whole top (title, scores, story) comes back —
       // only scrolling the buttons into view left the page half up (bug, 2026-10-31).
       if (mounted && now == null && was != null && dir == TraversalDirection.up && _scroll.hasClients) {
-        _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+        if (_rapid()) {
+          _scroll.jumpTo(0);
+        } else {
+          _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+        }
       }
     });
     return KeyEventResult.handled;
+  }
+
+  DateTime _lastMove = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// Focus moves < 150 ms apart (held D-pad) scroll by jumping, not animating.
+  bool _rapid() {
+    final now = DateTime.now();
+    final r = now.difference(_lastMove).inMilliseconds < 150;
+    _lastMove = now;
+    return r;
   }
 
   void _enter(String row) {
     final entry = _entry(row);
     if (entry?.context == null) return;
     entry!.requestFocus();
-    Scrollable.ensureVisible(entry.context!, alignment: .5, duration: const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
+    Scrollable.ensureVisible(entry.context!, alignment: .5, duration: _rapid() ? Duration.zero : const Duration(milliseconds: 200), curve: Curves.easeOutCubic);
   }
 
   void _update(VoidCallback f) {
@@ -761,22 +774,18 @@ class _BlackFade extends StatelessWidget {
     child: Stack(
       fit: StackFit.expand,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [_black, _black.withValues(alpha: .94), _black.withValues(alpha: .4), _black.withValues(alpha: 0)],
-              stops: const [0, .3, .55, .78],
-            ),
+        TvBaked.gradient(
+          LinearGradient(
+            colors: [_black, _black.withValues(alpha: .94), _black.withValues(alpha: .4), _black.withValues(alpha: 0)],
+            stops: const [0, .3, .55, .78],
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [_black.withValues(alpha: .35), _black.withValues(alpha: 0), _black.withValues(alpha: .85), _black],
-              stops: const [0, .3, .68, .86],
-            ),
+        TvBaked.gradient(
+          LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_black.withValues(alpha: .35), _black.withValues(alpha: 0), _black.withValues(alpha: .85), _black],
+            stops: const [0, .3, .68, .86],
           ),
         ),
       ],
@@ -813,6 +822,19 @@ class _LogoButton extends StatelessWidget {
 
   static const size = 46.0;
 
+  /// The logo, rounded without a clip: a circle drawn as one shape; Metro's square (corners 0) needs
+  /// none, and only a Metro radius above 0 keeps the ClipRRect.
+  Widget _face() {
+    final metro = TvMetro.on;
+    final plain = app != null
+        ? TvAppIcon(app: app!, size: size, round: !metro)
+        : DecoratedBox(
+            decoration: BoxDecoration(color: _darkSurface, shape: metro ? BoxShape.rectangle : BoxShape.circle),
+            child: Center(child: Icon(icon ?? Icons.apps_rounded, size: 24, color: TvDS.ink)),
+          );
+    return metro && TvMetro.radius(0) > 0 ? ClipRRect(borderRadius: TvMetro.corners(0), child: plain) : plain;
+  }
+
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
@@ -829,15 +851,7 @@ class _LogoButton extends StatelessWidget {
             height: size,
             // Tiles: the Metro frame on a square; else the ring round a disc.
             foregroundDecoration: TvMetro.on ? TvMetro.frame(f, width: TvDS.focusRing) : TvRing(on: f, radius: size / 2),
-            child: ClipRRect(
-              borderRadius: TvMetro.on ? TvMetro.corners(0) : BorderRadius.circular(size / 2),
-              child: app != null
-                  ? TvAppIcon(app: app!, size: size)
-                  : ColoredBox(
-                      color: _darkSurface,
-                      child: Icon(icon ?? Icons.apps_rounded, size: 24, color: TvDS.ink),
-                    ),
-            ),
+            child: _face(),
           ),
           if (tag != null) ...[
             const SizedBox(width: DS.s8, height: size, child: ColoredBox(color: Colors.transparent)), // a touch target, not a hole

@@ -30,6 +30,7 @@ import java.net.URLEncoder
 object AlexaRelay {
     private const val TAG = "OneAlexa"
     @Volatile private var thread: Thread? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun start(c: Context) {
         val app = c.applicationContext
@@ -63,7 +64,7 @@ object AlexaRelay {
                         val age = System.currentTimeMillis() / 1000 - ev.optLong("time")
                         if (age > 60) continue
                         val msg = try { JSONObject(ev.optString("message")) } catch (e: Exception) { continue }
-                        Handler(Looper.getMainLooper()).post { act(c, msg) }
+                        mainHandler.post { act(c, msg) }
                     }
                 }
             } catch (e: Exception) {

@@ -54,11 +54,24 @@ Flutter Android launcher, two flavours from one codebase:
   --pid-file <f>` (flutter run can't read the TV launcher activity). If attach keeps losing the
   TV, pass `--debug-url` from logcat's "Dart VM service is listening on". SIGUSR1 = hot reload,
   SIGUSR2 = hot restart.
-  **TV performance** (Acer R4, Impeller/Vulkan; measured with SurfaceFlinger `--timestats`):
-  nothing may animate while idle — the old 26 s Ken Burns drift redrew the full-screen backdrop
-  at ~22 fps (26% CPU) idle; now a 1.8 s settle then still (idle ~2 fps, ~8% CPU). Backdrop
-  crossfade 350 ms, `FilterQuality.low`, opacity on the Image (no `Opacity` layer), image cache
-  48 MB / 80, media updates rebuild the home only when more than the position changed.
+  **TV performance** (Impeller/Vulkan on a Mali-G31: the flat TV's Acer R4 and the Sony BRAVIA's
+  rtd2885m have the same GPU, so the Sony is a fair test bed). Measure with `TV=ip:port
+  tool/tv_jank.sh <label>` (cold start, a fixed D-pad route's fps/p50/p90/p99 from SurfaceFlinger
+  `--timestats` — Flutter draws into a SurfaceView, `dumpsys gfxinfo` sees nothing — then 10 s idle,
+  which must print "no frames", and PSS). `--dart-define=PERF_LOG=true` logs build vs raster
+  p50/p90 to logcat (`PERF`) every 2 s. `cmd package compile -m speed -f` after installing.
+  The cost is all GPU raster (Dart build ~3 ms). On this Mali each multi-stop gradient over a big
+  area costs ~10 ms a frame and each ClipRRect/ClipOval is a stencil pass of about the same, and
+  Impeller keeps nothing between frames (a RepaintBoundary saves rebuilds, not raster). Rules:
+  smooth shading = `TvBaked` / `TvBaked.gradient` (tv_parts: painted once into a full-DPR image,
+  32 MB LRU — a smaller bake scaled up shows Impeller's gradient dither as dots); rounded pictures
+  = `TvRoundImage` (one drawRRect with an ImageShader) or `TvAppIcon(round: true)`, never a clip;
+  no blur, shadows, `Opacity`/ShaderMask layers; images through `tvSized` (decoded at slot size).
+  Nothing may animate while idle: a 450 ms settle then still; key repeat jumps focus instead of
+  queueing animations; timers (Google hero, trending) stop when the app isn't resumed. Backdrop
+  crossfade 350 ms, `FilterQuality.low`, image cache 48 MB / 60, media updates rebuild the home only
+  when more than the position changed. Sony, Spotlight route (2026-11-06): 14.7 fps p50 66 ms
+  before → 32.8 fps p50 17 ms after (cold start ~1.2 s, PSS ~83 MB, 0 frames idle).
   **Backdrop picture** (`_Wide`, Cinematic + Spotlight): the whole picture, its own shape, as big as fits
   in 75% × 75% (top-left; posters / 4:3 / 21:9 never cropped) + flipped copies tiled out to fill; `_MirrorShade` darkens them 35%, clear at the picture's edge and
   full 7% of the width out; Spotlight's own shading at 95% (one layer, so the corner isn't darker). Mockup the user tuned:

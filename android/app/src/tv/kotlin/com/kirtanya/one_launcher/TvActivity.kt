@@ -67,9 +67,13 @@ class TvActivity : FlutterActivity() {
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (::channel.isInitialized) channel.invokeMethod("appsChanged", null)
+            // Installs fire several broadcasts in a row: one "appsChanged" ~1 s after the last.
+            // (Dart's handler ignores arguments, so the package name isn't passed.)
+            main.removeCallbacks(appsChangedTask)
+            main.postDelayed(appsChangedTask, 1000)
         }
     }
+    private val appsChangedTask = Runnable { if (::channel.isInitialized) channel.invokeMethod("appsChanged", null) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -163,11 +167,11 @@ class TvActivity : FlutterActivity() {
                     }
                 }
                 // Apps that take a search ("Search in JioHotstar…"); only ones with a home-screen entry.
-                "searchTargets" -> {
+                "searchTargets" -> worker.execute {
                     val launchable = loadApps().map { it["package"] }.toSet()
                     val pkgs = packageManager.queryIntentActivities(Intent(Intent.ACTION_SEARCH), 0)
                         .map { it.activityInfo.packageName }.distinct().filter { it in launchable && it != packageName }
-                    result.success(pkgs)
+                    main.post { result.success(pkgs) }
                 }
                 "searchIn" -> {
                     val q = call.argument<String>("query") ?: ""
@@ -303,6 +307,7 @@ class TvActivity : FlutterActivity() {
 
     override fun onDestroy() {
         ShowNameService.onChange = null
+        main.removeCallbacks(appsChangedTask)
         unregisterReceiver(packageReceiver)
         super.onDestroy()
     }
@@ -318,6 +323,8 @@ class TvActivity : FlutterActivity() {
         val pm = packageManager
         val seen = HashSet<String>()
         val out = mutableListOf<Map<String, Any>>()
+        // One call instead of a getPackageInfo per app.
+        val installedAt = try { pm.getInstalledPackages(0).associate { it.packageName to it.firstInstallTime } } catch (e: Exception) { emptyMap() }
         // TV apps first, so their entry (tv = true) wins over a phone-style one.
         for ((category, tv) in listOf(Intent.CATEGORY_LEANBACK_LAUNCHER to true, Intent.CATEGORY_LAUNCHER to false)) {
             for (ri in pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0)) {
@@ -330,7 +337,7 @@ class TvActivity : FlutterActivity() {
                     "label" to ri.loadLabel(pm).toString(),
                     "system" to ((app.flags and ApplicationInfo.FLAG_SYSTEM) != 0),
                     "category" to (if (Build.VERSION.SDK_INT >= 26) app.category else -1),
-                    "installed" to (try { pm.getPackageInfo(pkg, 0).firstInstallTime } catch (e: Exception) { 0L }),
+                    "installed" to (installedAt[pkg] ?: 0L),
                     "tv" to tv,
                     "banner" to (ai.banner != 0 || app.banner != 0),
                 )
