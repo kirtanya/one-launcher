@@ -314,16 +314,6 @@ class TvActivity : FlutterActivity() {
         takeSearch(intent)
     }
 
-    // The remote's Settings key while we're in front: our Quick settings panel (the home decides;
-    // it toggles). Only here — other apps keep the key (no global hook).
-    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-        if (event.keyCode == android.view.KeyEvent.KEYCODE_SETTINGS && ::channel.isInitialized) {
-            if (event.action == android.view.KeyEvent.ACTION_UP) channel.invokeMethod("quickSettings", null)
-            return true
-        }
-        return super.dispatchKeyEvent(event)
-    }
-
     private fun loadApps(): List<Map<String, Any>> {
         val pm = packageManager
         val seen = HashSet<String>()

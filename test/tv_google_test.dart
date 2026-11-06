@@ -36,7 +36,8 @@ Future<Prefs> _start(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1920, 1080);
   tester.view.devicePixelRatio = 2;
   addTearDown(tester.view.reset);
-  SharedPreferences.setMockInitialValues({'homeView': 'googletv'});
+  // No clock: it shows the real time, so the goldens would change every minute.
+  SharedPreferences.setMockInitialValues({'homeView': 'googletv', 'tvSettings': '{"clock":false,"date":false}'});
   final prefs = await Prefs.load();
   await tester.pumpWidget(OneLauncherTv(prefs: prefs));
   await tester.pumpAndSettle();
@@ -81,13 +82,21 @@ void main() {
     expect(_focused(), 'gtv top home');
   });
 
-  testWidgets('TV Google TV: Settings icon → Quick settings band; OK grows a picker, Back closes picker then panel', (tester) async {
+  testWidgets('TV Google TV: Settings icon → the side Customise panel, as in every view', (tester) async {
     await _start(tester);
     // Home · Apps (· One Stream) · Search · Settings
     while (_focused() != 'gtv top settings') {
       await _press(tester, LogicalKeyboardKey.arrowRight);
     }
     await _press(tester, LogicalKeyboardKey.select);
+    expect(find.text('Customise'), findsOneWidget);
+    expect(tvQuickSettingsOpen, isFalse, reason: 'the bottom Quick settings band is parked (user, 2026-11-06)');
+  });
+
+  testWidgets('TV Quick settings (parked, not in the launcher): band; OK grows a picker, Back closes picker then panel', (tester) async {
+    await _start(tester);
+    showTvQuickSettings(tester.element(find.byType(Scaffold).first), extras: [TvQuickItem('customise', Icons.tune_rounded, 'Customise home', () {})]);
+    await tester.pumpAndSettle();
     expect(tvQuickSettingsOpen, isTrue);
     expect(find.text('Quick settings'), findsOneWidget);
     for (final name in ['Settings', 'Customise home', 'Volume', 'Mute', 'Sleep timer', 'Screensaver', 'Inputs', 'Network', 'Bluetooth']) {

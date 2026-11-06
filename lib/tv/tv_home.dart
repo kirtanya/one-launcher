@@ -31,7 +31,6 @@ import 'tv_focus.dart';
 import 'tv_parts.dart';
 import 'tv_metro.dart';
 import 'tv_one_stream.dart';
-import 'tv_quick_settings.dart';
 import 'tv_search.dart';
 import 'tv_title.dart';
 import 'tv_tiles.dart';
@@ -156,7 +155,6 @@ class _TvHomeState extends State<TvHome> {
     super.initState();
     tv.onAppsChanged = _load;
     tv.onHomePressed = _home;
-    tv.onQuickSettings = _quickSettings;
     tv.onSearchFor = _searchFor;
     tv.takeSearch().then((q) {
       if (q != null && mounted) _searchFor(q);
@@ -532,14 +530,6 @@ class _TvHomeState extends State<TvHome> {
       for (final a in rest) TvItem(key: a.package, kind: TvKind.app, title: a.label, package: a.package, app: a, appName: a.label),
       const TvItem(key: 'all-apps', kind: TvKind.action, title: 'All apps', package: ''),
     ];
-  }
-
-  /// Quick settings (tv_quick_settings.dart): Google TV's Settings icon, or the remote's Settings
-  /// key while we're in front (again: closes it).
-  void _quickSettings() {
-    if (!mounted) return;
-    if (tvQuickSettingsOpen) return Navigator.of(context).pop();
-    showTvQuickSettings(context, extras: [TvQuickItem('customise', Icons.tune_rounded, 'Customise home', _customise)]);
   }
 
   /// A catalog title (hero) opens its page here (where to watch); the rest open as anywhere.
@@ -1279,7 +1269,7 @@ class _TvHomeState extends State<TvHome> {
                     onOpen: _openGoogle,
                     onOptions: (items, i) => items[i].key.startsWith('cat:') ? _openGoogle(items[i]) : _options(TvRow('gtv', 'Your apps', items), i),
                     onTab: (id) => id == 'apps' ? _allApps() : tv.launch(OneStream.package),
-                    onHeader: (id) => id == 'settings' ? _quickSettings() : _headerAction(id),
+                    onHeader: (id) => id == 'settings' ? _customise() : _headerAction(id), // the side panel, as in every view
                   );
                 },
               ),

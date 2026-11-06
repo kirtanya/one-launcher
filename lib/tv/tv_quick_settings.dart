@@ -8,7 +8,8 @@ import 'tv_apps.dart';
 import 'tv_ds.dart';
 import 'tv_focus.dart';
 
-/// Quick settings (Sony's "Quick Settings", docs/GOOGLE_TV_VIEW.md), TV only: a dark band along
+/// PARKED (user, 2026-11-06): not opened anywhere in the launcher — kept for another use; Settings
+/// opens the side Customise panel instead. Quick settings (Sony's "Quick Settings", docs/GOOGLE_TV_VIEW.md), TV only: a dark band along
 /// the bottom with one row of items — icon, name, and the current value in blue (or an arrow for
 /// a page that opens). OK on an item with choices grows a small picker up out of it; ↑ ↓ change
 /// it live, OK / Back close the picker, Back again closes the panel.
