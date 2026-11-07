@@ -101,11 +101,6 @@ class Apps {
   /// Right before launching a locked app, so the native guard lets it through.
   Future<void> lockAllow(String package) => _call('lockAllow', {'package': package});
 
-  /// A short system toast (replaces the one still showing, so fast taps don't queue up).
-  Future<void> toast(String text) => _call('toast', {'text': text});
-
-  /// Can App lock see the front app (Usage access)? It closes locked apps opened from notifications / recents.
-  Future<bool> lockServiceOn() async {
   /// "Reopen without lock" window in seconds (0 = off); sent with the locked list.
   Future<void> setLockGrace(int seconds) => _call('setLockGrace', {'seconds': seconds});
 
@@ -122,6 +117,11 @@ class Apps {
     }
   }
 
+  /// A short system toast (replaces the one still showing, so fast taps don't queue up).
+  Future<void> toast(String text) => _call('toast', {'text': text});
+
+  /// Can App lock see the front app (Usage access)? It closes locked apps opened from notifications / recents.
+  Future<bool> lockServiceOn() async {
     if (isDemo) return false;
     try {
       return await _ch.invokeMethod<bool>('lockServiceOn') ?? false;
