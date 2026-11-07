@@ -373,6 +373,7 @@ class Prefs extends ChangeNotifier {
     'tvName',
     'tvBrightness',
     'searchHistory',
+    'searchApps',
     'lockedApps', // the lock and its PIN stay on this phone (a restore must not undo or leak them)
     'lockPinHash',
     'lockGrace',
@@ -691,7 +692,10 @@ class Prefs extends ChangeNotifier {
   /// Turning it off clears the history too.
   Future<void> setSaveSearchHistory(bool v) async {
     await _sp.setBool('saveSearchHistory', v);
-    if (!v) await _sp.remove('searchHistory');
+    if (!v) {
+      await _sp.remove('searchHistory');
+      await _sp.remove('searchApps');
+    }
     notifyListeners();
   }
 
@@ -707,8 +711,21 @@ class Prefs extends ChangeNotifier {
   Future<void> removeSearch(String query) => _setList('searchHistory', [...searchHistory]..remove(query));
   Future<void> clearSearchHistory() async {
     await _sp.remove('searchHistory');
+    await _sp.remove('searchApps');
     notifyListeners();
   }
+
+  /// Apps opened from search, newest first (package ids): the "Opened from search" grid that
+  /// shows when search opens. Part of search history — same switch, same Clear all, phone-only.
+  static const searchAppsMax = 8;
+  List<String> get searchApps => saveSearchHistory ? (_sp.getStringList('searchApps') ?? const []) : const [];
+
+  Future<void> addSearchApp(String package) async {
+    if (!saveSearchHistory) return;
+    await _setList('searchApps', [package, ...searchApps.where((p) => p != package)].take(searchAppsMax).toList());
+  }
+
+  Future<void> removeSearchApp(String package) => _setList('searchApps', [...searchApps]..remove(package));
 
   /// TV remote: the paired TV (address + name) and whether the dock shows the remote button.
   String? get tvHost => _sp.getString('tvHost');

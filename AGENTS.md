@@ -216,7 +216,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   or, with `prefs.dockStyle == 'search'` (Settings → Home screen → Bottom bar), the earlier `_searchLayout` (full pill +
   Smart home and settings circles; home.dart passes `onHome: null`). Now page on/off = `prefs.classicToday` (also drops the Now tab),
   `_surface()`. `search_history.dart`: recent searches (card for top bar; `RecentSearchPills`
-  above the bottom bar). Once something is typed, `SearchFilterPills` (same file;
+  above the bottom bar). "Opened from search" (`SearchAppsCard`, app_drawer.dart): `prefs.searchApps` (≤ 8 packages, newest
+  first, added in home `_launch` while searching; part of search history — same switch, Clear all, phone-only), a 4-wide grid
+  like the hero card; bottom bar: home draws it between Quick lights and the pills; top bar: heads the history card; long-press
+  removes one. Test: `test/search_apps_test.dart`. Once something is typed, `SearchFilterPills` (same file;
   `SearchFilter` All · Apps · Movies & shows · Web/Google · Other = shortcuts + phone settings) take the recent pills' place (home.dart
   draws them above the bar; the drawer draws them under a top bar); single-select, **Apps by default**, reset to Apps whenever the
   query empties (`_syncPills`); `_filter` lives in home.dart, flows via `AppDrawer.filter/onFilter` into `_SearchResults.filter`

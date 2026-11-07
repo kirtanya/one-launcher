@@ -501,7 +501,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
     // history, shows the recent searches card.
     final q = widget.query.trim();
     // With the bar at the bottom the recent searches are pills above it (the home draws them).
-    final history = widget.searching && q.isEmpty && RecentSearches.shows(prefs) && widget.searchBar != null;
+    final history = widget.searching && q.isEmpty && (RecentSearches.shows(prefs) || SearchAppsCard.shows(prefs, widget.apps)) && widget.searchBar != null;
     final showResults = (widget.searching && q.isNotEmpty) || history;
     // Bar at the bottom → results grow upward from it (best match nearest the bar).
     final upward = showResults && widget.searchBar == null;
@@ -512,7 +512,17 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
       if (sources.contains('shortcuts')) _loadShortcuts();
       final Widget found = history
           // With the bar at the bottom the home already brought this card in above the bar.
-          ? RecentSearches(prefs: prefs, upward: upward, animate: !upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent)
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // The apps last opened from search, then the recent searches.
+                if (SearchAppsCard.shows(prefs, widget.apps)) ...[
+                  SearchAppsCard(prefs: prefs, apps: widget.apps, onLaunch: widget.onLaunch),
+                  const SizedBox(height: DS.s12),
+                ],
+                RecentSearches(prefs: prefs, upward: upward, animate: !upward, onPick: widget.onPickRecent, onFill: widget.onFillRecent),
+              ],
+            )
           : _SearchResults(
               query: q,
               apps: sources.contains('apps') ? searchApps(widget.apps, widget.query) : const [],
@@ -914,6 +924,63 @@ class _HeroCardState extends State<_HeroCard> with WidgetsBindingObserver {
   }
 }
 
+/// Search → "Opened from search": the apps last opened from search (newest first), in a grid of
+/// up to 2 rows × 4 like the pinned & most used card, shown as soon as search opens so they're one
+/// tap away. Tap opens; long-press takes one off. Hidden with none (or search history off).
+class SearchAppsCard extends StatelessWidget {
+  const SearchAppsCard({super.key, required this.prefs, required this.apps, required this.onLaunch});
+  final Prefs prefs;
+  final List<AppEntry> apps; // all apps: the saved ids resolve against these
+  final ValueChanged<AppEntry> onLaunch;
+
+  static List<AppEntry> recent(Prefs prefs, List<AppEntry> apps) {
+    final by = {for (final a in apps) a.package: a};
+    return [
+      for (final p in prefs.searchApps)
+        if (by[p] != null) by[p]!,
+    ];
+  }
+
+  static bool shows(Prefs prefs, List<AppEntry> apps) => recent(prefs, apps).isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    final list = recent(prefs, apps);
+    if (list.isEmpty) return const SizedBox.shrink();
+    return OneCard(
+      padding: const EdgeInsets.fromLTRB(DS.s8, DS.s12, DS.s8, DS.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(DS.s8, 0, DS.s8, DS.s4),
+            child: Text(DS.cased('Opened from search'), style: DS.eyebrow.copyWith(color: DS.inkMuted, fontSize: 13)),
+          ),
+          LayoutBuilder(
+            builder: (context, c) => Wrap(
+              children: [
+                for (final a in list)
+                  SizedBox(
+                    width: c.maxWidth / 4,
+                    child: _GridApp(
+                      key: ValueKey('search-app:${a.package}'),
+                      app: a,
+                      onTap: () => onLaunch(a),
+                      onLongPress: () {
+                        HapticFeedback.mediumImpact();
+                        prefs.removeSearchApp(a.package);
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Top of a folder card: count pill, name, preview of app names, ••• (when open) and chevron.
 /// Rounded all round when closed; only on top when open (the grid continues below).
 class _FolderHeader extends StatelessWidget {
@@ -1251,7 +1318,7 @@ class _FolderBodyState extends State<_FolderBody> {
 }
 
 class _GridApp extends StatelessWidget {
-  const _GridApp({required this.app, required this.onTap, required this.onLongPress, this.label = true, this.neutral = false, this.pinned = false});
+  const _GridApp({super.key, required this.app, required this.onTap, required this.onLongPress, this.label = true, this.neutral = false, this.pinned = false});
   final AppEntry app;
   final bool label; // the app name under the icon (the hero card: Customise → Show app names)
   final bool neutral; // name in plain black on a light card (light theme) / white on a dark one, no tint

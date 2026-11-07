@@ -840,7 +840,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   Future<void> _launch(AppEntry app) async {
     // App lock: a locked app swallows taps until the Nth fast one (no animation, nothing recorded).
     if (!await AppLock.of(prefs).gate(app.package)) return;
-    if (_searching) prefs.addSearch(_query.text); // opened from search: it was used
+    if (_searching) {
+      prefs.addSearch(_query.text); // opened from search: it was used
+      prefs.addSearchApp(app.package); // and the app goes to the front of "Opened from search"
+    }
     prefs.recordLaunch(app.package);
     await Apps.instance.launch(app.package);
     // Reset quietly once the other app has covered us.
@@ -1167,7 +1170,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                       // ---- Recent searches: pills just above the bar, popping in one after another as
                                       // search opens (with the pull, or on their own after a tap); typing or closing
                                       // search takes them back out. ----
-                                      // Quick lights sit just above them (when Google Home has lights).
+                                      // Quick lights sit just above them (when Google Home has lights), then the apps
+                                      // last opened from search.
                                       if (prefs.searchPosition != 'top')
                                         AnimatedBuilder(
                                           animation: Listenable.merge([_reveal, _pull, _pillsIn, SmartHome.instance.state]),
@@ -1175,7 +1179,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                             final t = _revealed * _pillsIn.value;
                                             final lights = SmartHome.instance.state.value.lights.isNotEmpty;
                                             final pills = RecentSearches.shows(prefs);
-                                            if (t == 0 || !(lights || pills)) return const SizedBox.shrink();
+                                            final opened = SearchAppsCard.shows(prefs, _apps);
+                                            if (t == 0 || !(lights || pills || opened)) return const SizedBox.shrink();
+                                            // Each card rises in with the pull, a little above where it ends up.
+                                            Widget rise(Widget child) => Opacity(
+                                              opacity: Curves.easeOut.transform(t),
+                                              child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child),
+                                            );
                                             final mq = MediaQuery.of(context);
                                             return Positioned(
                                               left: 0,
@@ -1193,7 +1203,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                                         child: Transform.translate(
                                                           offset: Offset(0, 16 * (1 - t)),
                                                           child: Padding(
-                                                            padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
+                                                            padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills || opened ? DS.s12 : 0),
                                                             child: Container(
                                                               padding: const EdgeInsets.symmetric(vertical: DS.s8),
                                                               decoration: ShapeDecoration(
@@ -1206,6 +1216,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
                                                               }),
                                                             ),
                                                           ),
+                                                        ),
+                                                      ),
+                                                    // The apps last opened from search, one tap away.
+                                                    if (opened)
+                                                      rise(
+                                                        Padding(
+                                                          padding: EdgeInsets.fromLTRB(DS.s16, 0, DS.s16, pills ? DS.s12 : 0),
+                                                          child: SearchAppsCard(prefs: prefs, apps: _apps, onLaunch: _launch),
                                                         ),
                                                       ),
                                                     if (pills) RecentSearchPills(prefs: prefs, progress: t, onPick: _setQuery),
