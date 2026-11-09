@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_lock.dart';
 import 'apps.dart';
+import 'play_build.dart';
 
 /// Smart home: lights, plugs and AC through Google Home.
 ///
@@ -318,7 +319,7 @@ class SmartHome {
 
   /// Asks the bridge where things stand and loads the devices. Safe to call often.
   Future<void> refresh() async {
-    if (_demo) return;
+    if (_demo || playBuild) return; // not in the Play build: stays unavailable
     _listen();
     try {
       final s = await _ch.invokeMethod<String>('status');

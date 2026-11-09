@@ -234,8 +234,8 @@ class Cascade extends StatelessWidget {
   final Widget child;
   final bool upward;
 
-  static const _step = 70; // ms between rows
-  static const _each = 380; // ms each row takes
+  static const _step = 47; // ms between rows (search motion 1.5× quicker: was 70)
+  static const _each = 253; // ms each row takes (was 380)
 
   @override
   Widget build(BuildContext context) {

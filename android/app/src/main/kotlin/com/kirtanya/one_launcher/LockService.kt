@@ -9,6 +9,7 @@ import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -49,10 +50,14 @@ class LockService : Service() {
             return ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), c.packageName) == AppOpsManager.MODE_ALLOWED
         }
 
+        /** False in the Play build, whose manifest leaves this service out (store/PLAY_REVIEW.md). */
+        private fun declared(c: Context) =
+            try { c.packageManager.getServiceInfo(ComponentName(c, LockService::class.java), 0); true } catch (_: Exception) { false }
+
         /** Run while apps are locked and Usage access is granted; stop otherwise. Call from the foreground. */
         fun sync(c: Context) {
             AppLockGuard.load(c)
-            val want = AppLockGuard.locked.isNotEmpty() && hasUsageAccess(c)
+            val want = AppLockGuard.locked.isNotEmpty() && hasUsageAccess(c) && declared(c)
             val i = Intent(c, LockService::class.java)
             if (want && instance == null) {
                 try { c.startForegroundService(i) } catch (_: Exception) {} // not allowed from the background

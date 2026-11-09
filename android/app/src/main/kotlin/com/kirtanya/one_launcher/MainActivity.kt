@@ -55,6 +55,7 @@ class MainActivity : FlutterActivity() {
     private val oneStream by lazy { OneStream(this) }
     private val quick by lazy { QuickActions(this) { method, arg -> if (::channel.isInitialized) channel.invokeMethod(method, arg) } }
     private val media by lazy { MediaWatcher(this) { state -> if (::channel.isInitialized) channel.invokeMethod("mediaChanged", state) } }
+    private val pins by lazy { PinnedShortcuts(this) }
     private val worker = Executors.newSingleThreadExecutor()
     private var toast: android.widget.Toast? = null
     // Icons are made on a few threads at once (drawing + PNG per app is the slow part).
@@ -80,6 +81,8 @@ class MainActivity : FlutterActivity() {
         override fun onPackageChanged(packageName: String?, user: UserHandle?) = appsChanged()
         override fun onPackagesAvailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = appsChanged()
         override fun onPackagesUnavailable(packageNames: Array<out String>?, user: UserHandle?, replacing: Boolean) = appsChanged()
+        // Pinned shortcuts added / removed / renamed (Chrome's Add to Home screen etc.).
+        override fun onShortcutsChanged(packageName: String, shortcuts: MutableList<android.content.pm.ShortcutInfo>, user: UserHandle) = appsChanged()
     }
 
     private val profileReceiver = object : BroadcastReceiver() {
@@ -125,12 +128,12 @@ class MainActivity : FlutterActivity() {
                 }
                 "setLockedApps" -> { AppLockGuard.setLocked(this, call.argument<List<String>>("packages") ?: emptyList()); result.success(true) }
                 "lockAllow" -> { call.argument<String>("package")?.let { AppLockGuard.allow(it) }; result.success(true) }
-                "lockServiceOn" -> result.success(LockService.hasUsageAccess(this))
-                "toast" -> {
-                    toast?.cancel()
                 "setLockGrace" -> { AppLockGuard.setGrace(this, call.argument<Int>("seconds") ?: 0); result.success(true) }
                 "setLockRelock" -> { AppLockGuard.setRelock(this, call.argument<Boolean>("on") ?: true); result.success(true) }
                 "lockRecent" -> result.success(call.argument<String>("package")?.let { AppLockGuard.recentlyLeft(it) } ?: false)
+                "lockServiceOn" -> result.success(LockService.hasUsageAccess(this))
+                "toast" -> {
+                    toast?.cancel()
                     toast = android.widget.Toast.makeText(this, call.argument<String>("text") ?: "", android.widget.Toast.LENGTH_SHORT).also { it.show() }
                     result.success(true)
                 }
@@ -167,6 +170,7 @@ class MainActivity : FlutterActivity() {
                         main.post { result.success(HashMap(out)) }
                     }
                 }
+                "removeShortcut" -> result.success(pins.remove(call.argument<String>("package")!!))
                 "launch" -> result.success(launch(call.argument<String>("package")!!, call.argument<List<Number>>("from")))
                 "appInfo" -> result.success(appInfo(call.argument<String>("package")!!))
                 "uninstall" -> {
@@ -235,6 +239,10 @@ class MainActivity : FlutterActivity() {
                     open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=" + android.net.Uri.encode(call.argument<String>("query") ?: "") + "&c=apps")))
                         || open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/search?c=apps&q=" + android.net.Uri.encode(call.argument<String>("query") ?: "")))),
                 )
+                "playApp" -> result.success( // one app's page in the Play Store (the web page if the store is missing)
+                    open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://details?id=" + android.net.Uri.encode(call.argument<String>("package") ?: ""))))
+                        || open(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=" + android.net.Uri.encode(call.argument<String>("package") ?: "")))),
+                )
                 "openWallpaperPicker" -> {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper"))
                     result.success(true)
@@ -278,6 +286,7 @@ class MainActivity : FlutterActivity() {
         }
         registerReceiver(packageReceiver, filter)
         launcherApps.registerCallback(launcherCallback, main)
+        PinnedShortcuts.onPinned = ::appsChanged
         registerReceiver(profileReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE)
             addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE)
@@ -290,12 +299,12 @@ class MainActivity : FlutterActivity() {
         super.onStart()
         widgets.start() // widgets update only while we listen
         media.start() // now playing, only while on screen
+        LockService.sync(this) // Usage access may have changed: App lock polls it
     }
 
     override fun onStop() {
         widgets.stop()
         media.stop()
-        LockService.sync(this) // Usage access may have changed: App lock polls it
         super.onStop()
     }
 
@@ -314,6 +323,7 @@ class MainActivity : FlutterActivity() {
         unregisterReceiver(packageReceiver)
         unregisterReceiver(profileReceiver)
         launcherApps.unregisterCallback(launcherCallback)
+        PinnedShortcuts.onPinned = null
         super.onDestroy()
     }
 
@@ -353,6 +363,7 @@ class MainActivity : FlutterActivity() {
                 )
             }
         }
+        out += pins.list()
         return out.distinctBy { it["package"] }
     }
 
@@ -386,6 +397,7 @@ class MainActivity : FlutterActivity() {
      *  the background), icons come from files instead of being drawn again. An app update (its
      *  APK changes) makes a new file; the old one is dropped. */
     private fun cachedIcon(id: String): ByteArray? {
+        if (PinnedShortcuts.isShortcut(id)) return pins.icon(id)
         val name = "v1_" + id.replace(Regex("[^A-Za-z0-9._-]"), "_") + "_"
         val dir = File(cacheDir, "icons")
         val file = try {
@@ -451,6 +463,12 @@ class MainActivity : FlutterActivity() {
 
     /** [from] = the tapped icon's [left, top, width, height] in screen pixels (for the open animation). */
     private fun launch(id: String, from: List<Number>? = null): Boolean {
+        if (PinnedShortcuts.isShortcut(id)) {
+            val b = from?.takeIf { it.size == 4 }?.map { it.toInt() }
+            val rect = b?.let { android.graphics.Rect(it[0], it[1], it[0] + it[2], it[1] + it[3]) }
+            val opts = b?.let { android.app.ActivityOptions.makeScaleUpAnimation(window.decorView, it[0], it[1], it[2], it[3]).toBundle() }
+            return pins.launch(id, rect, opts)
+        }
         val (info, user) = activityFor(id)
         info ?: return false
         // Work apps paused → ask Android to turn them back on (it shows its own prompt).
@@ -475,6 +493,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun appInfo(id: String): Boolean {
+        if (PinnedShortcuts.isShortcut(id)) return appInfo(pins.packageOf(id) ?: return false)
         val (info, user) = activityFor(id)
         if (info != null) {
             launcherApps.startAppDetailsActivity(info.componentName, user, null, null)

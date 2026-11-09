@@ -96,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
 
   /// The recent-search pills (and quick lights): in while nothing is typed, gone the moment
   /// something is, so the results show at once.
-  late final AnimationController _pillsIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 420), value: 1);
+  late final AnimationController _pillsIn = AnimationController(vsync: this, duration: const Duration(milliseconds: 280), value: 1);
   void _syncPills() {
     if (_query.text.trim().isEmpty) {
       _filter = SearchFilter.initial; // the next search starts on Apps again
@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
   final _pull = ValueNotifier<double>(0);
 
   /// Lets go of a pull: eases it back to 0 (the list settles as search opens, or snaps back).
-  late final AnimationController _pullBack = AnimationController(vsync: this, duration: Motion.snapDuration)
+  late final AnimationController _pullBack = AnimationController(vsync: this, duration: Motion.snapDuration * (2 / 3)) // search motion: 1.5× quicker
     ..addListener(() => _pull.value = _pullFrom * (1 - Curves.easeOutCubic.transform(_pullBack.value)));
   double _pullFrom = 0;
 
@@ -717,7 +717,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver, Ti
     // A full pull has already slid them out under the finger: then only the rise is left.
     final left = 1 - (_pull.value / pullToOpen).clamp(0.0, 1.0);
     final cleared = Future<void>.delayed(AppDrawerState.awayDuration * left + const Duration(milliseconds: 40));
-    const rise = Duration(milliseconds: 368); // the sheet going full screen (a little quicker than a snap)
+    const rise = Duration(milliseconds: 245); // the sheet going full screen (search motion 1.5× quicker: was 368)
     if (_sheet.isAttached) {
       await Future.any([_sheet.animateTo(1, duration: rise, curve: Motion.settle), Future<void>.delayed(rise + const Duration(milliseconds: 60))]);
     }

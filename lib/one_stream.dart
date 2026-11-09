@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'play_build.dart';
 
 /// A movie or show from One Stream (the user's own streaming app): a row of its provider.
 class OneStreamTitle {
@@ -220,6 +221,7 @@ class OneStream {
   }
 
   Future<void> refresh() async {
+    if (playBuild) return; // not in the Play build: stays unavailable, so every One Stream part hides
     try {
       available.value = await channel.invokeMethod<bool>('oneStreamAvailable') == true;
     } catch (_) {

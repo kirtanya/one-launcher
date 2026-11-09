@@ -141,6 +141,14 @@ Companion apps elsewhere: One Stream (`~/torrent_app`), One Watch (`~/one_watch`
 `prefs.homeView` ∈ `classic` | `tiles` | `third` (UI name **Real**) | `pixel` → `DesignLanguage`
 (`lib/ui/ds.dart`) → `DS.lang`, read through `DS.metro` / `DS.third` / `DS.pixel`.
 
+**Google Play build** (`tool/build_play.sh <name> <code>`, branch `play-store`; `ONLY_ABI=arm64-v8a` env +
+`--target-platform android-arm64` makes a ~21 MB arm64-only bundle; without ONLY_ABI the datastore plugin leaves
+engine-less 32-bit/x86 folders that would crash those phones): `lib/play_build.dart`'s
+`playBuild` (dart-define) hides Play Store results, Google suggestions, Smart home and One Stream, and
+Mindful open's (was App lock) background-guard settings; Gradle's `PLAY_BUILD=true` drops the Home
+SDK and uses `android/app/src/play/AndroidManifest.xml` (removes LockService, its FGS permissions
+and the One Stream query). Why: `store/PLAY_REVIEW.md`. Views other than Classic carry a Beta tag.
+
 **Pixel view** (`lib/pixel/`, spec + file map in `docs/PIXEL_VIEW.md`): Pixel Launcher end to end
 (grid pages, dock, At a Glance, search pill, swipe-up drawer, anchored icon popup, drag-to-folder)
 plus more settings. Uses Classic's Material You palette (`DesignLanguage.pixel`); no glass setting (its
@@ -190,7 +198,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 ## File map (phone)
 - `main.dart`: app, `ThemeData` per language, glass/icon settings sync, home router by view.
 - `home.dart`: Classic/Real home. Top area + app sheet (`DraggableScrollableSheet`), pull-to-search
-  (`_pull`, `_reveal`, `_onPull/_onPullEnd`), search state (`_searching`, `_showResults`),
+  (`_pull`, `_reveal`, `_onPull/_onPullEnd`; letting go past `pullToOpen` = 140 px in app_drawer.dart opens it),
+  search state (`_searching`, `_showResults`). Search motion runs at 1.5× the shared speed (durations ×2/3:
+  away 299/back 207 ms, pull spring + `SearchEnter` `Motion.snapDuration * 2/3`, pills 280, dock morph 384/207,
+  history cascade 47/253 ms); keep new search motion on that pace.
   tab pages under the nav (`_TabPage`, `_presentPage`, `_openTab`, `_navOrder`), status-bar style.
   Nav order: Now · Home · Smart home · Search (no Settings or Notifications tab: long-press Home opens Settings,
   which rises from the bottom with Back at the top: `_openTab(rise: true)` → `TabPageHost.rise`). Now = the top
@@ -225,6 +236,9 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
   query empties (`_syncPills`); `_filter` lives in home.dart, flows via `AppDrawer.filter/onFilter` into `_SearchResults.filter`
   (`searchResults()` for Tiles stays All). Tests: `test/search_filter_test.dart`; tests that need the web rows / long list tap
   `filter:all` first. `google_suggest.dart`: Google autocomplete (follows "Search Google").
+  `play_search.dart`: Play Store apps for the query (follows "Play Store"; reads play.google.com's search page —
+  unofficial, any failure shows none; installed apps left out). Card under the Apps filter; tap → `Apps.playApp`
+  (`playApp` in MainActivity: market://details, web fallback).
 - `sheets.dart`: all Settings. `showSettingsSheet` → `settingsNow()` (`_Setting` list with
   category + group), `_CategoryGrid`, `openCategory`. Editors: `showEditor` (live home preview),
   `_HomeEditor` (Home view tabs), wallpaper, layout, clock style, chips, top widgets, today panel.
@@ -317,6 +331,10 @@ Docs: `docs/DESIGN_LANGUAGES.md`, `docs/DESIGN_STYLE.md` (Classic),
 (`make.sh` regenerates). Adaptive layers are bitmaps in `res/mipmap-*` (`ic_launcher_bg` / `_foreground` /
 `_monochrome`, plus legacy `ic_launcher`), TV banner `src/tv/res/drawable-xhdpi/tv_banner.png` (640×360),
 `docs/app_icon.png`. `tool/make_icon.py` (old "1" mark) is retired; don't run it.
+**Play graphics** (`store/`): `icon-512.png` = the Glass O square from `~/one-logos` (Play rounds it);
+`tool/store_icons.py` → `store/app_icons/` (One-family logos + plain glyph icons for the shots, never
+other brands' logos: Play rejects them); `test/store_shots_test.dart` → `store/raw/`; `tool/store_assets.py`
+(Pillow: `/opt/homebrew/bin/python3.14`) frames them and draws `feature-graphic.png`. `STORE_RAW=dir` reads shots elsewhere.
 
 ## Gotchas (learned the hard way)
 - Opacity over a large subtree didn't render its middle frames on the phone. Fade solid content

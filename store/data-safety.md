@@ -2,7 +2,7 @@
 
 **Does your app collect or share any of the required user data types?** → **No**
 
-Why: One Launcher contacts no servers — no analytics, no ads, no accounts. Its only network use is the TV remote, which talks directly to the user's own TV on the local Wi-Fi. Everything it
+Why: One Launcher has no servers — no analytics, no ads, no accounts. In the Play build (`tool/build_play.sh`) its only network use is the TV remote, which talks directly to the user's own TV on the local Wi-Fi, and fetching the cover picture a music app points to (a plain image download, nothing about the user sent). Search never sends what's typed anywhere (no Google suggestions or Play results in this build). Everything it
 reads (app list, usage time, calendar events, what's playing) is used on the phone to draw the
 screen and is never sent anywhere. Google's definition of "collect" is transmitting data off the
 device to the developer or third parties — the remote only sends key presses to the user's own TV.

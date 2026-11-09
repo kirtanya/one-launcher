@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'play_build.dart';
 
 /// Built-in quick actions (ids start with "b:"). App shortcuts use `s:<package>|<id>|<profile>`.
 const builtInActions = <String, (String, IconData)>{
@@ -10,7 +11,7 @@ const builtInActions = <String, (String, IconData)>{
   'b:internet': ('Internet', Icons.wifi_rounded),
   'b:bluetooth': ('Bluetooth', Icons.bluetooth_rounded),
   'b:note': ('New note', Icons.edit_note_rounded),
-  'b:home': ('Smart home', Icons.lightbulb_outline_rounded), // Google Home lights, plugs, AC
+  if (!playBuild) 'b:home': ('Smart home', Icons.lightbulb_outline_rounded), // Google Home lights, plugs, AC
   'b:remote': ('TV remote', Icons.settings_remote_rounded), // opens One Launcher's own remote
   'b:caffeine': ('Caffeine', Icons.coffee_outlined), // screen timeout: tap off ↔ chosen level (5 / 10 min / keep awake), long-press picks
 };

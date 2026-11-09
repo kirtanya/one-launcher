@@ -10,6 +10,7 @@ import 'ui/ds.dart';
 import 'ui/glass.dart';
 import 'ui/perf.dart';
 import 'ui/motion.dart';
+import 'play_build.dart';
 
 /// iOS-style search at the bottom of the screen. One white pill that morphs between:
 /// - full bar ("Search 124 apps") while the list is at rest or scrolling back down,
@@ -126,7 +127,9 @@ class SearchDock extends StatelessWidget {
                     if (onNow != null) _NavTab('now', Icons.graphic_eq_rounded, 'Now', onNow!, tooltip: 'Now: what\'s playing'),
                     _NavTab('home', Icons.home_rounded, 'Home', onHome!, onLongPress: onSettings, tooltip: 'Home screen · hold for Settings'),
                     if (onRemote != null)
-                      _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),
+                      playBuild
+                          ? _NavTab('smart', Icons.settings_remote_rounded, 'Remote', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'TV remote')
+                          : _NavTab('smart', Icons.lightbulb_rounded, 'Smart home', onRemote!, onLongPress: onRemoteLongPress, tooltip: 'Smart home and TV remote'),
                     _NavTab('search', Icons.search_rounded, 'Search', onActivate),
                   ],
                   controller: controller,
@@ -526,8 +529,8 @@ class _NavSearchState extends State<_NavSearch> with TickerProviderStateMixin {
   // Slower than the app's usual snap so every step of the morph can be seen.
   late final _t = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 576), // opening
-    reverseDuration: const Duration(milliseconds: 311), // closing: quicker, out of the way
+    duration: const Duration(milliseconds: 384), // opening (search motion 1.5× quicker: was 576)
+    reverseDuration: const Duration(milliseconds: 207), // closing: quicker, out of the way (was 311)
     value: widget.active ? 1 : 0,
   );
 

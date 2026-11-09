@@ -32,4 +32,4 @@ Everything here is in `~/Desktop/OneLauncher-PlayStore/` (rebuild it any time wi
 8. **Production** — apply for production access, then create a production release with the same
    .aab (or a newer one). Review usually takes a few days.
 
-Each new upload needs a higher version number (tool/build_play.sh uses pubspec.yaml's).
+Each new upload needs a higher version code: `tool/build_play.sh <version name> <version code>` (pubspec.yaml isn't kept current).

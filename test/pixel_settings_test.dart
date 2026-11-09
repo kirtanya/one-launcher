@@ -95,7 +95,7 @@ void main() {
     await reveal(tester, find.text('Home view'));
     await tester.tap(find.text('Home view'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Tiles'));
+    await tester.tap(find.text('Tiles (beta)'));
     await tester.pumpAndSettle();
     expect(prefs.homeView, 'tiles');
     expect(find.text('open'), findsOneWidget, reason: 'back on home');

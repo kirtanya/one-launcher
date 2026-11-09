@@ -30,6 +30,7 @@ class AppEntry {
     this.installed = 0,
     this.work = false,
     this.paused = false,
+    this.shortcut,
   });
   final String package;
   final String label;
@@ -38,6 +39,10 @@ class AppEntry {
   final int installed; // first install time, ms since epoch
   final bool work; // from the work profile (package is then "pkg@profile")
   final bool paused; // work apps are paused (tapping asks to turn them on)
+  /// A shortcut another app pinned to the home screen (Chrome's Add to Home screen, Maps…):
+  /// the name of the app it came from. Its [package] is then `s:<pkg>|<id>|<profile>`.
+  final String? shortcut;
+  bool get isShortcut => shortcut != null;
 }
 
 /// Talks to Android (MainActivity.kt). On web it serves demo apps so the
@@ -178,6 +183,7 @@ class Apps {
                 installed: m['installed'] as int? ?? 0,
                 work: m['work'] as bool? ?? false,
                 paused: m['paused'] as bool? ?? false,
+                shortcut: m['shortcut'] == true ? (m['app'] as String? ?? '') : null,
               ),
             )
             .toList()
@@ -194,7 +200,9 @@ class Apps {
   /// didn't change keep their image (no flicker); changed ones are swapped in.
   Future<void> _prefetch(List<AppEntry> apps) => _prefetching = () async {
     try {
-      final m = await _ch.invokeMapMethod<String, Uint8List>('getIcons', {'packages': [for (final a in apps) a.package]});
+      final m = await _ch.invokeMapMethod<String, Uint8List>('getIcons', {
+        'packages': [for (final a in apps) a.package],
+      });
       if (m == null) return;
       for (final MapEntry(key: pkg, value: bytes) in m.entries) {
         if (_ready[pkg] case final old? when listEquals(old.bytes, bytes)) continue;
@@ -260,6 +268,15 @@ class Apps {
 
   Future<void> appInfo(String package) => _call('appInfo', {'package': package});
   Future<void> uninstall(String package) => _call('uninstall', {'package': package});
+
+  /// Unpin a home-screen shortcut ([AppEntry.isShortcut]); the list refreshes on its own.
+  Future<void> removeShortcut(String package) async {
+    await _call('removeShortcut', {'package': package});
+    _icons.remove(package);
+    _ready.remove(package);
+    onAppsChanged?.call();
+  }
+
   Future<void> openNotifications() => _call('openNotifications');
   Future<void> openWallpaperPicker() => _call('openWallpaperPicker');
 
@@ -271,6 +288,7 @@ class Apps {
 
   /// Search the Play Store's apps for [query].
   Future<void> playSearch(String query) => _call('playSearch', {'query': query});
+  Future<void> playApp(String package) => _call('playApp', {'package': package});
   Future<void> openHomeSettings() => _call('openHomeSettings');
 
   // ---- Top carousel data ----

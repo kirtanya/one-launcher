@@ -17,6 +17,7 @@ import 'ui/glass.dart';
 import 'search.dart';
 import 'search_dock.dart';
 import 'google_suggest.dart';
+import 'play_search.dart';
 import 'search_history.dart';
 import 'third/tactile/parts.dart';
 import 'third/tactile/tactile.dart';
@@ -28,6 +29,7 @@ import 'ui/components.dart';
 import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'widgets.dart';
+import 'play_build.dart';
 
 /// The bottom sheet of the one-screen launcher: pastel hero card, then "Most used",
 /// then one card per folder of similar apps. Only one folder is open at a time.
@@ -215,10 +217,10 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
   late final AnimationController _away = AnimationController(vsync: this, duration: awayDuration, reverseDuration: backDuration, value: widget.leaving ? 1 : 0);
 
   /// How long the cards take to clear before the results come in.
-  static const awayDuration = Duration(milliseconds: 448);
+  static const awayDuration = Duration(milliseconds: 299); // search motion: 1.5× quicker (was 448)
 
   /// …and how long they take to come back when search closes (quicker: out of the way).
-  static const backDuration = Duration(milliseconds: 311);
+  static const backDuration = Duration(milliseconds: 207); // (was 311)
 
   @override
   void initState() {
@@ -538,6 +540,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
                   : const [],
               web: sources.contains('google'),
               play: sources.contains('play'),
+              installed: {for (final a in widget.apps) a.package},
               oneStream: sources.contains('onestream'),
               filter: widget.filter,
               upward: upward,
@@ -748,7 +751,7 @@ class AppDrawerState extends State<AppDrawer> with TickerProviderStateMixin {
 double pullOffset(double p) => 140 * (1 - math.exp(-p / 140));
 
 /// Pull this far (px of finger travel) and let go to open search.
-const pullToOpen = 200.0; // long enough that the nav → search morph visibly scrubs under the finger
+const pullToOpen = 140.0; // the line past which letting go opens search (70% of the earlier 200: easier to reach)
 
 /// The hint that grows in the gap while pulling the drawer down: "Pull to search", then
 /// "Release to search" (full ink) once far enough. Plain text — no pill, no icon.
@@ -1404,6 +1407,7 @@ Widget searchResults({
         : const [],
     web: sources.contains('google'),
     play: sources.contains('play'),
+    installed: {for (final a in apps) a.package},
     oneStream: sources.contains('onestream'),
     filter: filter,
     upward: false,
@@ -1429,6 +1433,7 @@ class _SearchResults extends StatelessWidget {
     required this.settings,
     required this.web,
     required this.play,
+    this.installed = const {},
     this.oneStream = false,
     this.filter = SearchFilter.all,
     required this.upward,
@@ -1445,6 +1450,7 @@ class _SearchResults extends StatelessWidget {
   final List<AppShortcut> shortcuts;
   final List<SystemSetting> settings;
   final bool web, play, upward;
+  final Set<String> installed; // left out of the Play Store's apps
   final SearchFilter filter; // narrows the sections shown
   final bool oneStream; // movies & shows from One Stream (shows itself once it has results)
   final Prefs prefs;
@@ -1590,7 +1596,7 @@ class _SearchResults extends StatelessWidget {
         ),
       // Google's suggestions for what's typed (with Search Google on): tap to search one in
       // Google, the arrow to put it in the bar. Shows nothing until it has some.
-      if (web && filter.shows(SearchFilter.web))
+      if (web && !playBuild && filter.shows(SearchFilter.web))
         GoogleSuggestions(
           key: const ValueKey('suggest'),
           query: query,
@@ -1598,6 +1604,20 @@ class _SearchResults extends StatelessWidget {
             padding: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
             child: _rowsCard(google ? 'Google' : 'Suggestions', [
               for (final s in list) _SuggestRow(text: s, onTap: () => onWebSearch(s), onFill: onFill == null ? null : () => onFill!(s)),
+            ]),
+          ),
+        ),
+      // The Play Store's apps for what's typed (with Play Store on), not the installed ones:
+      // tap for the app's store page. Shows nothing until it has some.
+      if (play && !playBuild && filter.shows(SearchFilter.apps))
+        PlayResults(
+          key: const ValueKey('playApps'),
+          query: query,
+          skip: installed,
+          builder: (context, list) => Padding(
+            padding: const EdgeInsets.only(top: DS.stack), // carries its own gap: nothing shows until it has results
+            child: _rowsCard('Play Store', [
+              for (final a in list) _PlayRow(app: a, onTap: () => onRun(() => Apps.instance.playApp(a.id))),
             ]),
           ),
         ),
@@ -1623,7 +1643,7 @@ class _SearchResults extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final (i, w) in ordered.indexed) ...[
-          if (i > 0 && w.child is! OneStreamSearchRow && w.child is! GoogleSuggestions) const SizedBox(height: DS.stack),
+          if (i > 0 && w.child is! OneStreamSearchRow && w.child is! GoogleSuggestions && w.child is! PlayResults) const SizedBox(height: DS.stack),
           w,
         ],
       ],
@@ -1720,6 +1740,50 @@ class _WebRow extends StatelessWidget {
   }
 }
 
+/// One Play Store app in search: its icon, name, developer and stars; tap for its store page.
+class _PlayRow extends StatelessWidget {
+  const _PlayRow({required this.app, required this.onTap});
+  final PlayApp app;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = app.rating;
+    final sub = [if (app.developer.isNotEmpty) app.developer, if (rating != null) '★ ${rating.toStringAsFixed(1)}'].join(' · ');
+    final blank = ColoredBox(color: DS.cardMuted, child: Icon(Icons.shop_outlined, size: 22, color: DS.ink));
+    return InkWell(
+      key: ValueKey('play-app:${app.id}'),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: DS.s16, vertical: DS.s12),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: app.icon == null ? blank : Image.network(app.icon!, fit: BoxFit.cover, cacheWidth: 120, errorBuilder: (_, _, _) => blank),
+              ),
+            ),
+            const SizedBox(width: DS.s16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(app.name, style: DS.rowTitle.copyWith(fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (sub.isNotEmpty) Text(sub, style: DS.rowSub, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            Icon(Icons.north_east_rounded, size: 18, color: DS.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The small dot on a newly installed app's icon, until it's opened once.
 class NewDot extends StatelessWidget {
   const NewDot({super.key, this.semantics});
@@ -1752,7 +1816,7 @@ class SearchEnter extends StatelessWidget {
     if (Perf.lite.value) return child;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Motion.snapDuration,
+      duration: Motion.snapDuration * (2 / 3), // search motion: 1.5× quicker
       curve: Motion.settle,
       child: child,
       builder: (context, t, child) => Opacity(

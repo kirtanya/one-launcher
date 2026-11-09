@@ -11,6 +11,7 @@ import 'ui/ds.dart';
 import 'ui/motion.dart';
 import 'ui/perf.dart';
 import 'widgets.dart';
+import 'play_build.dart';
 
 /// Opens the Smart home sheet (the nav's Smart home tab, quick chip `b:home`, the top page's
 /// "All devices", Tiles' `qa:b:home`). [onRemote] adds the TV remote as the first tile.
@@ -80,8 +81,8 @@ class SmartHomeBody extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SheetHeader(
-                title: 'Smart home',
-                subtitle: 'Lights, plugs and AC',
+                title: playBuild ? 'TV remote' : 'Smart home',
+                subtitle: playBuild ? 'Your TV on the home Wi-Fi' : 'Lights, plugs and AC',
               ),
               const SizedBox(height: DS.s16),
               if (ready) _HomePicker(state: s),
@@ -959,6 +960,7 @@ class SmartSetupCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (playBuild) return const SizedBox.shrink(); // no Smart home in the Play build
     final unavailable = state.status == SmartHomeStatus.unavailable;
     return GestureDetector(
       // Debug builds only: long-press fills fake devices.

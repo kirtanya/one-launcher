@@ -9,10 +9,11 @@ import 'apps.dart';
 import 'prefs.dart';
 import 'ui/ds.dart';
 import 'widgets.dart';
+import 'play_build.dart';
 
 /// Asks for the PIN; true when it was right. False when dismissed.
 Future<bool> askPin(BuildContext context, AppLock lock, {String title = 'Enter PIN'}) =>
-    _pinSheet(context, title: title, subtitle: 'Your 4-digit app lock PIN', check: lock.verifyPin);
+    _pinSheet(context, title: title, subtitle: 'Your 4-digit Mindful open PIN', check: lock.verifyPin);
 
 /// First PIN / new PIN: type it twice. Saves it; true when set.
 Future<bool> setNewPin(BuildContext context, AppLock lock, {String title = 'Set a PIN'}) async {
@@ -20,7 +21,7 @@ Future<bool> setNewPin(BuildContext context, AppLock lock, {String title = 'Set 
   final ok = await _pinSheet(
     context,
     title: title,
-    subtitle: 'Needed to unlock apps or change this later',
+    subtitle: 'Needed to take an app off the list or change these settings',
     confirmWith: (pin) => first = pin,
     check: (pin) => first == pin,
     confirmTitle: 'Type it again',
@@ -193,13 +194,13 @@ class _PadKey extends StatelessWidget {
 Future<void> toggleAppLock(BuildContext context, Prefs prefs, AppEntry app) async {
   final lock = AppLock.of(prefs);
   if (lock.isLocked(app.package)) {
-    if (await askPin(context, lock, title: 'Unlock ${app.label}')) await lock.removeLock(app.package);
+    if (await askPin(context, lock, title: 'Open ${app.label} normally')) await lock.removeLock(app.package);
     return;
   }
   if (await ensurePin(context, lock)) await lock.lock(app.package);
 }
 
-/// Settings → Apps → App lock.
+/// Settings → Apps → Mindful open.
 Future<Object?> showAppLockPage(BuildContext context, {required Prefs prefs, required List<AppEntry> apps, double? height}) => showOneSheetWith(
   context,
   back: true,
@@ -248,7 +249,7 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
   Future<void> _switch(AppEntry a, bool on) async {
     if (on) {
       if (await ensurePin(context, lock)) await lock.lock(a.package);
-    } else if (await askPin(context, lock, title: 'Unlock ${a.label}')) {
+    } else if (await askPin(context, lock, title: 'Open ${a.label} normally')) {
       await lock.removeLock(a.package);
     }
   }
@@ -271,12 +272,12 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
 
   Future<void> _setGrace(int s) async {
     if (s == prefs.lockGrace) return;
-    if (lock.hasPin && !await askPin(context, lock, title: 'Reopen without lock')) return;
+    if (lock.hasPin && !await askPin(context, lock, title: 'Reopen with one tap')) return;
     await lock.setGrace(s);
   }
 
   Future<void> _setRelock(bool on) async {
-    if (lock.hasPin && !await askPin(context, lock, title: 'Lock again when the screen locks')) return;
+    if (lock.hasPin && !await askPin(context, lock, title: 'Reset when the screen locks')) return;
     await lock.setRelock(on);
   }
 
@@ -320,14 +321,14 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(DS.s24, 0, DS.s24, DS.s8),
-              child: SheetHeader(title: 'App lock', subtitle: 'Locked apps open only on a fast double or triple tap'),
+              child: SheetHeader(title: 'Mindful open', subtitle: 'Chosen apps open only on a fast double or triple tap'),
             ),
-            if (!_serviceOn)
+            if (!_serviceOn && !playBuild) // the Play build has no background guard
               ListTile(
                 key: const ValueKey('lock-service-row'),
                 contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
                 leading: Icon(Icons.shield_outlined, color: DS.ink),
-                title: Text('Keep locked apps closed when opened from notifications or recents', style: DS.rowTitle.copyWith(fontSize: 14)),
+                title: Text('Keep chosen apps closed when opened from notifications or recents', style: DS.rowTitle.copyWith(fontSize: 14)),
                 subtitle: Text('Allow Usage access for One Launcher', style: DS.rowSub),
                 trailing: Icon(Icons.chevron_right_rounded, color: DS.inkFaint),
                 onTap: Apps.instance.openUsageAccess,
@@ -344,13 +345,14 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
                 onSelectionChanged: (s) => _setTaps(s.first),
               ),
             ),
+            if (!playBuild) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s24, DS.s8, DS.s24, 0),
-              child: Text('Reopen without lock', style: DS.rowTitle),
+              child: Text('Reopen with one tap', style: DS.rowTitle),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(DS.s24, 2, DS.s24, 0),
-              child: Text('A locked app you just left opens normally for this long', style: DS.rowSub),
+              child: Text('A chosen app you just left opens on one tap for this long', style: DS.rowSub),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: DS.s24, vertical: DS.s8),
@@ -372,16 +374,17 @@ class _AppLockBodyState extends State<_AppLockBody> with WidgetsBindingObserver 
               key: const ValueKey('lock-relock'),
               contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
               secondary: Icon(Icons.screen_lock_portrait_outlined, color: DS.ink),
-              title: Text('Lock again when the screen locks', style: DS.rowTitle),
-              subtitle: Text('Ends the time above, and locks an app that\'s still open', style: DS.rowSub),
+              title: Text('Reset when the screen locks', style: DS.rowTitle),
+              subtitle: Text('Ends the time above, and closes a chosen app that\'s still open', style: DS.rowSub),
               value: prefs.lockRelock,
               onChanged: _setRelock,
             ),
+            ],
             ListTile(
               contentPadding: const EdgeInsets.symmetric(horizontal: DS.s24),
               leading: Icon(Icons.pin_outlined, color: DS.ink),
               title: Text(lock.hasPin ? 'Change PIN' : 'Set PIN', style: DS.rowTitle),
-              subtitle: Text(lock.hasPin ? '4 digits' : 'Also set the first time you lock an app', style: DS.rowSub),
+              subtitle: Text(lock.hasPin ? '4 digits' : 'Also set the first time you choose an app', style: DS.rowSub),
               onTap: _changePin,
             ),
             SheetSearchField(hint: 'Search apps', onChanged: (v) => setState(() => _q = v)),

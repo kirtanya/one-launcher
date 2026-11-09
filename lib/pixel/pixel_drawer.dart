@@ -17,7 +17,7 @@ import 'pixel_popup.dart';
 /// grid of all apps (A–Z with a letter scroller, or by recent / most used), Personal / Work
 /// tabs when there are work apps. The home owns the slide-up; this fills the screen.
 class PixelDrawer extends StatefulWidget {
-  const PixelDrawer({super.key, required this.prefs, required this.apps, required this.onClose, this.onDragStart, this.searchFocus});
+  const PixelDrawer({super.key, required this.prefs, required this.apps, required this.onClose, this.onDragStart, this.searchFocus, this.morph});
   final Prefs prefs;
 
   /// All launchable apps; hidden ones are filtered here.
@@ -31,6 +31,10 @@ class PixelDrawer extends StatefulWidget {
 
   /// Home focuses this to open with the keyboard.
   final FocusNode? searchFocus;
+
+  /// The drawer's 0…1 opening while home's Google pill flies into the search field: the field
+  /// shows only once it's fully open (the flying pill stands in until then).
+  final Animation<double>? morph;
 
   @override
   State<PixelDrawer> createState() => PixelDrawerState();
@@ -181,7 +185,7 @@ class PixelDrawerState extends State<PixelDrawer> {
                 const SizedBox(height: 22),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-                  child: _SearchPill(controller: _query, focus: _focus, onSubmit: _submit),
+                  child: _morphed(_SearchPill(controller: _query, focus: _focus, onSubmit: _submit)),
                 ),
                 Expanded(child: NotificationListener<ScrollNotification>(onNotification: _onScroll, child: searching ? _results(pad) : _grid(pad))),
               ],
@@ -190,6 +194,12 @@ class PixelDrawerState extends State<PixelDrawer> {
         ),
       ),
     );
+  }
+
+  Widget _morphed(Widget field) {
+    final m = widget.morph;
+    if (m == null) return field;
+    return AnimatedBuilder(animation: m, builder: (context, child) => Opacity(opacity: m.value >= 1 ? 1 : 0, child: child), child: field);
   }
 
   void _submit(String q) {

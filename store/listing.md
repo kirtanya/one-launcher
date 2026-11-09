@@ -33,6 +33,10 @@ QUICK ACTIONS
 • Add shortcuts from your apps, like scanning a QR code or writing a new email
 • Style the chips your way: colour, transparency, shape, size, icon or label
 
+MINDFUL OPEN
+• Pick the apps you open out of habit: they open only on a quick double or triple tap, so a stray tap doesn't pull you in
+• A PIN keeps the list from being undone on a whim
+
 YOUR COLOURS, YOUR WALLPAPER
 • Follows your wallpaper's colours (Material You), or pick your own colour and style
 • Light, dark or automatic cards

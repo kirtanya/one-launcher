@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Title page mockup</title>
+<style>
+  body{margin:0;background:#111;font-family:-apple-system,"Instrument Sans",Helvetica,sans-serif;color:#fff;display:flex;flex-direction:column;align-items:center;gap:28px;padding:28px}
+  .tv{width:960px;height:540px;position:relative;overflow:hidden;border-radius:10px;background:#0b0b0d;box-shadow:0 10px 40px #000}
+  .bd{position:absolute;inset:0 0 auto auto;width:74%;height:85%;background:linear-gradient(135deg,#3a4a5e,#1c232e 60%,#14181f)}
+  .bd::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#0b0b0d 0%,rgba(11,11,13,.6) 30%,transparent 65%),linear-gradient(0deg,#0b0b0d 0%,transparent 45%)}
+  .hero{position:absolute;left:48px;top:40px;width:470px}
+  .eyebrow{font-size:11px;letter-spacing:.14em;color:#9aa;font-weight:600}
+  h1{font-size:40px;margin:6px 0 6px;font-weight:700;letter-spacing:-.01em}
+  .meta{font-size:13px;color:#c8c8c8}
+  .ratings{display:flex;gap:10px;align-items:center;margin:14px 0}
+  .imdb{display:inline-flex;align-items:center;gap:6px;background:#F5C518;color:#000;border-radius:5px;padding:3px 8px 3px 5px;font-weight:800;font-size:13px}
+  .imdb b{background:#000;color:#F5C518;border-radius:3px;padding:1px 4px;font-family:Impact,"Arial Black",sans-serif;font-size:12px;letter-spacing:.02em}
+  .rt{display:inline-flex;align-items:center;gap:5px;font-weight:700;font-size:14px}
+  .tomato{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#ff6b4a,#d6260b);position:relative}
+  .tomato::before{content:"";position:absolute;top:-3px;left:5px;width:8px;height:5px;background:#2e8b2e;border-radius:50% 50% 0 0}
+  .mc{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#ccc}
+  .mc span{background:#66cc33;color:#fff;font-weight:800;font-size:13px;width:26px;height:24px;display:grid;place-items:center;border-radius:3px}
+  .plot{font-size:13px;line-height:1.45;color:#ddd;max-width:440px}
+  .btns{display:flex;gap:10px;margin-top:16px}
+  .btn{padding:9px 18px;border-radius:999px;background:#2a2a2e;font-size:13px;font-weight:600}
+  .btn.f{background:#fff;color:#000;box-shadow:0 0 0 3px rgba(255,255,255,.35)}
+  .row{position:absolute;left:48px;right:0;top:350px}
+  .rh{font-size:13px;font-weight:600;color:#ccc;margin-bottom:10px}
+  .cards{display:flex;gap:14px}
+  .rv{width:250px;height:118px;border-radius:12px;background:#1b1b20;padding:12px 14px;box-sizing:border-box;flex:none}
+  .rv.f{outline:3px solid #fff;transform:scale(1.04)}
+  .who{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600}
+  .av{width:22px;height:22px;border-radius:50%;background:#4b6;display:grid;place-items:center;font-size:11px}
+  .sc{margin-left:auto;background:#F5C518;color:#000;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:800}
+  .tx{font-size:11.5px;line-height:1.4;color:#bbb;margin-top:8px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+  .note{font-size:12px;color:#888}
+  .posters{display:flex;gap:16px;padding:20px;background:#0b0b0d;border-radius:10px;width:920px}
+  .poster{width:120px;height:180px;border-radius:10px;background:linear-gradient(160deg,#5a4a6e,#22202c);position:relative}
+  .poster:nth-child(2){background:linear-gradient(160deg,#6e5a3a,#2c2416)}
+  .poster:nth-child(3){background:linear-gradient(160deg,#3a6e5e,#16302a)}
+  .poster .imdb{position:absolute;top:8px;left:8px;font-size:11px;padding:2px 6px 2px 3px}
+  .poster .imdb b{font-size:10px}
+  .cap{font-size:12px;margin-top:6px;color:#ddd}
+</style></head><body>
+<div class="note">TV title page (960×540) — Classic look. One Stream gets the same structure in its own style.</div>
+<div class="tv">
+  <div class="bd"></div>
+  <div class="hero">
+    <div class="eyebrow">FILM · 2010 · 2h 28m · SCI-FI, ACTION</div>
+    <h1>Inception</h1>
+    <div class="ratings">
+      <span class="imdb"><b>IMDb</b>8.8</span>
+      <span class="rt"><span class="tomato"></span>86%</span>
+      <span class="mc"><span>74</span>Metascore</span>
+    </div>
+    <div class="plot">A thief who steals corporate secrets through dream-sharing technology is given the inverse task of planting an idea into the mind of a C.E.O.</div>
+    <div class="btns"><span class="btn f">▶ Play</span><span class="btn">Trailer</span><span class="btn">Where to watch</span></div>
+  </div>
+  <div class="row">
+    <div class="rh">Reviews · 12</div>
+    <div class="cards">
+      <div class="rv f"><div class="who"><span class="av">J</span>John Chard<span class="sc">★ 9</span></div><div class="tx">Your mind is the scene of the crime. Nolan builds a maze of a film that rewards every second of attention, anchored by a score that refuses to let go…</div></div>
+      <div class="rv"><div class="who"><span class="av" style="background:#b64">M</span>msbreviews<span class="sc">★ 8</span></div><div class="tx">An original blockbuster is rare; one this ambitious and coherent even rarer. The rotating corridor alone is worth the ticket…</div></div>
+      <div class="rv"><div class="who"><span class="av" style="background:#46b">T</span>tmdb44006625<span class="sc">★ 10</span></div><div class="tx">I've watched it five times and still catch new details in the layers…</div></div>
+      <div class="rv"><div class="who"><span class="av" style="background:#a4b">R</span>Reader</div><div class="tx">…</div></div>
+    </div>
+  </div>
+</div>
+<div class="note">Poster cards everywhere (search, rows): the IMDb pill top-left</div>
+<div class="posters">
+  <div><div class="poster"><span class="imdb"><b>IMDb</b>8.8</span></div><div class="cap">Inception · 2010</div></div>
+  <div><div class="poster"><span class="imdb"><b>IMDb</b>8.3</span></div><div class="cap">Prison Break · 2005</div></div>
+  <div><div class="poster"><span class="imdb"><b>IMDb</b>7.4</span></div><div class="cap">Dune · 2021</div></div>
+</div>
+<div class="note">Rotten tomato = Fresh (≥60%) · green splat = Rotten · Metascore square green ≥61 / yellow 40–60 / red &lt;40. Series usually have IMDb only.</div>
+</body></html>

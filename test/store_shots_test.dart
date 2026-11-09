@@ -1,6 +1,7 @@
-// Play Store screenshots: the real app, rendered with neutral app names (letter icons, no
-// brands, no personal data) over a soft gradient wallpaper. Run:
-//   flutter test --update-goldens test/store_shots_test.dart
+// Play Store screenshots: the real app, rendered with neutral app names (icons from
+// store/app_icons: the One family's own logos and plain glyphs, no brands, no personal data) over a soft gradient wallpaper. Run:
+//   python3 tool/store_icons.py
+//   flutter test --update-goldens --dart-define=PLAY_BUILD=true test/store_shots_test.dart
 // then `python3 tool/store_assets.py` frames them into store/screenshots/.
 import 'dart:io';
 
@@ -26,17 +27,19 @@ Future<void> _loadFonts() async {
 
 // Generic apps; the package names carry the folder keywords.
 const _apps = {
-  'Messages': 'com.one.messages', 'Phone': 'com.one.dialer', 'Contacts': 'com.one.contacts', 'Chat': 'com.one.chat.messaging', //
-  'Mail': 'com.one.mail', 'Calendar': 'com.one.calendar', 'Tasks': 'com.one.todo', 'Docs': 'com.one.docs', 'Meet': 'com.one.meet', //
-  'Bank': 'com.one.bank', 'Pay': 'com.one.pay', 'Stocks': 'com.one.invest', 'Wallet': 'com.one.wallet', //
-  'Music': 'com.one.music', 'Photos': 'com.one.photos', 'Camera': 'com.one.camera', 'Video': 'com.one.video', 'Podcasts': 'com.one.podcast', //
+  'Messages': 'com.one.messages', 'Phone': 'com.one.dialer', 'Contacts': 'com.one.contacts', 'One Chat': 'com.one.chat.messaging', //
+  'Mail': 'com.one.mail', 'Calendar': 'com.one.calendar', 'Tasks': 'com.one.todo', 'One Canvas': 'com.one.docs', 'Meet': 'com.one.meet', //
+  'Bank': 'com.one.bank', 'Pay': 'com.one.pay', 'Stocks': 'com.one.invest', 'One Tracker': 'com.one.wallet', //
+  'Music': 'com.one.music', 'Photos': 'com.one.photos', 'One camera': 'com.one.camera', 'Video': 'com.one.video', 'Podcasts': 'com.one.podcast', //
   'Shop': 'com.one.shop', 'Groceries': 'com.one.grocery.shop', //
   'Maps': 'com.one.maps', 'Metro': 'com.one.metro', 'Trips': 'com.one.booking', //
   'News': 'com.one.news', 'Books': 'com.one.books', //
   'Chess': 'com.one.chess', 'Puzzles': 'com.one.puzzle', //
-  'Health': 'com.one.health', 'Sleep': 'com.one.sleep', //
+  'One Watch': 'com.one.health', 'Sleep': 'com.one.sleep', //
   'Clock': 'com.one.deskclock', 'Calculator': 'com.one.calculator', 'Weather': 'com.one.weather', 'Files': 'com.one.files', 'Settings': 'com.one.settings',
 };
+
+Uint8List _icon(String package) => File('store/app_icons/$package.png').readAsBytesSync();
 
 void main() {
   testWidgets('store screenshots', (tester) async {
@@ -50,6 +53,10 @@ void main() {
           return [
             for (final e in _apps.entries) {'package': e.value, 'label': e.key, 'system': e.key == 'Settings' || e.key == 'Clock', 'category': -1, 'installed': 0},
           ];
+        case 'getIcons':
+          return {for (final p in (call.arguments as Map)['packages'] as List) p: _icon(p as String)};
+        case 'getIcon':
+          return _icon((call.arguments as Map)['package'] as String);
         case 'getScreenTime':
           return {
             'granted': true,
@@ -85,6 +92,9 @@ void main() {
     await tester.pumpAndSettle();
     Future<void> shot(String name) => expectLater(find.byType(OneLauncher), matchesGoldenFile('../store/raw/$name.png'));
 
+    // Icons decode off the test clock: give them real time, then draw.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 800)));
+    await tester.pumpAndSettle();
     await shot('1_home');
 
     // Screen time page (swipe the top).
@@ -118,6 +128,8 @@ void main() {
     await tester.longPress(find.byTooltip('Home screen · hold for Settings'));
     await tester.pumpAndSettle();
     await shot('5_settings');
+    await tester.tap(find.text('Look'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Colours & style'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Basic colours')); // in the editor's controls panel

@@ -10,7 +10,7 @@ palette (`DesignLanguage.pixel` uses Classic's palette; `DS.pixel` is true in th
 | --- | --- | --- |
 | `pixel_model.dart` | `PixelSettings` (all options, defaults), `PixelLayout` (pages, dock, folders; pure ops), stored in `prefs.pixelSettings` / `prefs.pixelLayout` | shared — change only by adding |
 | `pixel_icon.dart` | `PixelIcon` (icon cut to shape, dot, label), `PixelShape` clipper | shared |
-| `pixel_home.dart` | `PixelHome`: pages, dock, At a Glance, search pill, page dots, gestures, drag & drop, folders on home, home long-press menu, drawer host | home agent |
+| `pixel_home.dart` | `PixelHome`: pages, dock, At a Glance, search pill, page dots, gestures, drag & drop, folders on home, home long-press menu, drawer host and swipe-up motion (`_searchMorph` flies the pill into the drawer field; `PixelDrawer.morph` hides its own field until open) | home agent |
 | `pixel_folder.dart` | Folder icon (dark back, 1–4 mini icons) + opened folder (compact frosted card anchored to the icon, 2/3/4 columns, name at the bottom, dim without blur) | home agent |
 | `pixel_drawer.dart` | `PixelDrawer`: swipe-up all-apps on a blurred translucent sheet (handle, "Search your phone and more" hint, suggestions, Personal/Work pills, A–Z grid, letter scroller) | drawer agent |
 | `pixel_popup.dart` | `showPixelAppPopup`: Pixel's vertical long-press card with an arrow (shortcuts, App info, Widgets, Remove or Uninstall) | drawer agent |
@@ -29,6 +29,9 @@ palette (`DesignLanguage.pixel` uses Classic's palette; `DS.pixel` is true in th
 - Folder: a rounded icon-shaped back with a 2x2 preview; tap → expands into a card with the
   name (tap to rename) and the apps grid; tap outside closes.
 - Swipe right from page 1 → the left panel (we show our Today panel there).
+- Swipe up → the home shrinks (to 92%) and fades while the drawer sheet rises from below
+  (from 60% down, fading in), and the search pill flies up into the drawer's search field
+  ("Search your phone and more"); 360 ms, follows the finger. Off when the search bar is hidden.
 
 ## Extra (the most requested on Pixel)
 Grid sizes up to 6x7, icon size, icon shapes, hide labels (home/drawer separately), dock 3–7

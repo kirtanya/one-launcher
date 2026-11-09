@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'folders.dart';
 import 'tv_remote.dart';
+import 'play_build.dart';
 
 /// Everything the user customises, saved on the phone.
 class Prefs extends ChangeNotifier {
@@ -136,7 +137,7 @@ class Prefs extends ChangeNotifier {
   }
 
   /// Top carousel pages, in order, and which are switched on.
-  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'tv_remote', 'smart_home', 'blank'];
+  static const topDefaultOrder = ['clock', 'screen_time', 'battery', 'up_next', 'now_playing', 'tv_remote', if (!playBuild) 'smart_home', 'blank'];
   List<String> get topOrder {
     final saved = _sp.getStringList('topOrder') ?? const [];
     bool known(String id) => topDefaultOrder.contains(id) || (id.startsWith('widget:') && widgetLabels.containsKey(id));

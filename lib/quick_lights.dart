@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'smart_home.dart';
 import 'ui/ds.dart';
+import 'play_build.dart';
 
 /// Quick light control, for the top page and the side panel's Smart home widget: one row of
 /// chips (All, each room, each light: its dot turns it on or off), and for what's picked a
@@ -137,6 +138,7 @@ class _QuickLightsState extends State<QuickLights> {
     valueListenable: _home.state,
     builder: (context, s, _) => LayoutBuilder(builder: (context, c) {
       final ink = widget.ink, soft = widget.soft;
+      if (playBuild) return const SizedBox.shrink(); // no Smart home in the Play build
       final ready = s.status == SmartHomeStatus.ready || s.all.isNotEmpty;
       if (!ready || s.lights.isEmpty) {
         return _Line(

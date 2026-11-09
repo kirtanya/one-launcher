@@ -1,0 +1,15 @@
+<!-- Google Play build only (PLAY_BUILD=true → phoneRelease's manifest, see build.gradle.kts):
+     removes what Play's policies would question. store/PLAY_REVIEW.md. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Mindful open's background guard: a special-use foreground service needs a Play declaration. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove"/>
+    <queries>
+        <!-- One Stream isn't on Play. -->
+        <package android:name="com.kirtanya.reel" tools:node="remove"/>
+    </queries>
+    <application>
+        <service android:name=".LockService" tools:node="remove"/>
+    </application>
+</manifest>

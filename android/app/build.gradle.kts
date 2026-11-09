@@ -96,7 +96,16 @@ android {
 // Smart home (phone flavour only): Google's Home APIs SDK from the local repo android/home-sdk
 // (gitignored, ~190 MB). Without it the phone app builds without the bridge and the Dart side
 // reports "unavailable".
-val homeSdkPresent = rootProject.file("home-sdk").exists()
+// Google Play build (PLAY_BUILD=true, tool/build_play.sh): no Home SDK, and src/play's manifest
+// takes out what Play would question (App lock's service, the One Stream query). store/PLAY_REVIEW.md.
+val playBuild = System.getenv("PLAY_BUILD") == "true"
+if (playBuild) android.sourceSets.maybeCreate("phoneRelease").manifest.srcFile("src/play/AndroidManifest.xml")
+// ONLY_ABI=arm64-v8a: ship just that ABI. A plugin's .so (datastore) would otherwise add
+// armeabi-v7a / x86_64 folders without Flutter's engine, and those phones would crash.
+System.getenv("ONLY_ABI")?.split(",")?.let { keep ->
+    android.packaging.jniLibs.excludes += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64").filter { it !in keep }.map { "lib/$it/**" }
+}
+val homeSdkPresent = rootProject.file("home-sdk").exists() && !playBuild
 if (!homeSdkPresent) {
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
         if (name.contains("Phone")) exclude("**/SmartHomeBridge.kt", "**/HomeConnectActivity.kt")

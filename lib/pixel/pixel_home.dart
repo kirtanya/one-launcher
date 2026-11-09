@@ -397,7 +397,7 @@ class _PixelHomeState extends State<PixelHome>
     _drawer
         .animateTo(
           to,
-          duration: const Duration(milliseconds: 280),
+          duration: const Duration(milliseconds: 360),
           curve: Curves.easeOutCubic,
         )
         .whenComplete(() {
@@ -847,6 +847,7 @@ class _PixelHomeState extends State<PixelHome>
                     ),
                   if (!widget.preview) _topTargets(mq, cs),
                   if (!widget.preview) _drawerLayer(c.maxHeight),
+                  if (!widget.preview && _s.searchBar) _searchMorph(c.biggest, mq.padding, cs),
                   if (_menuAt != null) _menuOverlay(cs, c.biggest),
                 ],
               ),
@@ -881,11 +882,12 @@ class _PixelHomeState extends State<PixelHome>
             IgnorePointer(
               child: ColoredBox(color: Colors.black.withValues(alpha: .4 * v)),
             ),
+          // Rises from the bottom, fading in as it comes (Pixel's all apps).
           IgnorePointer(
             ignoring: v < .01 || _fromDrawer,
             child: Transform.translate(
-              offset: Offset(0, (1 - v) * h),
-              child: child,
+              offset: Offset(0, v <= 0 ? h : (1 - v) * h * _drawerRise), // closed: fully below the screen
+              child: Opacity(opacity: (v / .35).clamp(0.0, 1.0), child: child),
             ),
           ),
         ],
@@ -897,7 +899,68 @@ class _PixelHomeState extends State<PixelHome>
       onClose: () => _drawerGo(0),
       onDragStart: _drawerDragStart,
       searchFocus: _searchFocus,
+      morph: _s.searchBar ? _drawer : null,
     ),
+  );
+
+  /// How far below its open spot the drawer starts (a share of the screen height).
+  static const _drawerRise = .6;
+
+  /// The home's Google pill turning into the drawer's search field while the drawer moves:
+  /// it flies from the pill's spot to the field's, the pill's G · icons fading out as the
+  /// field's hint fades in and its box melts into the sheet. Both real ones hide meanwhile.
+  Widget _searchMorph(Size size, EdgeInsets pad, ColorScheme cs) => AnimatedBuilder(
+    animation: _drawer,
+    builder: (context, _) {
+      final v = _drawer.value;
+      if (v <= 0 || v >= 1 || _fromDrawer) return const SizedBox.shrink();
+      final e = Curves.easeOutCubic.transform(v); // leaves with the sheet, eases into the field
+      final pill = Rect.fromLTWH(22, size.height - math.max(pad.bottom, 24) - 24 - 52, size.width - 44, 52);
+      // The drawer's field: under the sheet's top inset, grab handle and gaps (pixel_drawer.dart).
+      final fieldTop = math.max(40.0, pad.top + 12) + 40;
+      final rise = size.height * _drawerRise;
+      final field = Rect.fromLTWH(18, fieldTop + (1 - v) * rise, size.width - 36, 56);
+      // Rides on the sheet: the field's spot plus the pill's starting gap from it, shrinking away.
+      final start = pill.shift(Offset(0, field.top - fieldTop - rise));
+      final r = Rect.lerp(start, field, e)!;
+      final dark = cs.brightness == Brightness.dark;
+      final box = dark ? const Color(0x9E303030) : const Color(0xB3FFFFFF);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fromRect(
+            rect: r,
+            child: IgnorePointer(
+              child: DecoratedBox(
+            decoration: BoxDecoration(color: box.withValues(alpha: box.a * (1 - e)), borderRadius: BorderRadius.circular(26)),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Opacity(opacity: (1 - e / .5).clamp(0.0, 1.0), child: _pillContent(cs)),
+                Opacity(
+                  opacity: ((e - .4) / .6).clamp(0.0, 1.0),
+                  child: Padding(
+                    padding: EdgeInsets.only(left: 18 * (1 - e)),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Search your phone and more',
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        softWrap: false,
+                        style: TextStyle(fontSize: 22, color: cs.onSurface.withValues(alpha: .7)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+          ),
+        ],
+      );
+    },
   );
 
   // ---- home layer ---------------------------------------------------------------------------
@@ -906,8 +969,12 @@ class _PixelHomeState extends State<PixelHome>
     final s = _s;
     return AnimatedBuilder(
       animation: _drawer,
-      builder: (context, child) =>
-          Opacity(opacity: 1 - .6 * _drawer.value, child: child),
+      // Shrinks back and fades as the drawer comes up.
+      // Always the same wrappers: swapping them mid-swipe would rebuild the gesture detector.
+      builder: (context, child) => Transform.scale(
+        scale: 1 - .08 * _drawer.value,
+        child: Opacity(opacity: 1 - .7 * _drawer.value, child: child),
+      ),
       child: Listener(
         behavior: HitTestBehavior.translucent,
         onPointerDown: _lpDown,
@@ -1313,7 +1380,12 @@ class _PixelHomeState extends State<PixelHome>
                     bottom:
                         math.max(MediaQuery.of(context).padding.bottom, 24) + 24,
                     height: 52,
-                    child: _searchPill(cs),
+                    // Hidden while it flies into the drawer (`_searchMorph`).
+                    child: AnimatedBuilder(
+                      animation: _drawer,
+                      builder: (context, child) => Opacity(opacity: _drawer.value > 0 && !widget.preview ? 0 : 1, child: child),
+                      child: _searchPill(cs),
+                    ),
                   ),
               ],
             ),
@@ -1365,7 +1437,6 @@ class _PixelHomeState extends State<PixelHome>
 
   Widget _searchPill(ColorScheme cs) {
     final dark = cs.brightness == Brightness.dark;
-    final fg = dark ? const Color(0xFFE3E3E3) : const Color(0xFF444746);
     return Material(
       key: const Key('pixel-search'),
       color: dark ? const Color(0x9E303030) : const Color(0xB3FFFFFF),
@@ -1373,7 +1444,16 @@ class _PixelHomeState extends State<PixelHome>
       child: InkWell(
         borderRadius: BorderRadius.circular(26),
         onTap: widget.preview ? null : _openSearch,
-        child: Padding(
+        child: _pillContent(cs),
+      ),
+    );
+  }
+
+  /// The pill's G · AI Mode · mic · Lens row (also drawn by `_searchMorph`).
+  Widget _pillContent(ColorScheme cs) {
+    final dark = cs.brightness == Brightness.dark;
+    final fg = dark ? const Color(0xFFE3E3E3) : const Color(0xFF444746);
+    return Padding(
           padding: const EdgeInsets.only(left: 18, right: 16),
           child: Row(
             children: [
@@ -1417,8 +1497,6 @@ class _PixelHomeState extends State<PixelHome>
               Icon(Icons.center_focus_strong_outlined, color: fg, size: 28),
             ],
           ),
-        ),
-      ),
     );
   }
 

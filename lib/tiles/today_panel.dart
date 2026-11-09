@@ -27,6 +27,7 @@ import '../widgets.dart';
 import 'day_line.dart';
 import 'landing.dart';
 import 'tiles_home.dart';
+import '../play_build.dart';
 
 /// The "today" page, left of home (swipe right) — Tiles: left of Start; Classic: the side panel
 /// left of the clock and drawer, in Classic's own look. One Launcher's own widgets —
@@ -1188,7 +1189,7 @@ class _TodayPanelState extends State<TodayPanel> {
       header: const SheetHeader(title: 'Add a widget', subtitle: 'One Launcher’s own, or any app’s'),
       actions: [
         for (final MapEntry(key: kind, value: (name, icon, _, size)) in todayKinds.entries)
-          if (!have.contains('today:$kind') && (!_streamKinds.contains(kind) || OneStream.instance.available.value))
+          if (!have.contains('today:$kind') && (!_streamKinds.contains(kind) || OneStream.instance.available.value) && !(playBuild && kind == 'smart'))
             SheetAction(icon, name, () {
               Navigator.pop(context);
               HapticFeedback.mediumImpact();

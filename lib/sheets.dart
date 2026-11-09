@@ -212,7 +212,9 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
   return showAppActions(
     context,
     app: app,
-    subtitle: '${app.work ? 'Work profile · ' : ''}In ${prefs.folderName(folder)}${app.paused ? ' · paused' : ''}',
+    subtitle: app.isShortcut
+        ? '${app.work ? 'Work profile · ' : ''}Shortcut from ${app.shortcut} · In ${prefs.folderName(folder)}'
+        : '${app.work ? 'Work profile · ' : ''}In ${prefs.folderName(folder)}${app.paused ? ' · paused' : ''}',
     actions: [
       AppAction(
         fav ? Icons.push_pin : Icons.push_pin_outlined,
@@ -223,7 +225,10 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
       AppAction(Icons.drive_file_move_outline, 'Move to folder', () => showFolderPicker(context, prefs: prefs, app: app)),
       AppAction(hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined, hidden ? 'Show in list' : 'Hide', () => prefs.toggleHidden(app.package)),
       AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(app.package)),
-      if (!app.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(app.package), danger: true),
+      if (app.isShortcut)
+        AppAction(Icons.remove_circle_outline_rounded, 'Remove shortcut', () => Apps.instance.removeShortcut(app.package), danger: true)
+      else if (!app.system)
+        AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(app.package), danger: true),
     ],
   );
 }
@@ -1853,11 +1858,11 @@ Future<void> showSettingsSheet(BuildContext context, {required Prefs prefs, requ
       ),
       _Setting(
         appsCat,
-        'App lock',
-        Icons.lock_outline_rounded,
-        'App lock',
-        prefs.lockedApps.isEmpty ? 'Off · open chosen apps only on a double or triple tap' : '${prefs.lockedApps.length} locked · ${prefs.lockTaps == 3 ? 'triple' : 'double'} tap',
-        keywords: 'lock pin private protect hide double tap triple',
+        'Mindful open',
+        Icons.self_improvement_rounded,
+        'Mindful open',
+        prefs.lockedApps.isEmpty ? 'Off · open chosen apps only on a double or triple tap' : '${prefs.lockedApps.length} ${prefs.lockedApps.length == 1 ? 'app' : 'apps'} · ${prefs.lockTaps == 3 ? 'triple' : 'double'} tap',
+        keywords: 'lock pin private protect delay slow double tap triple mindful screen time focus',
         open: (c) => showAppLockPage(c, prefs: prefs, apps: apps, height: drawerHeight(c, prefs)),
       ),
 
@@ -2361,7 +2366,24 @@ class _HomeEditorState extends State<_HomeEditor> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink)),
+                    Row(
+                      children: [
+                        Flexible(child: Text(title, style: DS.rowTitle.copyWith(color: on ? DS.heroInk : DS.ink))),
+                        // Every view but Classic is still being finished.
+                        if (id != 'classic') ...[
+                          const SizedBox(width: DS.s8),
+                          Container(
+                            key: ValueKey('beta-$id'),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: (on ? DS.heroInk : DS.inkMuted).withValues(alpha: .6)),
+                            ),
+                            child: Text('Beta', style: DS.rowSub.copyWith(fontSize: 11, fontWeight: FontWeight.w600, height: 1.2, color: on ? DS.heroInk : DS.inkMuted)),
+                          ),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(sub, style: DS.rowSub.copyWith(fontSize: 13, color: on ? DS.heroInk.withValues(alpha: .75) : DS.inkMuted)),
                   ],

@@ -34,7 +34,7 @@ class _PixelSettingsPage extends StatelessWidget {
           _Row('Apps list settings', 'Choose appearance and behaviour defaults of the apps list', onTap: () {
             Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => _AppsListPage(prefs: prefs)));
           }),
-          _Row('Home view', 'Pixel', onTap: () => _pick<String>(context, 'Home view', prefs.homeView, const {'classic': 'Classic', 'tiles': 'Tiles', 'third': 'Real', 'pixel': 'Pixel'}, (v) {
+          _Row('Home view', 'Pixel', onTap: () => _pick<String>(context, 'Home view', prefs.homeView, const {'classic': 'Classic', 'tiles': 'Tiles (beta)', 'third': 'Real (beta)', 'pixel': 'Pixel (beta)'}, (v) {
             if (v == prefs.homeView) return;
             // After the dialog has closed: leave settings, then swap the home view.
             Future.microtask(() {
@@ -63,7 +63,7 @@ class _PixelSettingsPage extends StatelessWidget {
             final apps = await Apps.instance.list();
             if (context.mounted) await showHiddenApps(context, prefs: prefs, apps: apps);
           }),
-          _Row('App lock', 'Ask for a PIN to open chosen apps', onTap: () async {
+          _Row('Mindful open', 'Chosen apps open only on a double or triple tap', onTap: () async {
             final apps = await Apps.instance.list();
             if (context.mounted) await showAppLockPage(context, prefs: prefs, apps: apps);
           }),
