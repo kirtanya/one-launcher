@@ -33,6 +33,7 @@ Future<void> main() async {
   Apps.instance.init();
   OneStream.instance.init(); // the user's streaming app, when installed
   final prefs = await Prefs.load();
+  Apps.instance.names = prefs.appNames; // apps the user renamed
   AppLock.of(prefs).sync(); // tell the native guard which apps are locked
   await Perf.init(prefs); // lighter effects on budget phones
   final theme = OneTheme(prefs);

@@ -149,6 +149,12 @@ Mindful open's (was App lock) background-guard settings; Gradle's `PLAY_BUILD=tr
 SDK and uses `android/app/src/play/AndroidManifest.xml` (removes LockService, its FGS permissions
 and the One Stream query). Why: `store/PLAY_REVIEW.md`. Views other than Classic carry a Beta tag.
 
+**Rename app** (not in the Play build): Rename in the app sheet (Classic), the Pixel popup and the Tiles
+menus → `showRenameApp` (sheets.dart). Names live in `prefs.appNames` (package → name); `main.dart`
+hands them to `Apps.instance.names` and `Apps.list()` uses them as the label, so every view and
+search shows and finds the new name. `Apps.ownLabel` is the app's own name (empty name = back to it).
+Custom icons: not yet.
+
 **Pixel view** (`lib/pixel/`, spec + file map in `docs/PIXEL_VIEW.md`): Pixel Launcher end to end
 (grid pages, dock, At a Glance, search pill, swipe-up drawer, anchored icon popup, drag-to-folder)
 plus more settings. Uses Classic's Material You palette (`DesignLanguage.pixel`); no glass setting (its

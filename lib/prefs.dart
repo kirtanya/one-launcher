@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'apps.dart';
 import 'folders.dart';
 import 'tv_remote.dart';
 import 'play_build.dart';
@@ -123,6 +124,20 @@ class Prefs extends ChangeNotifier {
     (name == null || name.trim().isEmpty) ? m.remove(id) : m[id] = name.trim();
     await _sp.setString('folderNames', jsonEncode(m));
     notifyListeners();
+  }
+
+  /// Names the user gave apps (package → name): shown everywhere and found by search instead of
+  /// the app's own. Not in the Play build.
+  Map<String, String> get appNames => playBuild ? const {} : Map<String, String>.from(_json('appNames'));
+
+  /// Empty name = back to the app's own.
+  Future<void> renameApp(String package, String? name) async {
+    final m = appNames;
+    (name == null || name.trim().isEmpty) ? m.remove(package) : m[package] = name.trim();
+    await _sp.setString('appNames', jsonEncode(m));
+    Apps.instance.names = m;
+    notifyListeners();
+    Apps.instance.onAppsChanged?.call(); // the lists reload with the new name
   }
 
   Future<void> setFolderOrder(List<String> ids) => _setList('folderOrder', ids);

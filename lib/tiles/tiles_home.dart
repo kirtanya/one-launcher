@@ -21,6 +21,7 @@ import '../quick_chips.dart' show ShortcutIcon, ChipLook;
 import '../photo_wallpaper.dart';
 import '../prefs.dart';
 import '../remote_sheet.dart';
+import '../play_build.dart';
 import '../sheets.dart';
 import '../top/header_fonts.dart';
 import '../ui/ds.dart';
@@ -1910,6 +1911,7 @@ Future<void> showTileMenu(BuildContext context, Prefs prefs, AppEntry a) => show
   app: a,
   shortcuts: prefs.fx('shortcuts'),
   actions: [
+    if (!playBuild) AppAction(Icons.edit_outlined, 'Rename', () => showRenameApp(context, prefs: prefs, app: a)),
     AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(a.package)),
     if (!a.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(a.package), danger: true),
   ],
@@ -1942,6 +1944,7 @@ Future<void> showAppMenu(BuildContext context, Prefs prefs, AppEntry a, {require
       shortcuts: prefs.fx('shortcuts'),
       actions: [
         AppAction(pinned ? Icons.push_pin : Icons.push_pin_outlined, pinned ? 'Unpin from Start' : 'Pin to Start', pinned ? onUnpin : onPin),
+        if (!playBuild) AppAction(Icons.edit_outlined, 'Rename', () => showRenameApp(context, prefs: prefs, app: a)),
         AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(a.package)),
         if (!a.system) AppAction(Icons.delete_outline_rounded, 'Uninstall', () => Apps.instance.uninstall(a.package), danger: true),
       ],

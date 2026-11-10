@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../apps.dart';
+import '../play_build.dart';
 import '../prefs.dart';
 import '../quick_actions.dart';
 import '../quick_chips.dart';
@@ -154,6 +155,17 @@ class _PopupState extends State<_Popup> with SingleTickerProviderStateMixin {
           onTap: () => _run(() => Apps.instance.quickAction(_shortcuts[i].id)),
         ),
       _Row(leading: Icon(Icons.info_rounded, size: 22, color: fg), label: 'App info', onTap: () => _run(() => Apps.instance.appInfo(app.package))),
+      if (!playBuild)
+        _Row(
+          leading: Icon(Icons.edit_rounded, size: 22, color: fg),
+          label: 'Rename',
+          onTap: () {
+            final host = widget.hostContext;
+            _run(() {
+              if (host.mounted) showRenameApp(host, prefs: widget.prefs, app: app);
+            });
+          },
+        ),
       if (_hasWidgets)
         _Row(
           leading: Icon(Icons.widgets_rounded, size: 22, color: fg),

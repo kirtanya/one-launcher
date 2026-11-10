@@ -10,6 +10,7 @@ import 'one_stream.dart';
 import 'quick_chips.dart';
 import 'prefs.dart';
 import 'photo_wallpaper.dart';
+import 'play_build.dart';
 import 'quick_actions.dart';
 import 'tv_remote.dart';
 import 'third/tactile/parts.dart';
@@ -223,6 +224,7 @@ Future<void> showAppSheet(BuildContext context, {required Prefs prefs, required 
         enabled: !full,
       ),
       AppAction(Icons.drive_file_move_outline, 'Move to folder', () => showFolderPicker(context, prefs: prefs, app: app)),
+      if (!playBuild) AppAction(Icons.edit_outlined, 'Rename', () => showRenameApp(context, prefs: prefs, app: app)),
       AppAction(hidden ? Icons.visibility_rounded : Icons.visibility_off_outlined, hidden ? 'Show in list' : 'Hide', () => prefs.toggleHidden(app.package)),
       AppAction(Icons.info_outline_rounded, 'App info', () => Apps.instance.appInfo(app.package)),
       if (app.isShortcut)
@@ -349,10 +351,25 @@ Future<void> _heroRows(BuildContext context, {required Prefs prefs}) => showOneS
 );
 
 /// Rename a folder. Empty name = back to the default.
-Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, required Folder folder}) {
-  final text = TextEditingController(text: prefs.folderName(folder));
-  void save(BuildContext ctx) {
-    prefs.renameFolder(folder.id, text.text == folder.name ? null : text.text);
+Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, required Folder folder}) => _showRename(
+  context,
+  title: 'Rename folder',
+  name: prefs.folderName(folder),
+  own: folder.name,
+  save: (v) => prefs.renameFolder(folder.id, v == folder.name ? null : v),
+);
+
+/// Rename an app: the new name shows everywhere and search finds it by that name. Empty name =
+/// back to the app's own. Not in the Play build.
+Future<void> showRenameApp(BuildContext context, {required Prefs prefs, required AppEntry app}) {
+  final own = Apps.instance.ownLabel(app);
+  return _showRename(context, title: 'Rename app', name: app.label, own: own, save: (v) => prefs.renameApp(app.package, v == own ? null : v));
+}
+
+Future<void> _showRename(BuildContext context, {required String title, required String name, required String own, required ValueChanged<String> save}) {
+  final text = TextEditingController(text: name);
+  void done(BuildContext ctx) {
+    save(text.text.trim());
     Navigator.pop(ctx);
   }
 
@@ -364,7 +381,7 @@ Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, requi
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SheetHeader(title: 'Rename folder', subtitle: 'Leave empty to use “${folder.name}”'),
+          SheetHeader(title: title, subtitle: 'Leave empty to use “$own”'),
           const SizedBox(height: DS.s16),
           TextField(
             controller: text,
@@ -372,7 +389,7 @@ Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, requi
             textCapitalization: TextCapitalization.sentences,
             cursorColor: DS.ink,
             style: DS.title.copyWith(fontSize: 22),
-            onSubmitted: (_) => save(ctx),
+            onSubmitted: (_) => done(ctx),
             decoration: InputDecoration(
               filled: true,
               fillColor: DS.cardMuted,
@@ -387,7 +404,7 @@ Future<void> showRenameFolder(BuildContext context, {required Prefs prefs, requi
               height: 56,
               child: FilledButton(
                 style: DS.third ? null : FilledButton.styleFrom(backgroundColor: DS.ink, foregroundColor: DS.card, shape: const StadiumBorder()),
-                onPressed: () => save(ctx),
+                onPressed: () => done(ctx),
                 child: Text('Save', style: DS.rowTitle.copyWith(color: DS.card)),
               ),
             ),

@@ -68,6 +68,13 @@ class Apps {
   /// Whether the launcher was started that way before Flutter listened.
   Future<bool> takeOpenRemote() async => isDemo ? false : await _ch.invokeMethod<bool>('takeOpenRemote') ?? false;
   VoidCallback? onAppsChanged;
+
+  /// Names the user gave apps ([Prefs.appNames]): [list] uses them as the label.
+  Map<String, String> names = const {};
+  final _own = <String, String>{};
+
+  /// The name the app gives itself, before any rename.
+  String ownLabel(AppEntry app) => _own[app.package] ?? app.label;
   VoidCallback? onPermissionsChanged;
 
   /// What's playing (pushed by Android whenever the track or play state changes).
@@ -172,12 +179,15 @@ class Apps {
   Future<List<AppEntry>> list() async {
     if (isDemo) return _demo;
     final raw = await _ch.invokeListMethod<Map>('getApps') ?? [];
+    for (final m in raw) {
+      _own[m['package'] as String] = m['label'] as String;
+    }
     final apps =
         raw
             .map(
               (m) => AppEntry(
                 package: m['package'] as String,
-                label: m['label'] as String,
+                label: names[m['package']] ?? m['label'] as String,
                 system: m['system'] as bool? ?? false,
                 category: m['category'] as int? ?? -1,
                 installed: m['installed'] as int? ?? 0,
