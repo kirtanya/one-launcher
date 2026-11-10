@@ -147,7 +147,8 @@ engine-less 32-bit/x86 folders that would crash those phones): `lib/play_build.d
 `playBuild` (dart-define) hides Play Store results, Google suggestions, Smart home and One Stream, and
 Mindful open's (was App lock) background-guard settings; Gradle's `PLAY_BUILD=true` drops the Home
 SDK and uses `android/app/src/play/AndroidManifest.xml` (removes LockService, its FGS permissions
-and the One Stream query). Why: `store/PLAY_REVIEW.md`. Views other than Classic carry a Beta tag.
+and the One Stream query), and sets the package to `zero.one.two.launcher` (all our Play apps use
+`zero.one.two.*`; sideloaded APKs stay `com.kirtanya.one_launcher`). Why: `store/PLAY_REVIEW.md`. Views other than Classic carry a Beta tag.
 
 **Rename app** (not in the Play build): Rename in the app sheet (Classic), the Pixel popup and the Tiles
 menus → `showRenameApp` (sheets.dart). Names live in `prefs.appNames` (package → name); `main.dart`

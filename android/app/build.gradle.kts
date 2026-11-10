@@ -100,6 +100,8 @@ android {
 // takes out what Play would question (App lock's service, the One Stream query). store/PLAY_REVIEW.md.
 val playBuild = System.getenv("PLAY_BUILD") == "true"
 if (playBuild) android.sourceSets.maybeCreate("phoneRelease").manifest.srcFile("src/play/AndroidManifest.xml")
+// Play's package name: all our Play apps use zero.one.two.* (the sideloaded APKs stay com.kirtanya.one_launcher).
+if (playBuild) android.productFlavors.getByName("phone").applicationId = "zero.one.two.launcher"
 // ONLY_ABI=arm64-v8a: ship just that ABI. A plugin's .so (datastore) would otherwise add
 // armeabi-v7a / x86_64 folders without Flutter's engine, and those phones would crash.
 System.getenv("ONLY_ABI")?.split(",")?.let { keep ->
